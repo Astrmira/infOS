@@ -65,6 +65,22 @@ describe('MemoryStoreRegistry维度联动', () => {
     expect(existsSync(`${target}.lock`)).toBe(false)
   })
 
+  it('节点统计读取冷库后释放只读句柄，维度切换仍可统计已有资料', () => {
+    const registry = fixture(4)
+    try {
+      registry.getAgentStore('pero').insertWithId(1, [1, 0, 0, 0], { content: 'Pero 的经历' })
+      registry.getAgentStore('nana').insertWithId(2, [0, 1, 0, 0], { content: 'Nana 的经历' })
+      registry.getSharedStore('facts').insertWithId(3, [0, 0, 1, 0], { statement: '公共事实' })
+      registry.closeAll()
+      registry.setDimension(8)
+      expect(registry.countExistingNodes(['pero', 'nana', 'missing'])).toBe(3)
+      expect(registry.getStoreStats()).toEqual([])
+      expect(existsSync(registry.resolveAgentStorePath('missing'))).toBe(false)
+    } finally {
+      registry.closeAll()
+    }
+  })
+
   it('首次写入真实 v9 文件组前保留完整备份，迁移 v10 后保留向量、正文与关系', () => {
     const registry = fixture(4)
     const target = registry.resolveAgentStorePath('pero', 'main')

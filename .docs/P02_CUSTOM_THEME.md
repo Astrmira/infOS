@@ -81,11 +81,11 @@ infOS 的颜色、阴影、圆角都定义为 CSS 变量，主题覆盖这些变
 | 字体与圆角   | `--ui-font-sans`、`--ui-font-pixel`、`--ui-font-mono`、`--ui-radius-*`                                                                            |
 | 像素组件色系 | `tokens.css` 中的 `--color-{sky,pink,amber,emerald,indigo…}-{outline,shadow,face,light,hover}`                                                    |
 
-注意：
+作用域与安全规则：
 
 - `:root` 中的覆盖对两种模式都生效，包括深色模式；只想改一种模式时用 `[data-theme='light']` / `[data-theme='dark']`。写了 `mode` 的主题也建议把颜色放在对应的 `[data-theme]` 中：用户手动切到另一种模式时回到默认配色，不会出现浅底浅字。
 - 部分界面仍直接使用 Tailwind 颜色类（如 `text-slate-500`），不随变量变化。可以在 theme.css 中写普通选择器补充，但这类规则依赖界面结构，infOS 更新后可能失效；优先只改变量。
-- 相对 `url()` 会改写为主题文件地址；绝对地址（`https:`、`data:`、以 `/` 开头）保持不变，含 `..` 的路径无效。主题根文件夹不接受目录联接或符号链接，包括指向库内其他主题的别名，读取、覆盖和删除均拒绝这些入口；主题内部资源仍按真实路径校验，不能越出该主题文件夹。正文和清单在打开后核对文件身份与归属，再通过同一句柄读取，避免异步打开期间换掉路径后读取外部文件。`@import "x.css"` 形式的相对导入不会改写，样式请写在 theme.css 一个文件里。
+- 相对 `url()` 会改写为主题文件地址；绝对地址（`https:`、`data:`、以 `/` 开头）保持不变，含 `..` 的路径无效。主题根文件夹不接受目录联接或符号链接（含指向库内其他主题的别名），读取、覆盖与删除均拒绝此类入口；主题内部资源按真实路径校验并限定于该主题文件夹内。正文和清单在打开后核对文件身份与归属，再通过同一句柄读取，避免异步打开期间路径变更导致越界读取。`@import "x.css"` 形式的相对导入不会改写，样式须统一写在 `theme.css` 内。
 - 可读取的资源类型：`.css .png .jpg .jpeg .webp .gif .avif .woff .woff2 .ttf .otf`；不开放 SVG。
 
 ## 导入 ZIP
@@ -114,5 +114,5 @@ infOS 的颜色、阴影、圆角都定义为 CSS 变量，主题覆盖这些变
 ## 实现位置
 
 - 共享结构、清单归一化、`url()` 改写：`packages/shared/src/customTheme.ts`
-- 服务端：`services/theme/themeService.ts`，路由 `routers/theme.router.ts`
-- 前端：`composables/ui/useCustomTheme.ts`（载入与注入，主界面与启动页挂载时调用 `start()`）、`components/dashboard/CustomThemeSettings.vue`（设置页）
+- 服务端：`packages/backend/src/services/theme/themeService.ts`，路由 `packages/backend/src/routers/theme.router.ts`
+- 前端：`packages/frontend/src/composables/ui/useCustomTheme.ts`（载入与注入，主界面与启动页挂载时调用 `start()`）、`packages/frontend/src/components/dashboard/CustomThemeSettings.vue`（设置页）

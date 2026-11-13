@@ -1934,6 +1934,7 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
   )
   kernelLifecycle.defer(() => completionAlertService.stop())
   const conversationTurnService = new ConversationTurnService({
+    kernelScheduler,
     isHandoffRequested: (threadId) => runtimeStateService.isHandoffRequested(threadId),
     onUserActivity: (agentId, threadId) =>
       companionSchedulerService.notifyActivity(agentId, threadId),

@@ -225,9 +225,9 @@ export class DistributedSyncService {
     if (this.exporting) throw new AppError('RESOURCE_BUSY')
     this.exporting = true
     try {
-      const bundle = await this.createBundle(signal)
+      const bundle = await this.createBundle(signal, transferKey)
       signal?.throwIfAborted()
-      return this.encrypt(bundle, transferKey)
+      return bundle
     } finally {
       this.exporting = false
     }
@@ -332,7 +332,7 @@ export class DistributedSyncService {
     return true
   }
 
-  private async createBundle(signal?: AbortSignal): Promise<Buffer> {
+  private async createBundle(signal: AbortSignal | undefined, transferKey: Buffer): Promise<Buffer> {
     signal?.throwIfAborted()
     const snapshotId = randomUUID()
     const snapshotRoot = path.join(this.dataDir, BACKUP_STATE, 'work', `export-${snapshotId}`)
@@ -403,6 +403,7 @@ export class DistributedSyncService {
         },
         files,
         signal,
+        { key: transferKey, output: path.join(snapshotRoot, 'snapshot.encrypted') },
       )
     } finally {
       await rm(snapshotRoot, { recursive: true, force: true })

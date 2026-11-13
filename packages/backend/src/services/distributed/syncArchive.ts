@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto'
-import { createReadStream } from 'node:fs'
-import { mkdir, open } from 'node:fs/promises'
+import { createCipheriv, createHash, randomBytes } from 'node:crypto'
+import { createReadStream, createWriteStream } from 'node:fs'
+import { mkdir, open, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -21,6 +21,7 @@ export async function writeSyncArchive(
   manifest: FullSyncManifest,
   files: ReadonlyMap<string, string>,
   signal?: AbortSignal,
+  encryption?: { key: Buffer; output: string },
 ): Promise<Buffer> {
   signal?.throwIfAborted()
   const metadata = Buffer.from(JSON.stringify(manifest))
@@ -48,6 +49,23 @@ export async function writeSyncArchive(
       if (hash.digest('hex') !== descriptor.sha256)
         throw new Error(`SYNC_FILE_CHECKSUM_MISMATCH: ${descriptor.path}`)
     }
+  }
+  if (encryption) {
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', encryption.key, iv)
+    // 保留既有 IV、认证标签、密文顺序；标签在全部密文落盘后补写。
+    await writeFile(encryption.output, Buffer.concat([iv, Buffer.alloc(16), cipher.update(MAGIC)]), {
+      mode: 0o600, flag: 'wx', signal,
+    })
+    await pipeline(Readable.from(chunks()), createGzip(), cipher,
+      createWriteStream(encryption.output, { flags: 'a' }), { signal })
+    const file = await open(encryption.output, 'r+')
+    try {
+      await file.write(cipher.getAuthTag(), 0, 16, 12)
+    } finally {
+      await file.close()
+    }
+    return readFile(encryption.output, { signal })
   }
   const compressed: Buffer[] = [MAGIC]
   await pipeline(

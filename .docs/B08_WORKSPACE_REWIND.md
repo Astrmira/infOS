@@ -33,6 +33,6 @@
 
 ## 实现入口与一致性维护
 
-文件检查点由 `packages/backend/src/services/workspace/workspaceCheckpointService.ts` 维护，前端撤回入口为 `components/chat/ConversationRewindDialog.vue` 和 `composables/chat/useConversationRewind.ts`。历史删除还影响队列、角色状态与工具原件，分别遵循 [B26](./B26_CONVERSATION_QUEUE.md)、[B10](./B10_CHARACTER_STATE.md) 和 [B01](./B01_PRODUCTIVITY_RUNTIME.md)。
+文件检查点由 `packages/backend/src/services/workspace/workspaceCheckpointService.ts` 维护，前端撤回入口为 `packages/frontend/src/components/chat/ConversationRewindDialog.vue` 和 `packages/frontend/src/composables/chat/useConversationRewind.ts`。历史删除还影响队列、角色状态与工具原件，分别遵循 [B26](./B26_CONVERSATION_QUEUE.md)、[B10](./B10_CHARACTER_STATE.md) 和 [B01](./B01_PRODUCTIVITY_RUNTIME.md)。
 
-修改时重点保护同轮首次/最终版本、外部修改冲突和补偿恢复。不能通过简单覆盖文件再删除消息来模拟原子撤回；补偿目录须保留可恢复的原始字节与操作记录。
+修改时重点保护同轮首次/最终版本、外部修改冲突和补偿恢复，依靠同文件校验与补偿备份保障撤回与软删除的一致性；补偿目录持续保留原始字节与操作记录。

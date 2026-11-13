@@ -7,13 +7,13 @@
 
 ## 1. 设计原则
 
-1. **Channel 与 Sandbox 正交**：Channel 参与业务授权，Profile 声明执行策略；实际保证以 Runner 实现为准，不能把软件检查写成 OS 强隔离。
-2. **所有副作用进入执行运行时**：终端、文件写入、编辑、删除和外部进程不得直接在 Tool handler 中操作主机。
-3. **结构化结果**：工具错误不能再伪装为普通字符串；结果必须携带成功状态、错误码、截断信息和元数据。
-4. **可取消**：AbortSignal 必须贯穿 ReAct、ToolExecutor、进程和长时工具。
-5. **句柄化长任务**：长时命令返回 Terminal ID，不阻塞单次 ReAct 工具调用。
+1. **Channel 与 Sandbox 正交**：Channel 参与业务授权，Profile 声明执行策略；实际隔离语义以对应 Runner 实现为准（默认实现为软件策略检查，不包含 OS 内核强隔离）。
+2. **所有副作用进入执行运行时**：终端、文件写入、编辑、删除和外部进程统一经由执行运行时分发，不直接在 Tool handler 中操作宿主资源。
+3. **结构化结果**：工具错误以 `StructuredToolResult` 承载，统一包含成功状态、错误码、截断信息和元数据。
+4. **可取消**：`AbortSignal` 贯穿 ReAct、ToolExecutor、受管进程和长时工具。
+5. **句柄化长任务**：长时命令返回 Terminal ID，异步推进而不阻塞单次 ReAct 工具调用。
 6. **安全写入**：编辑采用内容/哈希保护，写入采用同目录临时文件与原子替换。
-7. **隔离边界明确**：LocalPolicyRunner 提供软件策略与受管进程生命周期；OS 强隔离需要独立 Runner 实现，当前不提供该保证。
+7. **隔离边界明确**：`LocalPolicyRunner` 提供软件策略校验与受管进程生命周期；OS 内核级强隔离由独立 Runner 实现提供。
 
 ## 2. 总体架构
 
@@ -72,7 +72,7 @@ interface SandboxProfile {
 }
 ```
 
-`LocalPolicyRunner` 提供策略检查、环境清理、进程管理和路径边界，但不宣称 OS 强隔离。新增 Runner 必须保持生命周期与取消契约。
+`LocalPolicyRunner` 提供软件层的策略检查、环境清理、进程管理和路径边界；新增 Runner 须保持生命周期与取消契约。
 
 ## 4. 统一工具结果
 
@@ -94,8 +94,8 @@ interface StructuredToolResult {
 
 - ToolRegistry handler 兼容返回 `string | StructuredToolResult`。
 - ToolExecutor 统一归一化为现有 `ToolExecutionResult`。
-- `ok=false` 必须映射为 `isError=true`，参与 ReAct 熔断。
-- 归一化发生在执行边界；调用方不能把错误正文当成成功观察。
+- `ok=false` 映射为 `isError=true`，参与 ReAct 熔断。
+- 归一化发生在执行边界，调用方依据统一错误标志处理失败观察。
 
 ## 5. SandboxRunner
 
@@ -112,15 +112,15 @@ interface SandboxRunner {
 
 `LocalPolicyRunner`：
 
-- 使用 `spawn`，禁止通过字符串拼接调用搜索二进制。
+- 使用 `spawn` 直接启动可执行文件，禁止字符串拼接调用搜索二进制。
 - Shell 命令仅由终端工具显式启动。
-- 环境变量采用白名单，不继承模型 Key、Daemon Token 等秘密。
-- 支持 AbortSignal。
+- 环境变量采用白名单，不继承模型 Key、Daemon Token 等凭据。
+- 支持 `AbortSignal`。
 - 保存进程句柄，取消时终止进程。
 - Windows 使用 `taskkill /T` 作为进程树清理降级方案；Unix 使用进程组信号。
 - 输出使用环形缓冲，保留头尾与截断信息。
 
-当前不提供：文件系统内核隔离、网络内核隔离、CPU/内存硬额度。
+`LocalPolicyRunner` 聚焦软件策略与进程生命周期管理，不提供文件系统内核隔离、网络内核隔离或 CPU/内存硬额度。
 
 ## 6. TerminalManager
 
@@ -146,20 +146,20 @@ TerminalManager 支持 `node-pty`（Windows ConPTY / Unix PTY），不可用时�
 
 - 每终端保存有界字符缓冲。
 - `terminal_read` 返回 `cursor`、`nextCursor`、`hasMore`、`status`。
-- 不把完整长日志塞入 ReAct 上下文。
-- 终端退出时保留 exitCode、signal 和尾部输出。
+- 增量读取避免将完整长日志直接注入 ReAct 上下文。
+- 终端退出时保留 `exitCode`、`signal` 和尾部输出。
 
 ### 6.3 远程能力节点终端
 
-GPU/Linux 能力节点发布 `system.shell` Offer 后，主 Agent 可以使用独立的 `remote_terminal_*` 工具包。该工具包与浏览器、Computer Use 一样属于二级高级工具抽屉：默认不向模型发送具体工具定义，Agent 确认任务需要远程节点操作后先调用 `expand_advanced_tools`，下一轮才获得完整远程终端工具。工具契约与本机多终端保持一致，但每次调用必须显式提供 `node_id`，Terminal ID 只在对应节点内有效。
+GPU/Linux 能力节点发布 `system.shell` Offer 后，主 Agent 可使用独立的 `remote_terminal_*` 工具包。该工具包与浏览器、Computer Use 一样属于二级高级工具抽屉：默认不向模型发送具体工具定义，Agent 确认任务需要远程节点操作后先调用 `expand_advanced_tools`，下一轮才获得完整远程终端工具。工具契约与本机多终端保持一致，每次调用须显式提供 `node_id`，Terminal ID 仅在对应节点内有效。
 
-远程终端不使用本机终端的风险分级审批策略，而只服从当前 Thread 的 Char Ops 自动执行开关：
+远程终端不使用本机终端的风险分级审批策略，而统一服从当前 Thread 的 Char Ops 自动执行开关：
 
 - 自动执行关闭：所有 `remote_terminal_*` 调用逐次强制审批，包括只读、等待、中断和关闭；
 - 自动执行开启：所有 `remote_terminal_*` 调用直接执行，不创建审批；
-- 无论开关如何，CapabilityGate、节点配对、在线 Lease、Handle、Tool 禁用状态和调用审计均不可绕过。
+- CapabilityGate、节点配对、在线 Lease、Handle、Tool 禁用状态与调用审计在两种模式下均强制生效。
 
-节点侧维持真实长时 Shell Session，Server 只保存 Node ID、远程 Terminal ID 和调用回执；节点断线后不得自动重放可能产生副作用的命令。
+节点侧维持真实长时 Shell Session，Server 只保存 Node ID、远程 Terminal ID 和调用回执；节点断线后不自动重放可能产生副作用的命令。
 
 ## 7. VirtualWorkspace
 
@@ -177,23 +177,23 @@ GPU/Linux 能力节点发布 `system.shell` Offer 后，主 Agent 可以使用�
 - 不支持的语言、语法不完整、解析器不可用、复杂 Python 格式字符串、混合缩进、符号未找到或源码超出 128,000 字符解析预算时，自动返回最多 16,000 字符的普通源码窗口、`symbolFallback` 原因、版本化 `read_ref` 与可用的 `nextOffset`。取消和文件权限错误仍按原语义传播；歧义仍需明确选择。回退读取引用只覆盖实际可见源码，编辑时继续核验所有权和文件版本。
 - `path=tool-result:ID` 配合 offset/limit 分页读取超限结果，校验 Agent、Thread、任务及 Realm 归属。内存热缓存有有效期；写盘成功的内部原件可跨重启读取，写盘失败则仅保留短期缓存。隐私删除和所属会话/角色清理会撤销原件，失效后按原始来源重读。
 
-当前文本写入保证 UTF-8/BOM 保留；其他编码不能假定可无损往返。
+文本写入确保 UTF-8 编码与 BOM 保留（其他非 UTF-8 编码不保证无损往返）。
 
 ### 7.2 搜索
 
-- `glob_files`：使用 Node 递归枚举与简化 Glob 匹配；支持范围以实际工具参数和 VirtualWorkspace 实现为准。
-- `code_search`：优先使用随应用打包或 PATH 中的 `rg`，通过 `spawn(binary, args, { shell:false })`；无 rg 时使用 Node 流式逐行 fallback。
-- 统一支持全局 limit、include/exclude、固定字符串/正则、大小写和上下文行。
+- `glob_files`：使用 Node 递归枚举与简化 Glob 匹配，支持范围以工具参数及 `VirtualWorkspace` 实现为准。
+- `code_search`：优先使用随应用打包或 `PATH` 中的 `rg`，通过 `spawn(binary, args, { shell:false })` 调用；缺少 `rg` 时降级为 Node 流式逐行检索。
+- 统一支持全局 `limit`、`include`/`exclude`、固定字符串/正则、大小写和上下文行。
 
 ### 7.3 安全编辑
 
 `edit_file`：
 
-- 单步定位互斥：`read_ref + new_text`、`path + old_text + new_text`，或携带 `expected_hash` 的行范围/after_line 操作。删除传空 new_text。
-- old_text 多处匹配不写入，返回候选与 ticketId；用 `ticket_id + pick` 选择时复用原内容并重新核验版本。
-- steps 支持同文件批量编辑，所有定位基于编辑前快照；重叠或任一步失败整批不写。
-- 写入、编辑和工作区保存共用同文件队列；提交前核验版本，保持 BOM 与 CRLF，使用同目录临时文件后 rename。不能据此保证阻止任意外部程序同时写入。
-- 模型拿到状态、版本与修改统计；完整 diff 交给界面。检查点失败必须说明文件已经写入，避免重复操作。
+- 单步定位互斥：`read_ref + new_text`、`path + old_text + new_text`，或携带 `expected_hash` 的行范围/`after_line` 操作；删除传空 `new_text`。
+- `old_text` 多处匹配时不写入，返回候选与 `ticketId`；通过 `ticket_id + pick` 选择时复用原内容并重新核验版本。
+- `steps` 支持同文件批量编辑，所有定位基于编辑前快照；存在重叠或任一步失败时整批不写。
+- 写入、编辑和工作区保存共用进程内同文件队列；提交前核验版本，保持 BOM 与 CRLF，使用同目录临时文件原子 `rename`（同文件队列仅序列化进程内写入，外部程序并发修改由文件版本号核验发现）。
+- 模型获取状态、版本与修改统计，完整 diff 交由前端界面呈现；若编辑后检查点失败，响应中明确提示文件已写入，避免重复操作。
 
 ### 7.4 工具观察与长任务文件状态
 
@@ -208,31 +208,31 @@ GPU/Linux 能力节点发布 `system.shell` Offer 后，主 Agent 可以使用�
 - 滑出材料和超大结果使用内部 `runtime/tool-results` 原件，通过已有 `read_file_range` 分段读取；引用按 Agent、Thread、任务及 Realm 隔离，正常退出和重启不删除原件。隐私遗忘撤销详细副本，Thread/角色删除及重置清理对应持久原件。
 - 文件未变且观察仍在窗口内时无需全量重读；文件版本变化时注明过期，缺少细节才按范围补读。运行中的终端由现有所有权状态自动投影，不新增工程管理工具或工作区交接文件。
 
-编辑不做自动 fuzzy apply；定位不唯一或版本已变化时，调用者须重新读取并明确选择。
+`edit_file` 仅采用精确匹配（不做自动 `fuzzy apply`）；定位不唯一或版本变化时，调用者须重新读取并明确选择。
 
-## 8. Execution、Thread Purpose与策略映射
+## 8. Execution、Thread Purpose 与策略映射
 
-Productivity Runtime不新增持久Channel。主应用仍仅使用`desktop | group`；后台任务通过`ThreadPurpose = background_task`、Execution Class和显式Workspace Mount表达隔离：
+Productivity Runtime 不新增持久 Channel：主应用继续使用 `desktop | group`，后台任务通过 `ThreadPurpose = background_task`、Execution Class 与显式 Workspace Mount 表达隔离：
 
-| 执行上下文                     | 默认Profile                            |
+| 执行上下文                     | 默认 Profile                           |
 | ------------------------------ | -------------------------------------- |
 | desktop conversation           | workspace-write                        |
 | background_task Execution      | task-isolated                          |
-| ambient请求作用域              | read-only；只在所属Channel权限上做减法 |
-| infos.social Application Realm | Social专用Port；无Terminal             |
-| Stronghold group               | read-only；无Terminal                  |
+| ambient 请求作用域             | read-only；在所属 Channel 权限上做减法 |
+| infos.social Application Realm | Social 专用 Port；无 Terminal          |
+| Stronghold group               | read-only；无 Terminal                 |
 
-后台任务创建`background_task` Purpose的Thread，但其Channel仍为`desktop`。任务Workspace使用：
+后台任务创建 `background_task` Purpose 的 Thread（Channel 仍为 `desktop`），任务 Workspace 路径如下：
 
 ```text
 @data/principals/{agentId}/tasks/{taskId}/workspace
 ```
 
-任务需要操作真实项目时，应显式添加挂载根；不能因 cwd 存在就自动授权。
+任务操作真实项目目录时须显式添加挂载根，不以进程 `cwd` 作为隐式授权。
 
 ## 9. 权限与审批
 
-Approval Service和前端审批闭环已经存在；Productivity Runtime必须复用统一Policy/Approval/Receipt链路，不得建立第二套确认协议。
+Productivity Runtime 复用统一的 `ApprovalService` 与 Policy/Approval/Receipt 前端闭环协议：
 
 ```ts
 type ApprovalDecision =
@@ -243,10 +243,10 @@ type ApprovalDecision =
   | 'deny_always'
 ```
 
-审批与执行的边界：
+审批与执行边界：
 
-- 操作是否直接执行取决于当前执行模式、Profile 和审批策略，不能仅凭风险低自动放行。
-- 超出能力或路径授权的操作按权限拒绝；需要审批的调用进入统一审批链，审批本身不扩大资源授权。
+- 操作是否直接执行由当前执行模式、Profile 与审批策略共同决定（而非仅依风险等级放行）。
+- 超出能力或路径授权的操作直接按权限拒绝；需要审批的调用进入统一审批链（审批通过不扩大原有资源授权范围）。
 - `full-access` 仅允许显式配置。
 
 ## 10. ReAct 与长任务
@@ -271,13 +271,13 @@ terminal_kill/close → 生命周期管理
 
 ## 11. 审批持久化与交互
 
-PolicyEngine 的纯 TypeScript 命令规则提供风险与审批信号。ToolExecutor 必须在 Hook 修改后的最终参数上执行检查，不能审批旧参数后执行新参数。审批策略与参数策略来自 `capabilities.yaml`；自动审批的判断范围见 B19。
+PolicyEngine 的纯 TypeScript 命令规则提供风险与审批信号。ToolExecutor 在 Hook 修改后的最终参数上执行检查，确保审批与实际执行面对同一参数快照。审批策略与参数策略来自 `capabilities.yaml`；自动审批的判断范围见 [B19](./B19_THREAD_EXECUTION_MODES.md)。
 
-ApprovalService 持久保存 `pending / approved / denied / expired / consumed`，一次性授权只能消费一次。审计追加记录 requested、resolved、consumed、expired、session_cleared；永久允许/拒绝按最后一次决策恢复。接口 `/api/approvals` 管理请求与决策，`/api/approvals/audit` 按审批或会话查询链路，Gateway 推送 `tool_approval_requested`。
+`ApprovalService` 持久保存 `pending / approved / denied / expired / consumed`，一次性授权仅消费一次。审计追加记录 `requested`、`resolved`、`consumed`、`expired`、`session_cleared`；永久允许/拒绝按最后一次决策恢复。接口 `/api/approvals` 管理请求与决策，`/api/approvals/audit` 按审批或会话查询链路，Gateway 推送 `tool_approval_requested`。
 
-等待审批时原调用暂停；允许后原地续行，拒绝或过期形成失败观察。附言随 `resolutionMessage` 保存，拒绝附言通过 `APPROVAL_DENIED.userMessage` 回传。参数摘要须递归脱敏，包含数组、嵌套凭据、Authorization 和 Cookie。
+等待审批时原调用暂停；允许后原地续行，拒绝或过期形成失败观察。附言随 `resolutionMessage` 保存，拒绝附言通过 `APPROVAL_DENIED.userMessage` 回传。参数摘要递归脱敏，覆盖数组、嵌套凭据、`Authorization` 和 `Cookie`。
 
-前端 `useApprovalStore` 为跨 Tab 单例。`ApprovalCard` 在对话流、工作区与任务详情中展示同一审批，并以真实 pending 状态更新角标，不能把局部组件关闭当作审批已处理。
+前端 `useApprovalStore` 为跨 Tab 单例。`ApprovalCard` 在对话流、工作区与任务详情中展示同一审批，并以真实 `pending` 状态更新角标（关闭局部展示组件不改变后端审批状态）。
 
 ## 12. 工作区与上下文
 
@@ -285,24 +285,24 @@ ApprovalService 持久保存 `pending / approved / denied / expired / consumed`�
 
 概览使用 `readdir` 的目录项类型，快照指纹只取名称清单及固定说明，正文或文件时间变化沿用同一指纹。根目录尚未创建时提供空清单，读取异常时提供暂不可用状态并记录本地化日志。主应用极简模式、后台任务、据点及子应用按各自上下文范围装配。
 
-源码入口为 `services/workspace/workspaceDirectoryContext.ts`，由 Backend 容器注册到 ContextRegionRegistry，进入 ContextCompiler 的统一快照与预算装配。
+源码入口为 `packages/backend/src/services/workspace/workspaceDirectoryContext.ts`，由 Backend 容器注册到 `ContextRegionRegistry`，进入 `ContextCompiler` 的统一快照与预算装配。
 
-工作区文件树、终端和 Copilot 共用当前 Agent 的真实 `desktop` Thread；后端核验 Agent、Thread 与 ExecutionSession 的所有权。切换 Agent/Thread 时清理终端引用与选区，同时保护编辑器未保存内容。
+工作区文件树、终端和 Copilot 共用当前 Agent 的真实 `desktop` Thread；后端核验 Agent、Thread 与 `ExecutionSession` 的所有权。切换 Agent/Thread 时清理终端引用与选区，同时保护编辑器未保存内容。
 
-- 文件树按层懒加载。保存使用 SHA-256 乐观锁与原子写入；截断预览不能覆盖完整文件。
-- 路径检查使用 realpath，拒绝 symlink / Windows Junction 越过允许根。进程内同文件写入队列不能防止任意外部程序并发修改。
+- 文件树按层懒加载。保存使用 SHA-256 乐观锁与原子写入；截断预览不直接覆盖写入完整文件。
+- 路径检查使用 `realpath`，拒绝 symlink / Windows Junction 越过允许根（进程内队列协调内部并发，外部程序并发修改由版本号冲突拦截）。
 - “本轮材料”表达下一次请求显式附加的文件、选区与终端。未保存正文不自动发送；选区及文件版本须核验，发送成功或切换 Thread 后清理临时引用。
 - 近期工具正文按 Thread、Agent、Pair 在进程内缓存，来源、范围、版本和读取参数随助手消息保存。统一 Region 预算决定正文或来源降级，不另行做关键词召回或摘要。
-- 正文缓存上限 32 MiB；材料退出窗口、版本变化、撤回、回收或进程重启后，按来源重新读取。读取工具的持久化审计只保存来源，不能据历史来源声称正文仍在模型上下文。
-- `read_file`、`write_file`、`delete_file` 等旧入口也经由 ExecutionSession / VirtualWorkspace；前端编辑器不能另建绕过权限的文件写入通道。
+- 正文缓存上限 32 MiB；材料退出窗口、版本变化、撤回、回收或进程重启后，按来源重新读取。读取工具的持久化审计仅保存来源元数据，上下文留存由当前 Region 预算窗口管理。
+- `read_file`、`write_file`、`delete_file` 等旧入口同样经由 `ExecutionSession` / `VirtualWorkspace`，前端编辑器共用同一服务端写入权限通道。
 
 ## 13. 依赖与发行边界
 
-`node-pty` 和 ripgrep 来自上游依赖。发行依赖收集器保留 node-pty 的 `.node`、ConPTY、OpenConsole 和 winpty 运行文件；ripgrep 按目标平台/架构提取到 `resources/bin`。搜索解析顺序为发行资源、开发依赖、PATH、Node fallback。单文件 Daemon 使用 `INFOS_RESOURCES_ROOT` 定位资源。
+`node-pty` 和 `ripgrep` 来自上游依赖。发行依赖收集器保留 `node-pty` 的 `.node`、ConPTY、OpenConsole 和 winpty 运行文件；`ripgrep` 按目标平台/架构提取到 `resources/bin`。搜索解析顺序为发行资源、开发依赖、PATH、Node fallback；单文件 Daemon 使用 `INFOS_RESOURCES_ROOT` 定位资源。
 
-开发环境允许缺少 PTY/rg 时降级；发行收集与 afterPack 的完整性校验要求必要资源齐全。两者目的不同，不能把开发降级视为漏打包可接受。原生源码与编译链由上游维护，仓库负责 ABI 适配、收集与运行兼容。
+开发环境允许在缺少 PTY/rg 时降级，发行收集与 `afterPack` 完整性校验则要求对应原生资源完整随包携带。原生源码与编译链由上游维护，仓库负责 ABI 适配、收集与运行兼容。
 
-当前未实现 Windows Restricted Token/Job Object、Linux bubblewrap、macOS Seatbelt 或容器级强隔离，也未提供 LSP 语义服务。Profile 中的网络与资源字段不等于宿主内核已强制相应限制。
+当前未接入 Windows Restricted Token/Job Object、Linux bubblewrap、macOS Seatbelt、容器级强隔离或 LSP 语义服务；Profile 中的网络与资源字段目前作为契约配置与策略参数传递，而非由宿主内核强制限制。
 
 ## 14. 维护与排障入口
 
@@ -316,6 +316,6 @@ ApprovalService 持久保存 `pending / approved / denied / expired / consumed`�
 | 客户端文件、终端、审批 | `packages/frontend/src/components/main/tabs/WorkspaceTab.vue`、`packages/frontend/src/components/workspace/`、`packages/frontend/src/stores/useApprovalStore.ts` |
 | 原生依赖发行 | `scripts/rebuild-daemon-deps.mjs`、`scripts/collect-daemon-deps.mjs` |
 
-排查搜索空结果时先区分匹配条件、Git 忽略规则、实际搜索根和 rg/Node 后端；工具详情正文缺失还须检查历史保存与上下文降级。排查终端增量停滞时核对绝对 cursor 与 bufferStartOffset，不能把环形缓冲截断误判为无新输出。
+排查搜索空结果时先区分匹配条件、Git 忽略规则、实际搜索根和 rg/Node 后端；工具详情正文缺失还须检查历史保存与上下文降级。排查终端增量停滞时须核对绝对 `cursor` 与 `bufferStartOffset`，区分环形缓冲覆写截断与无新输出。
 
-修改执行运行时应保护：跨会话不能使用句柄；取消传播至受管进程；审批拒绝不能执行；版本冲突和多处匹配不能写入；截断读取不能整文件覆盖。已有行为用例位于 `packages/backend/tests/unit/services/execution/` 和 `services/workspace/`，它们是维护入口，具体运行结果以相应 CI/执行记录为准。
+修改执行运行时应保护以下核心不变量：跨会话隔离句柄、取消传播至受管进程、审批拒绝阻断执行、版本冲突与多处匹配不写入、截断读取不整文件覆盖。已有行为用例位于 `packages/backend/tests/unit/services/execution/` 和 `packages/backend/tests/unit/services/workspace/`，具体运行结果以实际执行的 CI/测试记录为准。

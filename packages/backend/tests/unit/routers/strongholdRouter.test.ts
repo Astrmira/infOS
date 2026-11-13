@@ -340,6 +340,36 @@ describe('据点角色可见回合状态机', () => {
     }
   })
 
+  it('按预算分页读取超过一批的亲历，并保留超预算的最新单条消息', async () => {
+    const db = createDrizzleConnection(':memory:')
+    const chat = new GroupChatService(db, () => true)
+    try {
+      db.insert(agentLocations).values({ agentId: 'pero', roomId: 'room' }).run()
+      // 跨越每批 64 条的游标边界，正文期望由独立消息样例提供。
+      const expected = Array.from({ length: 70 }, (_, index) => `消息${index + 1}`)
+      for (const content of expected)
+        chat.commitMessage({ roomId: 'room', senderId: 'user', role: 'user', content, pairId: content })
+      chat.commitMessage({ roomId: 'other-room', senderId: 'user', role: 'user', content: '其他房间消息', pairId: 'other' })
+      expect((await chat.getVisibleHistoryByBudget('pero', 10_000, 'room')).map((item) => item.content)).toEqual(expected)
+      expect((await chat.getVisibleHistoryByBudget('pero', 1, 'room')).map((item) => item.content)).toEqual(['消息70'])
+    } finally {
+      closeDrizzleConnection(db)
+    }
+  })
+
+  it('交错发言的入选回合包含其全部有效亲历', async () => {
+    const db = createDrizzleConnection(':memory:')
+    const chat = new GroupChatService(db, () => true)
+    try {
+      db.insert(agentLocations).values({ agentId: 'pero', roomId: 'room' }).run()
+      for (const [pairId, content] of [['a', '话题甲开头'], ['b', '话题乙'], ['a', '话题甲后续'], ['c', '话题丙']])
+        chat.commitMessage({ roomId: 'room', senderId: 'user', role: 'user', content, pairId })
+      expect((await chat.getVisibleHistoryPairs('pero', 2)).map((item) => item.content)).toEqual(['话题甲开头', '话题甲后续', '话题丙'])
+    } finally {
+      closeDrizzleConnection(db)
+    }
+  })
+
   it('应按完整回合窗口截取角色最近亲历记录', async () => {
     const db = createDrizzleConnection(':memory:')
     const chat = new GroupChatService(db, () => true)

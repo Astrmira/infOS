@@ -53,7 +53,7 @@ Windows 的 `desktopLayer` 将窗口放入桌面层。全屏让位与显示器�
 
 ## 源码入口
 
-- 共享协议位于 `desktopShell.ts`、`desktopCards.ts`、`desktopPrefabs.ts`。
-- 主进程位于 `electron/main/windows/detachedPanels.ts`、`desktopCardManager.ts`、`desktopCardStore.ts`、`services/shellCapability.ts` 和 `prefabs/`。
-- 后端位于 `capabilities/shellCapabilityRuntime.ts`、`desktopShellWiring.ts` 与 `tools/shell/`。
-- 前端位于 `composables/shell/useDetachedPanels.ts`、`views/DetachedPanelView.vue` 与 `components/shell/`。
+- 共享协议：`packages/shared/src/desktopShell.ts`、`packages/shared/src/desktopCards.ts`、`packages/shared/src/desktopPrefabs.ts`。
+- 主进程：`electron/main/windows/detachedPanels.ts`、`electron/main/windows/desktopCardManager.ts`、`electron/main/windows/desktopCardStore.ts`、`electron/main/services/shellCapability.ts` 与 `electron/main/prefabs/`。
+- 后端：`packages/backend/src/capabilities/shellCapabilityRuntime.ts`、`packages/backend/src/capabilities/desktopShellWiring.ts` 与 `packages/backend/src/tools/shell/`。
+- 前端：`packages/frontend/src/composables/shell/useDetachedPanels.ts`、`packages/frontend/src/views/DetachedPanelView.vue` 与 `packages/frontend/src/components/shell/`。

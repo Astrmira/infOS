@@ -16,6 +16,7 @@ function runtime() {
     })),
     start: vi.fn(),
     stateChanged: vi.fn().mockResolvedValue(undefined),
+    getSnapshot: vi.fn().mockReturnValue(null),
     complete: vi.fn(),
     timeout: vi.fn(),
     fail: vi.fn(),
@@ -34,6 +35,57 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('KernelScheduler', () => {
+  it('持久身份创建期间预留排队名额，创建失败后释放预留', async () => {
+    const execution = runtime()
+    const creation = gate()
+    execution.create.mockImplementationOnce(async () => {
+      await creation.promise
+      throw new Error('持久身份创建失败')
+    })
+    const scheduler = new KernelScheduler(execution as never, {
+      maxQueued: 1, maxRunning: 1, classConcurrency: {}, agingIntervalMs: 100,
+    })
+    const first = expect(scheduler.submit({ principalId: 'pero', class: 'interactive', run: async () => undefined }))
+      .rejects.toThrow('持久身份创建失败')
+    await expect(scheduler.submit({ principalId: 'nana', class: 'interactive', run: async () => undefined }))
+      .rejects.toThrow('KERNEL_SCHEDULER_BACKPRESSURE')
+    creation.release()
+    await first
+    expect((await scheduler.submitAndWait({ principalId: 'pero', class: 'interactive', run: async () => undefined })).state)
+      .toBe('completed')
+  })
+
+  it('终态摘要达到上限后仍可按持久记录查询，活动执行保持可取消', async () => {
+    const execution = runtime()
+    const scheduler = new KernelScheduler(execution as never, {
+      maxQueued: 8, maxRunning: 2, classConcurrency: {}, agingIntervalMs: 100,
+      // 两条缓存用于覆盖第三次完成时的摘要淘汰。
+      maxCompleted: 2,
+    })
+    const blocker = gate()
+    const active = await scheduler.submit({ principalId: 'pero', class: 'background', run: () => blocker.promise })
+    const finished = []
+    for (const principalId of ['nana', 'penora', 'tsukinaga'])
+      finished.push(await scheduler.submitAndWait({ principalId, class: 'interactive', run: async () => undefined }))
+    expect(scheduler.list().map((entry) => entry.descriptor.principalId)).toEqual(['pero', 'penora', 'tsukinaga'])
+    execution.getSnapshot.mockReturnValueOnce(finished[0])
+    expect(scheduler.get(finished[0]!.descriptor.executionId)).toEqual(finished[0])
+    expect(execution.getSnapshot).toHaveBeenCalledWith(finished[0]!.descriptor.executionId)
+    expect(await scheduler.cancel(active.descriptor.executionId)).toBe(true)
+    blocker.release()
+    expect((await scheduler.waitForTerminal(active.descriptor.executionId)).state).toBe('cancelled')
+  })
+
+  it('启动执行失败时提交失败终态并释放调度名额', async () => {
+    const execution = runtime()
+    execution.start.mockRejectedValueOnce(new Error('启动失败'))
+    const scheduler = new KernelScheduler(execution as never)
+    const failed = await scheduler.submitAndWait({ principalId: 'pero', class: 'interactive', run: async () => undefined })
+    expect(failed.state).toBe('failed')
+    expect(scheduler.getDiagnostics().running).toBe(0)
+    expect((await scheduler.submitAndWait({ principalId: 'nana', class: 'interactive', run: async () => undefined })).state).toBe('completed')
+  })
+
   it('周期计划条件不满足时不创建 Execution、不增加执行统计', async () => {
     const execution = runtime()
     const scheduler = new KernelScheduler(execution as never)

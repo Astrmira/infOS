@@ -7,7 +7,7 @@
  * @module packages/backend/src/services/stronghold/groupChatService
  */
 
-import { eq, desc, asc, and, or, inArray, isNull, sql } from 'drizzle-orm'
+import { eq, desc, asc, and, or, inArray, isNull, lt, sql } from 'drizzle-orm'
 import {
   groupChatRooms,
   groupChatMembers,
@@ -517,16 +517,30 @@ export class GroupChatService {
 
   /** 按预算读取角色在指定房间亲历的历史。 */
   async getVisibleHistoryByBudget(agentId: string, tokenBudget: number, roomId: string): Promise<MessageRow[]> {
-    const messages = await this.getVisibleHistoryPairs(agentId, 10000, false, roomId)
     const selected: MessageRow[] = []
     let used = 0
-    for (const message of messages.reverse()) {
-      const tokens = tokenCounter.countTokens(message.content) + 8
-      if (selected.length && used + tokens > tokenBudget) break
-      selected.push(message)
-      used += tokens
+    let beforeId: number | undefined
+    for (;;) {
+      const rows = this.db.select({ id: agentExperiences.id, message: groupChatMessages }).from(agentExperiences)
+        .innerJoin(groupChatMessages, eq(groupChatMessages.id, agentExperiences.sourceMessageId))
+        .innerJoin(threads, and(eq(threads.id, agentExperiences.threadId), eq(threads.generation, agentExperiences.generation)))
+        .where(and(this.visibleHistoryScope(agentId, roomId), beforeId === undefined ? undefined : lt(agentExperiences.id, beforeId)))
+        .orderBy(desc(agentExperiences.id)).limit(64).all()
+      if (!rows.length) return selected.reverse()
+      for (const { message } of rows) {
+        const tokens = tokenCounter.countTokens(message.content) + 8
+        if (selected.length && used + tokens > tokenBudget) return selected.reverse()
+        selected.push(message)
+        used += tokens
+      }
+      beforeId = rows[rows.length - 1]!.id
     }
-    return selected.reverse()
+  }
+
+  private visibleHistoryScope(agentId: string, roomId?: string) {
+    return and(eq(agentExperiences.agentId, agentId), eq(agentExperiences.withdrawn, false),
+      eq(threads.threadKind, 'main'), eq(threads.status, 'active'), eq(groupChatMessages.status, 'active'),
+      roomId === undefined ? undefined : eq(groupChatMessages.roomId, roomId))
   }
 
   async getVisibleHistoryPairs(
@@ -536,21 +550,24 @@ export class GroupChatService {
     roomId?: string,
   ): Promise<MessageRow[]> {
     const normalizedLimit = Math.max(1, pairLimit)
-    const perceived = this.db.select({ message: groupChatMessages }).from(agentExperiences)
+    const pairKey = sql<string>`coalesce(${groupChatMessages.pairId}, 'message:' || ${groupChatMessages.id})`
+    const latestId = sql<number>`max(${agentExperiences.id})`
+    // 先在数据库中选完整回合，再读取入选回合的亲历正文。
+    const recentPairs = this.db.select({ pairKey, latestId }).from(agentExperiences)
       .innerJoin(groupChatMessages, eq(groupChatMessages.id, agentExperiences.sourceMessageId))
       .innerJoin(threads, and(eq(threads.id, agentExperiences.threadId), eq(threads.generation, agentExperiences.generation)))
-      .where(and(eq(agentExperiences.agentId, agentId), eq(agentExperiences.withdrawn, false),
-        eq(threads.threadKind, 'main'), eq(threads.status, 'active'), eq(groupChatMessages.status, 'active'),
-        roomId === undefined ? undefined : eq(groupChatMessages.roomId, roomId)))
-      .orderBy(desc(agentExperiences.id)).all().map((row) => row.message)
-    const recentPairs = [...new Set(perceived.map((row) => row.pairId ?? `message:${row.id}`))]
-      .slice(0, normalizedLimit + (stable ? 1 : 0)).reverse()
+      .where(this.visibleHistoryScope(agentId, roomId)).groupBy(pairKey).orderBy(desc(latestId))
+      .limit(normalizedLimit + (stable ? 1 : 0)).all().map((row) => row.pairKey).reverse()
     const pairs = stable
       ? stableHistoryWindow(roomId === undefined ? `stronghold:${agentId}` : `stronghold:${roomId}:${agentId}`,
           recentPairs, normalizedLimit, (pair) => pair)
       : recentPairs
-    const selectedPairs = new Set(pairs)
-    return perceived.filter((row) => selectedPairs.has(row.pairId ?? `message:${row.id}`)).reverse()
+    if (!pairs.length) return []
+    return this.db.select({ message: groupChatMessages }).from(agentExperiences)
+      .innerJoin(groupChatMessages, eq(groupChatMessages.id, agentExperiences.sourceMessageId))
+      .innerJoin(threads, and(eq(threads.id, agentExperiences.threadId), eq(threads.generation, agentExperiences.generation)))
+      .where(and(this.visibleHistoryScope(agentId, roomId), inArray(pairKey, pairs)))
+      .orderBy(asc(agentExperiences.id)).all().map((row) => row.message)
   }
 
   /** 获取最近 N 个完整群聊回合；一个 pair 包含用户发言及本轮全部回复。 */

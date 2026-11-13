@@ -154,8 +154,7 @@ export class StrongholdActivityService {
   }
 
   recover(origin?: LifeScope): void {
-    for (const invitation of this.life.repo.list<InvitationData>('invitation')) {
-      if (!['pending', 'later'].includes(invitation.data.status)) continue
+    for (const invitation of this.life.repo.list<InvitationData>('invitation', undefined, ['pending', 'later'])) {
       const activity = this.life.repo.get<ActivityData>(invitation.data.activityId)
       const valid = activity && activity.data.status !== 'ended' &&
         (invitation.sourceMessageId === null || Boolean(this.life.chat.getMessageEvent(invitation.sourceMessageId))) &&

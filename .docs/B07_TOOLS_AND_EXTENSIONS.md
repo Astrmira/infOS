@@ -8,7 +8,7 @@
 - **拓展功能**：联网搜索、PDF 解析。每项进入独立子页面，再管理具体来源。
 - **MCP 服务**、**技能**：保留原管理能力。
 
-MinerU 只作为 PDF 解析来源；搜索服务商只作为联网搜索来源，均不进入扩展工具大类。页面使用现有像素组件和主题变量；品牌图形随应用提供，来源见 `public/integration-brands/SOURCES.md`。
+MinerU 只作为 PDF 解析来源；搜索服务商只作为联网搜索来源，均不进入扩展工具大类。页面使用现有像素组件和主题变量；品牌图形随应用提供，位于 `packages/frontend/public/integration-brands/`。
 
 ## 配置与生命周期
 
@@ -102,6 +102,6 @@ MinerU 使用签名上传与异步状态查询；轻量模式读取 Markdown 下
 
 ## 维护入口与故障定位
 
-`packages/backend/src/services/integrations/integrationService.ts` 处理集成配置和可用状态，`pdfParserService.ts` 处理外部 PDF/OCR 来源。新增集成须同时维护配置校验、可用性判定、稳定错误和工具投影，不能只新增设置表单。
+`packages/backend/src/services/integrations/integrationService.ts` 处理集成配置和可用状态，`packages/backend/src/services/integrations/pdfParserService.ts` 处理外部 PDF/OCR 来源。新增集成需同步维护配置校验、可用性判定、稳定错误码与工具投影。
 
-搜索与文件能力实现见 [B01](./B01_PRODUCTIVITY_RUNTIME.md)，附件与解析结果的生命周期见 [B12](./B12_MESSAGE_RESOURCES.md)。排查不可用工具时分别检查连接配置、角色/会话准入和实际服务响应；接口错误必须保留，不能显示成空结果或连接成功。
+搜索与文件能力实现见 [B01](./B01_PRODUCTIVITY_RUNTIME.md)，附件与解析结果的生命周期见 [B12](./B12_MESSAGE_RESOURCES.md)。排查不可用工具时分别检查连接配置、角色/会话准入和实际服务响应；透传真实接口错误而不降级为空结果或误报连接成功。

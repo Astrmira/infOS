@@ -4,7 +4,7 @@
 > **适用范围**：infOS 全项目（后端 / 前端 / Electron / 上游原生依赖的集成）
 > **依赖规范**：[A04_DEPLOYMENT](./A04_DEPLOYMENT.md)
 
-上游原生依赖的源码和工具链由依赖项目维护。本仓库负责 Node/Electron ABI、目标平台资源、加载路径与降级行为；不得把依赖集成称为自有 Rust 模块。依赖维护见 [B27](./B27_RUNTIME_SECURITY.md)。
+上游原生依赖的源码与工具链由各原项目维护；本仓库负责 Node/Electron ABI 适配、目标平台资源收集、加载路径解析与运行时降级，不将原生依赖包装误作自有 Rust 模块。依赖维护规范见 [B27](./B27_RUNTIME_SECURITY.md)。
 
 ---
 
@@ -55,9 +55,9 @@ const parts = filePath.split(/[/\\]/)
 
 ### 1.4 统一路径工厂
 
-后端通过 `packages/backend/src/lib/env.ts` 的 `getDataDir()`、`getDatabasePath()` 等函数计算数据路径，再由 `container.ts` 创建 `RuntimeEnv`。`core/pathResolver.ts` 将 `@app`、`@data`、`@workshop` 和 `@temp` 映射到运行时根目录，角色工作区通过 `resolvePrincipal()` 按角色定位。Electron 路径统一由 `electron/main/utils/env.ts` 的 `paths` 提供，便携版和安装版的区别见 [部署架构](./A04_DEPLOYMENT.md#66-便携模式-portable)。
+后端通过 `packages/backend/src/lib/env.ts` 的 `getDataDir()`、`getDatabasePath()` 等函数计算数据路径，再由 `packages/backend/src/container.ts` 创建 `RuntimeEnv`。`packages/backend/src/core/pathResolver.ts` 将 `@app`、`@data`、`@workshop` 和 `@temp` 映射到运行时根目录，角色工作区通过 `resolvePrincipal()` 按角色定位。Electron 路径统一由 `electron/main/utils/env.ts` 的 `paths` 提供，便携版和安装版的区别见 [部署架构](./A04_DEPLOYMENT.md#65-便携模式-portable)。
 
-路径解析与访问授权需要分别处理：`PathResolver.resolve()` 对受管逻辑前缀进行根目录约束，也接受绝对路径；`resolvePrincipal()` 负责拼接角色路径。处理用户或工具传入的路径时，应使用对应领域的范围和权限检查，工作区检查入口见 `services/workspace/workspaceService.ts`。
+路径解析与访问授权各自承担独立职责：`PathResolver.resolve()` 对受管逻辑前缀执行根目录约束，同时也接受合法绝对路径；`resolvePrincipal()` 负责拼接角色目录。处理用户或工具传入的路径时，需由对应领域的范围与权限检查拦截越权访问，工作区检查入口见 `packages/backend/src/services/workspace/workspaceService.ts`。
 
 ---
 
@@ -109,7 +109,7 @@ process.on('SIGUSR2', () => {
 ### 3.1 平台常量
 
 ```typescript
-// lib/platform.ts
+// packages/backend/src/lib/platform.ts
 import os from 'node:os'
 
 export const IS_WINDOWS = os.platform() === 'win32'
@@ -118,12 +118,13 @@ export const IS_DARWIN = os.platform() === 'darwin'
 export const IS_ELECTRON = typeof process !== 'undefined' && !!process.versions?.electron
 export const IS_DOCKER = !!process.env.PERO_DOCKER
 
-export type Platform = 'windows' | 'linux' | 'darwin'
+export type Platform = 'windows' | 'linux' | 'darwin' | 'unknown'
 
 export function getPlatform(): Platform {
   if (IS_WINDOWS) return 'windows'
+  if (IS_LINUX) return 'linux'
   if (IS_DARWIN) return 'darwin'
-  return 'linux'
+  return 'unknown'
 }
 ```
 
@@ -224,13 +225,13 @@ Electron 专有代码 **全部** 在 `electron/` 目录中，后端/前端通过
 | `@data/principals/{agentId}/workspace` | Agent 私有可写 | Principal Workspace         |
 | `@temp`                                | 临时可写       | 可再生成中间文件            |
 
-路径解析与云同步均必须执行 containment 检查，拒绝绝对路径和 `..` 逃逸。官方/Workshop 模型需要运行时 manifest 时，只能在内存或受限虚拟协议中提供，绝不可回写只读资源目录。
+路径解析与云同步均须执行 containment 检查，拒绝绝对路径和 `..` 逃逸。官方与 Workshop 模型需要运行时 manifest 时，仅在内存或受限虚拟协议中提供，不回写只读资源目录。
 
 ---
 
-## 8. Runtime Adapter与Driver协议
+## 8. Runtime Adapter 与 Driver 协议
 
-Web、Electron、移动端、终端、文档和原生设备必须通过可协商Runtime Adapter暴露，禁止为每个平台增加绕过Kernel的特殊工具分支。
+Web、Electron、移动端、终端、文档和原生设备统一通过可协商的 `RuntimeAdapter` 暴露，不按平台在 Kernel 外围增加绕过统一契约的工具分支。
 
 ```typescript
 interface RuntimeAdapter {
@@ -244,45 +245,41 @@ interface RuntimeAdapter {
 
 ### 8.1 固定协议语义
 
-- Adapter提供统一命令目录、Capability Negotiation和结构化结果；
-- 风险等级统一为`READ / INTERACT / ELEVATED / ROOT`；
-- Runtime Instance、Document Generation、Snapshot ID与Stable Handle必须显式携带；
-- 页面导航、Application重启、Document Revision或Provider重连后，旧Handle必须返回stale-object，不能静默作用于新目标；
-- fallback必须显式、可审计且不能扩权；执行后必须验证Observed Effect；
-- 跨Node调用必须携带协议版本、Principal/Process/Execution、Capability Handle、Target Generation、Deadline、Cancellation、Idempotency Key和审计链。
+- Adapter 提供统一命令目录、Capability Negotiation 和结构化结果；
+- 风险等级统一为 `READ / INTERACT / ELEVATED / ROOT`；
+- 显式携带 Runtime Instance、Document Generation、Snapshot ID 与 Stable Handle；
+- 页面导航、Application 重启、Document Revision 变更或 Provider 重连后，旧 Handle 返回 `stale-object`，不静默作用于新目标；
+- fallback 保持显式、可审计且不扩权；执行后校验 Observed Effect；
+- 跨 Node 调用携带协议版本、Principal/Process/Execution、Capability Handle、Target Generation、Deadline、Cancellation、Idempotency Key 和审计链。
 
-这些规则统一适用于`WebAdapter`、`DesktopAdapter`、`DocumentAdapter`、`MobileAdapter`、`TerminalAdapter`和`DeviceAdapter`。Browser和桌面能力的生产Provider位于Electron Node；Backend不得再加载平行Server Chromium或桌面自动化Provider。
+上述规则统一适用于 `WebAdapter`、`DesktopAdapter`、`DocumentAdapter`、`MobileAdapter`、`TerminalAdapter` 和 `DeviceAdapter`。Browser 与桌面能力的生产 Provider 位于 Electron Node，Backend 不加载平行的 Server Chromium 或桌面自动化 Provider。
 
 ### 8.2 Application Adapter 与 Runtime Adapter 的区别
 
-Runtime Adapter 把设备或运行环境投影为 Capability；Application Adapter 把自治第三方应用投影为 Endpoint、Task、Session、Resource 和 Surface。两者共用 Node Identity、Envelope、Capability Handle、Generation、Deadline 和审计，但 Application Adapter 额外承担版本兼容、任务所有权移交和应用生命周期。
+Runtime Adapter 把设备或运行环境投影为 Capability；Application Adapter 把自治第三方应用投影为 Endpoint、Task、Session、Resource 和 Surface。两者共用 Node Identity、Envelope、Capability Handle、Generation、Deadline 和审计，但 Application Adapter 额外承担版本兼容、任务所有权移交和应用生命周期管理。
 
-第三方 Application 使用三层结构：infOS 通用 Integration Foundation、infOS 侧专属 Adapter、目标应用内部 Adapter。主 Agent 通过 Tool/Task/Session 投影通信，不能持有目标应用实例。详细规范见 [A10_APPLICATION_INTEGRATION](./A10_APPLICATION_INTEGRATION.md)。
+第三方 Application 采用三层结构：infOS 通用 Integration Foundation、infOS 侧专属 Adapter、目标应用内部 Adapter。主 Agent 仅通过 Tool/Task/Session 投影通信，不直接持有目标应用实例。详细规范见 [A10_APPLICATION_INTEGRATION](./A10_APPLICATION_INTEGRATION.md)。
 
 ### 8.3 跨运行时资源原语
 
-跨平台文件、上传下载、同步、模型资源和设备输出统一使用以下Kernel Object，不以绝对路径或二进制正文穿过Envelope：
+跨平台文件、上传下载、同步、模型资源和设备输出统一使用以下 Kernel Object 传递，不直接将绝对路径或二进制正文放入 Envelope：
 
-- **AssetObject**：记录`assetId/objectRef/generation`、MIME、大小、SHA-256、Owner、来源与Retention；物理`storageRef`不进入Prompt。
-- **FileHandle**：绑定Subject、Asset、`read/upload/export`操作、期限、使用次数、路径/MIME/大小Scope；用户选择文件产生Handle而不是泄露路径。
-- **TransferObject**：统一`upload/download/copy/import/export`，状态为`pending/running/paused/completed/failed/cancelled`，进度通过Event投影到Surface；完成返回Asset Ref。
-- **RuntimeEvent**：同一对象的`generation/revision/sequence`单调递增，高频事件支持合并、节流与背压，订阅绑定LifecycleScope。
-- **ScopedCredential**：秘密正文只存在于Credential Vault；Handle绑定Origin/Audience、操作、Principal、期限与次数，日志、Event、Surface和Tool Result只显示脱敏元数据。
+- **AssetObject**：记录 `assetId/objectRef/generation`、MIME、大小、SHA-256、Owner、来源与 Retention；物理 `storageRef` 对 Prompt 不可见。
+- **FileHandle**：绑定 Subject、Asset、`read/upload/export` 操作、期限、使用次数及路径/MIME/大小 Scope；用户选择文件产生 Handle 而隐藏宿主原始路径。
+- **TransferObject**：统一 `upload/download/copy/import/export`，状态为 `pending/running/paused/completed/failed/cancelled`，进度通过 Event 投影到 Surface，完成后返回 Asset Ref。
+- **RuntimeEvent**：同一对象的 `generation/revision/sequence` 单调递增，高频事件支持合并、节流与背压，订阅绑定 LifecycleScope。
+- **ScopedCredential**：凭据明文仅驻留于 Credential Vault；Handle 绑定 Origin/Audience、操作、Principal、期限与次数，日志、Event、Surface 和 Tool Result 仅记录脱敏元数据。
 
-Credential不能替代Capability，调用必须同时满足能力授权和凭据授权。大文件不得进入Kernel Envelope、SSE或数据库正文；跨Node恢复只能恢复Provider可证明的合法前缀。
+Credential 与 Capability 分别授权，调用须同时满足能力授权与凭据授权。大文件不进入 Kernel Envelope、SSE 或数据库正文；跨 Node 恢复限于 Provider 可证明的合法前缀。
 
 ### 8.4 Agent Interaction World
 
-Browser等交互Runtime必须把DOM、Accessibility、Layout、Network与Vision视为证据，编译成`InteractionScene → Semantic Object → Affordance/Precondition/Risk → Action Receipt`。Selector只是Driver内部定位提示，不是Agent任务语言。
+Browser 等交互 Runtime 将 DOM、Accessibility、Layout、Network 与 Vision 视为环境证据，编译为 `InteractionScene → Semantic Object → Affordance/Precondition/Risk → Action Receipt`。Selector 仅作为 Driver 内部定位提示，不直接作为 Agent 任务语言。
 
-强Interaction Handle应包含Runtime、Page、Frame、BackendNode、Document Generation、Snapshot和语义/AX/几何指纹。Rebind按BackendNode、语义+AX、几何辅助和置信度门槛依次执行；禁止跨Generation重绑，歧义时fail-closed。
+强 Interaction Handle 携带 Runtime、Page、Frame、BackendNode、Document Generation、Snapshot 和语义/AX/几何指纹。Rebind 按 BackendNode、语义+AX、几何辅助与置信度门槛依次匹配；禁止跨 Generation 重绑，歧义时 fail-closed。
 
-每个高层动作必须产生Action Receipt，记录Intent、目标、前后Snapshot、Observed/Expected Effects、验证状态、证据和回滚提示。Site Model只能从`verified`或`partially_verified`结果学习。网页内容默认是外部数据，不是Agent指令；检测到指令覆盖、秘密请求或不安全动作时，必须阻断Planner和临时Capability编译。
+每个高层动作产生 Action Receipt，记录 Intent、目标、前后 Snapshot、Observed/Expected Effects、验证状态、证据和回滚提示。Site Model 仅从 `verified` 或 `partially_verified` 结果学习。网页内容默认视为外部不可信数据而非 Agent 指令；检测到指令覆盖、凭据索取或高危动作时阻断 Planner 与临时 Capability 编译。
 
 ### 8.5 隔离升级原则
 
-逻辑Port边界稳定后，按风险与故障收益选择Worker Thread、Child Process、WASM、Electron Sandbox、远程Node或独立Daemon Service。不得以进程数量作为成功指标，也不得把没有机制隔离的软边界命名为Sandbox。
-
----
-
-_本文档由 Carola 整理，适用于 infOS 跨平台开发规范。_
+逻辑 Port 边界稳定后，按风险与故障隔离收益选择 Worker Thread、Child Process、WASM、Electron Sandbox、远程 Node 或独立 Daemon Service；仅使用具有实际机制隔离的边界，并将软件策略检查与硬件/内核级沙箱明确区分。

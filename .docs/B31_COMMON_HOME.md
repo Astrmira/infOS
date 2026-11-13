@@ -32,15 +32,15 @@ Home 把文件交接、修改保护、操作确认、活动记录和桌面卡片
 
 ## API 与客户端
 
-`/api/home` 要求管理身份，涵盖设置、授权、确认、活动、快照、恢复区、置物架、位置用途与卡片交互。SSE 提供活动和确认变化，原生通知由 Electron 的 `main/home/` 处理。
+`/api/home` 要求管理身份，涵盖设置、授权、确认、活动、快照、恢复区、置物架、位置用途与卡片交互。SSE 提供活动和确认变化，原生通知由 `electron/main/home/` 处理。
 
 桌面操作经服务端工具门禁和客户端护栏，再按 Home 的文件或应用授权执行。分布式使用时，文件路径和原生能力分别服从实际执行节点。
 
 ## 源码入口
 
-- `services/home/homeService.ts` 与 `homeWiring.ts` 负责装配和生命周期。
-- `homeAuthorization.ts`、`homeConfirmWait.ts` 负责确认与许可。
-- `homeFiles.ts`、`homeCheckpoints.ts`、`homeStorage.ts` 负责文件和恢复。
-- `repositories/home.repo.ts` 与 `database/homeSchema.ts` 负责权威记录。
-- `tools/home/` 与 `routers/home.router.ts` 提供入口。
-- `electron/main/home/` 和前端 `components/desktop/home/`、`HomeShelfPanel.vue`、`HomeMapPanel.vue` 提供客户端。
+- `packages/backend/src/services/home/homeService.ts` 与 `homeWiring.ts` 负责装配和生命周期。
+- `packages/backend/src/services/home/homeAuthorization.ts`、`homeConfirmWait.ts` 负责确认与许可。
+- `packages/backend/src/services/home/homeFiles.ts`、`homeCheckpoints.ts`、`homeStorage.ts` 负责文件和恢复。
+- `packages/backend/src/repositories/home.repo.ts` 与 `packages/backend/src/database/homeSchema.ts` 负责权威记录。
+- `packages/backend/src/tools/home/` 与 `packages/backend/src/routers/home.router.ts` 提供入口。
+- `electron/main/home/`，前端 `packages/frontend/src/components/desktop/home/` 及同层 `packages/frontend/src/components/desktop/HomeShelfPanel.vue`、`HomeMapPanel.vue` 提供客户端。

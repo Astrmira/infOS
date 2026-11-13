@@ -12,7 +12,7 @@
 
 - `manage_task.create` 可带 `planId / planStepId`，派发入口核验归属后把关联保存到 task 元数据。使用固定派发去重键，同一步的派发与定时安排串行检查。
 - `schedule_follow_up` 可带相同关联，持久化到定时记录；到期创建 task 时继续传递关联。
-- 卡片的关联步骤状态实时投影自 task 或定时记录，模型勾选不能覆盖真实执行状态。失败、暂停、取消及等待都不计为已完成。
+- 卡片的关联步骤状态实时投影自 task 或定时记录，以真实执行终态为准。失败、暂停、取消及等待都不计为已完成。
 - task 内部清单也由 `update_plan` 实时维护。`finish_task` 负责结束与交接，不再向模型提供另一套计划更新参数；旧检查点的段末清单仅作兼容导入。
 - 改变任务要求时归档原任务内部清单；旧执行仍受任务修订守卫约束。清除清单只移除计划视图，不取消已经授权派发的任务；取消继续使用现有任务控制工具。
 
@@ -33,6 +33,6 @@
 
 ## 源码与状态归属
 
-`packages/backend/src/services/task/taskPlanService.ts` 校验计划作用域、修订和步骤关联，`repositories/taskPlan.repo.ts` 持久化，`routers/taskPlan.router.ts` 提供管理接口。调用方提交最新修订，服务生成实际计划投影，前端不能直接把步骤勾选写成后台任务终态。
+`packages/backend/src/services/task/taskPlanService.ts` 校验计划作用域、修订和步骤关联，`packages/backend/src/repositories/taskPlan.repo.ts` 持久化，`packages/backend/src/routers/taskPlan.router.ts` 提供管理接口。调用方提交最新修订，服务生成实际计划投影；步骤勾选与任务终态分离，前端不将步骤操作直接写入后台任务终态。
 
 维护回归入口为 `packages/backend/tests/unit/services/task/taskPlanLifecycle.test.ts`。修改派发或定时时同时审阅 [B20](./B20_PROACTIVE_WORK.md) 的去重与领取规则；修改计划提示词时审阅 [B17](./B17_PROMPT_WORKSPACE.md) 的组件装配，避免同时注入两份计划。

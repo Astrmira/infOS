@@ -68,16 +68,19 @@ export class KnowledgeRepository {
       .all()
   }
 
-  readyParts(): Array<{ part: KnowledgePartRow; document: KnowledgeDocumentRow }> {
-    const documents = this.db
-      .select()
-      .from(knowledgeDocuments)
-      .where(and(eq(knowledgeDocuments.status, 'ready'), this.visible))
-      .all()
-    // 同一文档的各部分共享原文对象，避免 JOIN 为每段复制一次全文。
-    return documents.flatMap((document) =>
-      this.parts(document.id).map((part) => ({ part, document })),
-    )
+  readyVersions(): Map<string, number> {
+    const rows = this.db.select({ id: knowledgeDocuments.id, revision: knowledgeDocuments.revision })
+      .from(knowledgeDocuments).where(and(eq(knowledgeDocuments.status, 'ready'), this.visible)).all()
+    return new Map(rows.map((row) => [row.id, row.revision]))
+  }
+
+  *readyParts(): Iterable<{ part: KnowledgePartRow; document: KnowledgeDocumentRow }> {
+    // 按文档读取全文与向量，完成当前文档后即可释放正文。
+    for (const id of this.readyVersions().keys()) {
+      const document = this.get(id)
+      if (!document || document.status !== 'ready') continue
+      for (const part of this.parts(document.id)) yield { part, document }
+    }
   }
 
   list(query: string, page: number, pageSize: number): KnowledgeDocumentList {
@@ -160,7 +163,7 @@ export class KnowledgeRepository {
     }
   }
 
-  partInfo(row: KnowledgePartRow): KnowledgePartInfo {
+  partInfo(row: Omit<KnowledgePartRow, 'embeddingJson'>): KnowledgePartInfo {
     return {
       id: String(row.id),
       documentId: row.documentId,

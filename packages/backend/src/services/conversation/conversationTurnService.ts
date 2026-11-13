@@ -10,6 +10,8 @@ import { attachPerceptionToTurn, perceptionTurnError, withDesktopPerception } fr
 import type { InteractionMode, KernelExecutionDescriptor } from '@infos/shared'
 import { stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
+import { PassThrough } from 'node:stream'
+import { once } from 'node:events'
 import type { ConversationActions, ConversationPublication, ConversationSource } from '@infos/shared'
 import { handoffExecution } from '../../tools/productivityRuntimeHolder'
 import type { ThreadMessageInfo } from '../thread/threadService'
@@ -40,6 +42,9 @@ import { tokenCounter } from '../tokenizer/tokenCounter'
 import { isOfficeDocumentName, nativeAudioEnabled, MAX_NATIVE_AUDIO_BYTES } from '@infos/shared'
 import { modelOutputReservation } from '../llm/requestPolicy'
 import type { ExecutionRuntime } from '../../kernel/executionRuntime'
+import type { KernelScheduler, KernelScheduledExecutionContext } from '../../kernel/kernelScheduler'
+import { currentKernelExecution } from '../../kernel/executionContext'
+import { createCancellationScope } from '../execution/cancellation'
 import type { EventNoteDraftCommitter } from '../memory/eventNoteDraftCommitter'
 import type { FlowStateService } from '../flow/flowStateService'
 import type {
@@ -71,6 +76,7 @@ export interface ConversationTurnDeps {
   attachmentService: AttachmentService
   imageUnderstandingService: ImageUnderstandingService
   executionRuntime?: ExecutionRuntime
+  kernelScheduler?: KernelScheduler
   eventNoteDraftCommitter?: EventNoteDraftCommitter
   flowStateService?: FlowStateService
   toolContextService?: ToolContextService
@@ -154,6 +160,8 @@ export interface PrepareTurnParams {
   onModelResolved?: (config: import('../llm/llmService').ModelConfig) => void | Promise<void>
   /** 由Kernel Scheduler或父调用预先建立的Execution；传入后本服务只继承，不写其生命周期。 */
   execution?: KernelExecutionDescriptor
+  /** 根级调度准入前已通知用户活动，准备阶段沿用本次通知。 */
+  userActivityNotified?: boolean
   /** 用户输入或重生成记录校验落盘后立即触发（早于识图转述与 RAG 检索），供流式通道提前建立实时 Surface。 */
   onInputAccepted?: (info: {
     threadId: string
@@ -243,6 +251,124 @@ export class ConversationTurnService {
     import('../llm/llmService').ModelConfig
   >()
   constructor(private readonly deps: ConversationTurnDeps) {}
+
+  private needsScheduling(params: PrepareTurnParams): boolean {
+    if (!this.deps.kernelScheduler || params.execution) return false
+    const parent = currentKernelExecution()
+    const state = parent && this.deps.kernelScheduler.get(parent.executionId)?.state
+    return !state || !['running', 'waiting_io', 'waiting_approval'].includes(state)
+  }
+
+  /** 根级会话统一准入；嵌套调用沿父执行的并发名额继续。 */
+  private async scheduledTurn<T>(
+    params: PrepareTurnParams,
+    run: (scheduled: PrepareTurnParams) => Promise<T>,
+  ): Promise<T> {
+    params.signal?.throwIfAborted()
+    const thread = await this.deps.threadService.getThread(params.threadId)
+    if (!thread) throw new AppError('NOT_FOUND', { message: __t('server.conversation', '会话不存在或已删除') })
+    if (!params.userActivityNotified && !params.proactive && !params.taskId && !params.realmId &&
+      params.inputPersistence !== 'ephemeral') {
+      await this.deps.onUserActivity?.(thread.agentId, thread.id)
+      params = { ...params, userActivityNotified: true }
+    }
+    params.signal?.throwIfAborted()
+    const scheduler = this.deps.kernelScheduler!
+    let result!: T
+    let failure: { error: unknown } | undefined
+    const scheduled = await scheduler.submit({
+      principalId: thread.agentId,
+      threadId: thread.id,
+      channel: params.internalScene ? 'group' : thread.channel,
+      parentExecutionId: currentKernelExecution()?.executionId,
+      taskId: params.taskId,
+      class: params.taskId ? 'background' : 'interactive',
+      resourceKey: `thread:${thread.id}`,
+      run: async (execution) => {
+        const signal = params.signal ? AbortSignal.any([params.signal, execution.signal]) : execution.signal
+        try {
+          signal.throwIfAborted()
+          result = await run({
+            ...params,
+            expectedGeneration: params.expectedGeneration ?? thread.generation,
+            execution: execution.descriptor,
+            signal,
+            onUsage: (usage) => {
+              execution.consume(usage)
+              params.onUsage?.(usage)
+            },
+            beginIo: () => this.scheduledIo(execution, params.beginIo),
+          })
+        } catch (error) {
+          failure = { error }
+          throw error
+        }
+      },
+    }).catch((error: unknown) => {
+      if (error instanceof Error && error.message.startsWith('KERNEL_SCHEDULER_BACKPRESSURE'))
+        throw new AppError('RESOURCE_BUSY', { message: __t('server.conversation', '执行队列已满，请稍后再试') })
+      throw error
+    })
+    const cancel = () => { void scheduler.cancel(scheduled.descriptor.executionId).catch(() => {}) }
+    params.signal?.addEventListener('abort', cancel, { once: true })
+    if (params.signal?.aborted) cancel()
+    try {
+      const terminal = await scheduler.waitForTerminal(scheduled.descriptor.executionId)
+      if (failure) throw failure.error
+      params.signal?.throwIfAborted()
+      if (terminal.state !== 'completed')
+        throw new AppError('INTERNAL_ERROR', { message: __t('server.conversation', '会话执行已中断，请重试') })
+      return result
+    } finally {
+      params.signal?.removeEventListener('abort', cancel)
+    }
+  }
+
+  private scheduledIo(execution: KernelScheduledExecutionContext, beginIo?: () => () => void): () => void {
+    const finish = execution.beginIo()
+    let release: (() => void) | undefined
+    try {
+      release = beginIo?.()
+    } catch (error) {
+      finish()
+      throw error
+    }
+    return () => {
+      try { release?.() } finally { finish() }
+    }
+  }
+
+  /** 有界转交流式事件，消费者提前结束时取消生产者并等待释放调度名额。 */
+  private async *scheduledStream(params: PrepareTurnParams): AsyncGenerator<ReActYield, CompletedTurn & PreparedTurn> {
+    const cancellation = createCancellationScope({ signal: params.signal })
+    const events = new PassThrough({ objectMode: true, highWaterMark: 1 })
+    const completion = this.scheduledTurn({ ...params, signal: cancellation.signal }, async (scheduled) => {
+      const stream = this.streamTurn(scheduled)
+      try {
+        for (;;) {
+          scheduled.signal?.throwIfAborted()
+          const next = await stream.next()
+          if (next.done) return next.value
+          if (!events.write(next.value)) await once(events, 'drain', { signal: scheduled.signal })
+        }
+      } finally {
+        await stream.return(undefined as never)
+      }
+    })
+    void completion.then(
+      () => { events.end() },
+      (error) => { events.destroy(error instanceof Error ? error : new Error(String(error))) },
+    )
+    try {
+      for await (const event of events) yield event as ReActYield
+      return await completion
+    } finally {
+      cancellation.controller.abort()
+      events.destroy()
+      await completion.catch(() => {})
+      cancellation.dispose()
+    }
+  }
 
   /** 模型密钥仅保留在服务内部，不进入回合返回值或持久化记录。 */
   private withModel(
@@ -482,7 +608,7 @@ export class ConversationTurnService {
     }
 
 
-    if ((inputPersistence === 'persistent' || regeneration) && !params.taskId && !params.realmId)
+    if (!params.userActivityNotified && (inputPersistence === 'persistent' || regeneration) && !params.taskId && !params.realmId)
       await this.deps.onUserActivity?.(agentId, params.threadId)
     const { modelConfig, maxInputTokens } = await resolveModel()
     const audioEnabled = nativeAudioEnabled(modelConfig)
@@ -703,6 +829,7 @@ export class ConversationTurnService {
   }
 
   async executeTurn(params: PrepareTurnParams): Promise<CompletedTurn & PreparedTurn> {
+    if (this.needsScheduling(params)) return this.scheduledTurn(params, (scheduled) => this.executeTurn(scheduled))
     params = await withDesktopPerception(params, this.deps.threadService)
     try {
       return await withPerception(params.perception, !!params.proactive, () => this.executePerceptionTurn(params))
@@ -865,6 +992,7 @@ export class ConversationTurnService {
   async *streamTurn(
     params: PrepareTurnParams,
   ): AsyncGenerator<ReActYield, CompletedTurn & PreparedTurn> {
+    if (this.needsScheduling(params)) return yield* this.scheduledStream(params)
     params = await withDesktopPerception(params, this.deps.threadService)
     const stream = this.streamPerceptionTurn(params)
     try {
@@ -1155,23 +1283,25 @@ export class ConversationTurnService {
     prepared: PreparedTurn,
     params: PrepareTurnParams,
   ): Promise<KernelExecutionDescriptor | undefined> {
-    if (params.execution) return params.execution
     const runtime = this.deps.executionRuntime
-    if (!runtime) return undefined
-    let descriptor: KernelExecutionDescriptor | undefined
+    if (!runtime && !params.execution) return undefined
+    let descriptor = params.execution
     try {
-      descriptor = await runtime.create({
-        principalId: prepared.agentId, taskId: params.taskId, threadId: prepared.threadId,
-        channel: prepared.channel, class: params.taskId ? 'background' : 'interactive',
-      })
+      if (!descriptor) {
+        descriptor = await runtime!.create({
+          principalId: prepared.agentId, taskId: params.taskId, threadId: prepared.threadId,
+          channel: prepared.channel, class: params.taskId ? 'background' : 'interactive',
+          parentExecutionId: currentKernelExecution()?.executionId,
+        })
+      }
       prepared.execution = descriptor
-      await runtime.start(descriptor)
+      if (!params.execution) await runtime!.start(descriptor)
       await params.onExecutionStarted?.(descriptor)
     } catch (error) {
       if (prepared.continuous) await this.settleConversation(prepared, {
         reply: '', rawContent: '', toolCalls: [], contentBlocks: [], failureMessage: String(error),
       }, 'failed')
-      if (descriptor) await runtime.fail(descriptor, error, params.signal?.aborted)
+      if (descriptor && !params.execution) await runtime?.fail(descriptor, error, params.signal?.aborted)
       throw error
     }
     return descriptor

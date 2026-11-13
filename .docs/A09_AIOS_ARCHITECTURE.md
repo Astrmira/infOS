@@ -1,9 +1,9 @@
 # AIOS 核心架构与演进边界
 
 > **适用范围**：infOS-TS 全项目（后端 Daemon、前端客户端、Electron 壳、资产与扩展）
-> **状态**：当前架构基线 + 后续演进约束
+> **状态**：当前架构基线与演进约束
 > **最后更新**：2026-10-26
-> **阅读约定**：本文中的“必须/不得”为架构约束；抽象接口与演进目标不自动代表已有完整实现。当前调用链、数据来源和明确限制由对应 B 类文档说明。
+> **阅读约定**：本文定义核心架构基线与后续演进约束；各模块的当前实现状态、配置参数与边界限制以对应源码及 B 类文档为准。
 
 ---
 
@@ -17,15 +17,15 @@
 | 持久队列与主动任务 | `services/conversation/conversationQueueService.ts`、`services/task/`；[B20](./B20_PROACTIVE_WORK.md)、[B26](./B26_CONVERSATION_QUEUE.md) |
 | Application 协议与接入约束 | [A10](./A10_APPLICATION_INTEGRATION.md)、`packages/node-sdk/`、`packages/node-host/` |
 
-未带包前缀的源码路径相对于 `packages/backend/src/`。OS 强隔离、第三方应用的全部生态适配、跨语言 SDK 等不能从本文的概念模型推导为现有承诺；读取具体模块限制后再设计调用方。
+未带包前缀的源码路径相对于 `packages/backend/src/`。OS 内核级强隔离、第三方生态全量适配及跨语言 SDK 等演进方向以各具体模块实际实现进度为准（参考 [B01](./B01_PRODUCTIVITY_RUNTIME.md) 与 [A10](./A10_APPLICATION_INTEGRATION.md)）。
 
-## 1. 架构使命与不可变原则
+## 1. 架构使命与核心原则
 
-infOS 是以 **PrincipalAgent（主 Agent）内核** 为中心、可由自治 Application 扩展的 AI 工作站。系统必须从“单个后端进程围绕一次聊天请求集中编排状态”的模型，演进为资源边界明确、可多客户端接入、可跨发行形态运行的 Agent Runtime。
+infOS 是以 **PrincipalAgent（主 Agent）内核** 为中心、可由自治 Application 扩展的 AI 工作站。系统从“单个后端进程围绕一次聊天请求集中编排状态”的模型，演进为资源边界明确、可多客户端接入、可跨发行形态运行的 Agent Runtime。
 
-infOS 只有一种通用自治 Application 形态：稳定身份、独立领域边界和独立生命周期的 Application Node/Realm，Arca 是标准参考实现。第三方开源应用保持自己的进程、UI、后端、Agent、会话和数据，通过三层 Adapter 与 Application Integration Protocol 接入；不要求改写为进程内 `AgentAppRuntime`。是否有 UI、是否常驻、是否使用 LLM、是否包含内部 Agent，都是应用内部策略，不构成应用分类。Social是系统兼容特例，不定义通用生态 ABI。
+infOS 定义单一的通用自治 Application 形态：稳定身份、独立领域边界和独立生命周期的 Application Node/Realm，`Arca` 为标准参考实现。第三方开源应用保持各自的进程、UI、后端、Agent、会话和数据，通过三层 Adapter 与 Application Integration Protocol 接入，保持与进程内 `AgentAppRuntime` 的解耦。是否有 UI、是否常驻、是否使用 LLM、是否包含内部 Agent 均为应用内部策略，不构成额外的应用分类。Social 属于历史兼容特例，不作为通用生态 ABI 模板。
 
-**Stronghold是且永久只能是主应用内部模块。** 它拥有主应用内的房间权威消息流、`group` Thread、管家和多Agent交互，但不拥有Application Identity、Application Realm、独立Host、应用安装生命周期或应用工具命名空间。任何将Stronghold迁移为子应用、自治Application或Application Realm的设计均违反本规范。
+**Stronghold 属于主应用核心模块**，拥有主应用内的房间权威消息流、`group` Thread、管家和多 Agent 交互，不设置独立的 Application Identity、Application Realm、应用 Host 或应用工具命名空间。
 
 ### 1.1 六个一等资源
 
@@ -397,22 +397,22 @@ Gateway WebSocket、Electron IPC、HTTP、MCP 或未来 QUIC 都只是 NodeTrans
 
 ### 7.8 Browser Capability 的正式边界
 
-Browser 不定义为 Application。首期它是 Electron Client 按需发布的 `web.page` Capability，由 Agent 通过 `browser_*` Tool ABI 使用。页面 Scene、Action Receipt、Form Plan 和 Site Model 可以由 Tool 编排层维护，但不因此建立 Browser Application Identity、Application Store 或第二套生命周期。
+Browser 不建模为独立 Application，首期由 Electron Client 按需发布为 `web.page` Capability，供 Agent 通过 `browser_*` Tool ABI 调用。页面 Scene、Action Receipt、Form Plan 和 Site Model 均由 Tool 编排层维护，统一归入现有能力模型而不另设 Browser Application Identity 或应用商店生命周期。
 
 ```text
 Principal Agent
 → browser_* Tool ABI
 → web.page Capability Handle
 → Electron Browser Provider
-→隔离 BrowserWindow / WebContents
-→ Electron内置 Chromium
+→ 隔离 BrowserWindow / WebContents
+→ Electron 内置 Chromium
 ```
 
-Electron Browser Provider 拥有隔离的 Browser Session、Profile、Cookie、Download 和页面对象 Authority。它不得直接复用 infOS 主 Renderer，也不得默认接管用户日常 Chrome。需要可见交互或审批时，可把同一个隔离 WebContents 按需展示；后台任务可隐藏运行。
+Electron Browser Provider 拥有隔离的 Browser Session、Profile、Cookie、Download 和页面对象 Authority，与 infOS 主 Renderer 及用户日常 Chrome 保持隔离；需要可见交互或审批时按需展示同一隔离 `WebContents`，后台任务静默隐藏运行。
 
-非 Electron Client 默认不声明 `web.page`，相应 Browser Tools 由 CapabilityGate 隐藏或返回 Capability Unavailable。首期不自动回退服务器 Chromium，也不因为客户端缺少浏览器能力而隐式上传 URL、Cookie、下载或登录流程。未来若确有需要，可显式安装远程 Browser Provider，但它只是另一个 `web.page` Offer，不改变 Tool ABI。
+非 Electron Client 默认不声明 `web.page`，对应 Browser Tools 由 `CapabilityGate` 隐藏或返回 `CAPABILITY_UNAVAILABLE`。缺少本地能力时不回退至服务器 Chromium，避免改变 URL、Cookie、下载或登录数据驻留；后续若接入远程 Browser Provider，仍沿同一 `web.page` Offer 与 Tool ABI 接入。
 
-生产装配已完成迁移：Backend Container 不再安装 `infos.browser`、不发布 `server.browser.chromium`，也不启动 Chromium Driver 或持有 Browser Profile。Backend 只保留 Browser Tool 定义、Electron能力上下线绑定与结果编排；旧 Chromium Runtime 和 Browser Application 类仅作为未装配的研究代码保留，不构成运行时能力。
+生产装配已完成迁移：Backend Container 不安装 `infos.browser`、不发布 `server.browser.chromium`，也不启动 Chromium Driver 或持有 Browser Profile，仅保留 Browser Tool 定义、Electron 能力绑定与结果编排；旧 `ChromiumRuntime` 与 `BrowserApplication` 类作为未装配历史代码保留。
 
 ### 7.9 Application Integration 与主 Agent 边界
 
@@ -489,11 +489,11 @@ Region Provider 只能读取其领域 Authority 并返回 Region；不能修改 
 | SillyTavern | 在框架标记的当前输入前插入 user 快照，位于旧历史之后；保留深度 0 尾注等后续布局 |
 | 无 managed assembly | 先独立追加原生历史，再在当前输入前插入 user 快照；无当前输入时追加到尾部 |
 
-ContextCompiler 在 Selector 选中后处理已经渲染的消息，不重新执行模板或酒馆宏；插入后更新 `currentMessageIndex`，工作历史展开后再按消息对象重新定位。插件正文变化只改变本轮动态尾部，原有 system 与旧历史字节保持不变，也不在历史前新增 user 消息，因此不会因插件注入打断 `preparePromptReplay` 的历史连续性与热轨迹续接。热轨迹保留之前实际发送的旧快照，本轮追加新快照；这不等于供应商缓存命中率保证。
+`ContextCompiler` 在 Selector 选中后处理已渲染消息，不重新执行模板或酒馆宏；插入后更新 `currentMessageIndex`，工作历史展开后再按消息对象重新定位。插件正文变化仅作用于本轮动态尾部，原有 `system` 与旧历史字节保持不变，也不在历史前插入新 `user` 消息，因此不会打断 `preparePromptReplay` 的历史连续性与热轨迹续接。热轨迹保留先前实际发送的旧快照并在本轮追加新快照（实际厂商侧前缀缓存命中率仍取决于具体模型供应商规则）。
 
-源码入口：`services/context/contextCompiler.ts` 的 `packageMessages`、`services/context/contextRegionRuntime.ts`、`packages/packageExtensionActivators.ts`。
+源码入口：`packages/backend/src/services/context/contextCompiler.ts` 的 `packageMessages`、`packages/backend/src/services/context/contextRegionRuntime.ts`、`packages/backend/src/packages/packageExtensionActivators.ts`。
 
-以上描述规范轨迹的装配顺序。全局「动态填充深度」可在最终模型请求副本中将本轮资料前移到上一条用户输入之前，历史校验继续消费连续的规范轨迹；配置、缓存代价和作用范围统一见 [动态填充深度](./B17_PROMPT_WORKSPACE.md#动态填充深度)。
+以上描述规范轨迹的装配顺序。全局「动态填充深度」可在最终模型请求副本中将本轮资料前移到上一条用户输入之前，历史校验继续消费连续的规范轨迹；配置、缓存代价和作用范围统一见 [动态填充深度](./B17_PROMPT_WORKSPACE.md#33-动态填充深度)。
 
 ### 8.2 Region 信任与预算
 
@@ -567,9 +567,9 @@ Thread Message Domain Event
 官方 @app  <  Workshop @workshop  <  用户本地 @data
 ```
 
-官方与 Workshop 资源为只读。模型需要动态生成 manifest 时，应在内存中通过受限虚拟协议提供，不能回写安装或订阅目录。后端与 Electron 分别扫描其所属资源类型，但必须遵守同一覆盖顺序和 PathResolver containment 规则。
+官方与 Workshop 资源为只读。模型需要动态生成 manifest 时，通过内存中的受限虚拟协议提供，不回写安装或订阅目录。后端与 Electron 各自扫描所属资源类型，统一遵循该覆盖顺序与 `PathResolver` containment 规则。
 
-跨发行版共享同一数据语义：Agent 数据、Workspace、SQLite、TriviumDB、用户安装的 Skills/Extensions 和自定义资源位于 `@data`。安装资源与 Workshop 订阅内容可重新获取，不能被当作用户存档写入或云同步的唯一来源。
+跨发行版共享同一数据语义：Agent 数据、Workspace、SQLite、TriviumDB、用户安装的 Skills/Extensions 和自定义资源统一位于 `@data`。安装资源与 Workshop 订阅内容作为可重新获取的只读分发资产，不作为用户存档或云同步来源。
 
 ---
 
@@ -594,132 +594,130 @@ REST 保持统一响应信封；API DTO 与 SSE discriminated union 放在 `@inf
 
 ---
 
-## 11. 迁移策略与架构修复经验
+## 11. 迁移策略与演进经验
 
 ### 11.1 演进原则
 
-AIOS 迁移采用小步、可验证和可回滚的方式：每次只解决一个边界问题，旧数据先备份后迁移，接口兼容层只在明确过渡期存在。任何迁移完成后都应能独立运行、通过类型检查和覆盖相应的领域测试。
+AIOS 演进采用小步、可验证与可回滚策略：每次收敛单一边界，迁移前先保留备份，接口兼容层设置明确的退出条件；每步迁移完成后独立可运行、通过类型检查并补充对应领域测试。
 
 | 演进主题          | 核心结果                           | 验证重点                     |
 | ----------------- | ---------------------------------- | ---------------------------- |
 | Session → Thread  | 后端权威 Thread 与消息事实流       | 客户端不再提交完整历史       |
 | Context 编译      | 历史仅作为原生消息注入一次         | 无 XML 历史重复              |
 | 前端适配          | 窗口级 UI 状态与 Thread 视图订阅   | 刷新后持久资源不丢失         |
-| Workspace         | Agent 私有根和 containment         | 非授权路径不能读写           |
+| Workspace         | Agent 私有根和 containment         | 非授权路径拒绝读写           |
 | Memory            | Candidate、Gate、Provenance        | 不同 Thread 不混批提炼       |
 | Capability        | `(agentId, channel)` + fail-closed | 社交/群聊不暴露高风险工具    |
 | Daemon / Provider | Node 后端与 Electron 能力解耦      | 无桌面 Provider 时可解释降级 |
 
-历史 `conversation_logs` 迁移到 `thread_messages` 时，应按 `(sessionId, agentId, source)` 建 Thread，生成 `pairId`、默认 active 状态和初始 revision，并保留原表/备份以支持审计。旧 `session.{agentId}.current` 等全局指针不可作为新架构的权威来源。
+历史 `conversation_logs` 迁移到 `thread_messages` 时按 `(sessionId, agentId, source)` 建 Thread，生成 `pairId`、默认 `active` 状态与初始 `revision`，并保留原表/备份供审计；权威会话状态全部迁移至 Thread 模型（旧全局指针 `session.{agentId}.current` 已退出权威链路）。
 
-### 11.2 能力桥接的已验证教训
+### 11.2 能力桥接的关键契约
 
-能力提供者链路必须避免以下常见断点：
+能力提供者链路持续遵循以下设计准则：
 
-1. 所有启动入口都需要启动同一 CapabilityBridge，不能只在某个 daemon 入口注册。
-2. 工具名与能力名可以不同，必须存在显式映射（例如 `take_screenshot → screen_capture`），不能依赖偶然同名。
-3. Provider 返回值必须在边界处标准化；截图等多模态能力需要返回可供 ReAct/LLM 消费的结构，而非底层 API 的随意字段。
-4. 权限检查优先于 Provider 路由，防止平台工具绕过 CapabilityGate。
-5. Provider 协议置于 shared 包；注册、心跳、调用、结果和错误格式不可由两端各自复制。
-6. Provider WebSocket/IPC 连接在生产形态必须鉴权；主动断连与心跳超时统一为 offline 语义，避免节点记录行为不一致。
+1. 所有启动入口统一装配同一 `CapabilityBridge`；
+2. 工具名与能力名通过显式映射关联（如 `take_screenshot → screen_capture`），不依赖同名约定；
+3. Provider 返回值在边界处标准化，截图等多模态能力返回可供 ReAct/LLM 消费的结构化负载；
+4. 权限校验先于 Provider 路由执行，确保所有平台工具统一经过 `CapabilityGate`；
+5. Provider 协议（注册、心跳、调用、结果与错误格式）集中定义在 `@infos/shared`，供主端与扩展共用；
+6. Provider WebSocket/IPC 连接在生产环境强制鉴权，主动断连与心跳超时统一收敛为 `offline` 状态。
 
 ### 11.3 API 兼容期
 
-兼容接口只能内部转换到 Thread API，且必须有移除计划：旧 Session 创建/清空/查询接口迁移到 `/api/threads`，旧聊天全量 `messages` 载荷迁移到 `{ threadId, content }`。兼容层不得重新引入前端上下文组装。
+兼容接口内部转发到 Thread API 并附带退出计划：旧 Session 创建/清空/查询接口收敛至 `/api/threads`，旧全量 `messages` 载荷收敛至 `{ threadId, content }`，避免恢复前端历史组装逻辑。
 
 ---
 
-## 12.统一 Application 与内部 Agent
+## 12. 统一 Application 与内部 Agent
 
 ### 12.1 Application 不分类
 
-通用 Application 只有一种自治形态。Arca、Research、Minecraft Companion、Coding Workspace 等都使用相同的 Application Identity、Host、Capability 和 Federation 模型。以下差异只是内部策略：
+通用 Application 只有一种自治形态。Arca、Research、Minecraft Companion、Coding Workspace 等都使用相同的 Application Identity、Host、Capability 和 Federation 模型。以下差异属于内部实现策略：
 
 ```text
-有 UI /无 UI
-前台 /后台
-常驻 /按需启动
-Kernel托管启动 /用户或外部系统启动
-单进程 /多进程
-使用 LLM /不使用 LLM
-包含内部 Agent /纯确定性逻辑
+有 UI / 无 UI
+前台 / 后台
+常驻 / 按需启动
+Kernel 托管启动 / 用户或外部系统启动
+单进程 / 多进程
+使用 LLM / 不使用 LLM
+包含内部 Agent / 纯确定性逻辑
 ```
 
-`Package` 是安装与分发单位，`Tool` 是 Agent-facing 薄 ABI，`Capability` 是版本化能力契约，`Client` 是可选交互面；它们均不是 Application 类型。
+`Package` 是安装与分发单位，`Tool` 是 Agent-facing 薄 ABI，`Capability` 是版本化能力契约，`Client` 是可选交互面，各自承担正交职责。
 
-### 12.2 Application Realm与Kernel的唯一耦合面
+### 12.2 Application Realm 与 Kernel 的唯一耦合面
 
-唯一Kernel为自治子应用签发隔离的Application Realm。Realm是受控Kernel视图，不是第二套Kernel实例；它拥有`appId/realmId/principalId/LifecycleScope`，并只能通过Realm内的Port、Capability Handle、Scoped Tool、Context Provider、Event和Task Binding使用Kernel机制。
+唯一 Kernel 为自治子应用签发隔离的 `Application Realm`。Realm 是受控 Kernel 视图而非第二套 Kernel 实例，持有 `appId / realmId / principalId / LifecycleScope`，并统一通过 Realm 内的 Port、Capability Handle、Scoped Tool、Context Provider、Event 与 Task Binding 使用 Kernel 机制。
 
 ```text
 Application Realm
-├─发布 Capability Offer
-├─声明 Capability Requirement
-├─通过 Handle调用 Bound Port
-├─发布 Event / Receipt / Checkpoint
-└─可选连接独立 Client
+├─ 发布 Capability Offer
+├─ 声明 Capability Requirement
+├─ 通过 Handle 调用 Bound Port
+├─ 发布 Event / Receipt / Checkpoint
+└─ 可选连接独立 Client
 ```
 
-Application Realm不得直接读取Kernel数据库、持有Kernel内部Service、复用主应用Thread Channel，或获取原始Credential。申请`model.inference`、`search.web`、`web.page`、`document.semantic`等都是正常能力依赖，不构成代码耦合。Stronghold不适用本节：它是主应用模块，直接遵循主应用内部Service、`group` Thread和CapabilityGate边界。
+Application Realm 与 Kernel 数据库、内部 Service、主应用 Thread Channel 以及原始 Credential 保持隔离。申请 `model.inference`、`search.web`、`web.page`、`document.semantic` 等能力依赖通过标准声明建立绑定。Stronghold 作为主应用核心模块直接遵循主应用内部 Service、`group` Thread 与 `CapabilityGate` 边界，不纳入 Application Realm。
 
-### 12.3内部 Agent / Worker
+### 12.3 内部 Agent / Worker
 
-Application 可以包含零个、一个或多个内部 Agent/Worker，但这只是实现细节，不产生 `Sub Application` 分类。内部 Agent 自行维护历史和工作状态，通过 Application Host 的受限 Capability Binding 执行任务；它不能写主 Agent Thread、主 Agent Canonical Memory 或人格 Authority。主应用也不能因为 Application 含 Agent 就自动获得派活能力：可调用关系必须由 Endpoint、Capability Offer 与显式 Tool Projection 声明。
+Application 内部可包含零个、一个或多个 Agent/Worker，属内部实现而不形成新的应用分类。内部 Agent 自主维护历史与工作状态，经由 Application Host 的受限 Capability Binding 执行任务，与主 Agent Thread、主 Agent Canonical Memory 和人格 Authority 隔离；主应用与 Application 间的可调用关系由 Endpoint、Capability Offer 与显式 Tool Projection 声明。
 
-Application 与主应用的双向关系固定分为：Application 通过 `offeredCapabilities + endpoints` 声明对外 Operation，通过可选 `toolProjections` 把允许主 Agent 使用的 Operation 投影为 Tool；Application 通过 `requestedCapabilities` 向 Kernel 请求模型、人格、知识、工作区、审批或主 Agent 协作。Tool Projection 必须随在线 Offer 注册和注销，Realm 私有工具不得进入主 Thread 工具管理。
+Application 与主应用的双向关系固定分为：Application 通过 `offeredCapabilities + endpoints` 声明对外 Operation，并通过可选 `toolProjections` 将允许主 Agent 调用的 Operation 投影为 Tool；Application 通过 `requestedCapabilities` 向 Kernel 请求模型、人格、知识、工作区、审批或主 Agent 协作。Tool Projection 随在线 Offer 注册和注销，Realm 私有工具隔离于主 Thread 工具管理之外。
 
 ```text
 Principal Agent
 → Task / Capability Grant
 → Application Host
-→内部 Agent / Worker（可选）
+→ 内部 Agent / Worker（可选）
 → Application Checkpoint / Result / Receipt
 ```
 
-内部 Agent 的记忆候选若需回流，必须经过 Application Checkpoint 与主 Agent MemoryGate；Application 自身领域状态仍由自己的 Store/Authority 管理。Social沿用部分历史领域结构，但其跨Package依赖已收口到Shared Port与公开Host ABI，不作为新Application的目录模板。
+内部 Agent 的记忆候选若需回流，经由 Application Checkpoint 与主 Agent MemoryGate 核验；Application 领域状态归属自身 Store/Authority。Social 虽沿用部分历史领域结构，跨 Package 依赖已收口至 `@infos/shared` Port 与公开 Application Host ABI，不再作为新应用的目录模板。
 
-### 12.4开发者参考实现
+### 12.4 开发者参考实现
 
-Arca是标准自治Application模板。新应用应复制其独立Host、稳定Identity、可选独立Client、NodeProvider、Capability Offer/Requirement、独立Store/Authority及断线重连边界。现有`AppManager/AgentAppRuntime`已演进为Application Realm生命周期宿主，负责进程内Realm的Scoped Tool、Task Binding与生命周期；外部Host仍通过Node Federation接入同一Realm协议。Arca任务与Social私有会话已迁入Realm，`arca/social`不再是主应用Thread Channel，也不再进入Agent静态能力矩阵。Stronghold明确禁止注册到Realm Manager。
+Arca 为标准自治 Application 模板。新应用沿用其独立 Host、稳定 Identity、可选独立 Client、NodeProvider、Capability Offer/Requirement、独立 Store/Authority 与断线重连边界。现有 `AppManager/AgentAppRuntime` 已演进为 Application Realm 生命周期宿主，负责进程内 Realm 的 Scoped Tool、Task Binding 与生命周期；外部 Host 通过 Node Federation 接入同一 Realm 协议。Arca 任务与 Social 私有会话已迁入 Realm，`arca` / `social` 退出主应用 Thread Channel 与 Agent 静态能力矩阵；Stronghold 固定归属主应用模块而不接入 Realm Manager。
 
-Social已通过Shared中的Storage/Execution/Event Port、Social自身的Data Service以及单一公开Application Host ABI完成边界收口。Social不再深路径导入Backend源码，也不允许直接持有DrizzleDb、GatewayHub或Backend Repository实现；公开Host ABI只暴露白名单宿主契约，新增能力应优先进入Shared Port或领域Facade。
+Social 已通过 Shared 中的 Storage/Execution/Event Port、自身 Data Service 与公开 Application Host ABI 完成边界收口，不再深路径导入 Backend 源码或直接持有 DrizzleDb、GatewayHub 与 Backend Repository 实现；新增宿主协作能力优先进入 Shared Port 或领域 Facade。
 
 ---
 
 ## 13. Kernel Object、Execution 与系统事件
 
-### 13.1 架构宪法
+### 13.1 架构基线
 
-以下约束是AIOS实现和评审的固定基线：
+1. Agent 是长期 Principal 与资源所有者，具体运行归属唯一 `executionId`。
+2. 可观察副作用追溯至 Principal、Process、Execution、Capability 与因果链。
+3. Resource 为实体资源，Capability 为访问权，Tool 为面向模型的操作 ABI（资源授权独立于工具名白名单）。
+4. Capability 支持委派、收窄、到期和撤销，Skill、fallback 与默认值不隐式扩权。
+5. 持久事实使用 Durable Event；Token、动画、进度和心跳等临时体验使用 Ephemeral Frame。
+6. Application 仅持有 Port 与 Capability Handle，不直接访问数据库、Backend Service 实例、Service Locator 或全局 `AppContext`。
+7. Renderer 与 Surface 作为无状态投影层，窗口关闭或 DOM 重建不改变领域权威状态。
+8. Context Compiler 对 Identity、Memory、Thread、Workspace 与 Capability 保持只读映射。
+9. Observer 仅生成观测度量，是否进入上下文由策略层决定。
+10. 跨边界调用具备可取消、可超时、可审计与对象 Generation 校验语义，崩溃后持久日志保持合法前缀。
+11. Kernel 提供 Object、Execution、Capability、IPC、Lifecycle、Scheduler 与 Audit 基础设施，业务策略收敛在领域与用户空间。
+12. Stronghold 固定属于主应用，`group` 为其专属 Channel；Application 身份由 `appId/realmId` 表达。
 
-1. Agent是长期Principal与资源所有者，不是Process；具体运行必须归属唯一`executionId`。
-2. 可观察副作用必须追溯到Principal、Process、Execution、Capability与因果链。
-3. Resource是存在之物，Capability是访问权，Tool是面向模型的操作ABI；工具名白名单不能代替资源授权。
-4. Capability只能委派、收窄、到期和撤销，Skill、fallback与默认值不得隐式扩权。
-5. 持久事实使用Durable Event；Token、动画、进度和心跳等临时体验使用Ephemeral Frame。
-6. Application只能持有Port与Capability Handle，不得持有数据库、Backend Service实例、Service Locator或全局AppContext。
-7. Renderer与Surface不拥有业务事实；关闭窗口、销毁DOM或重建Surface不得改变领域权威状态。
-8. Context Compiler只映射资源，不拥有或修改Identity、Memory、Thread、Workspace与Capability。
-9. Observer只生成测量结果；是否进入Context由独立Policy决定。
-10. 跨边界调用必须可取消、可超时、可审计并校验对象Generation；崩溃后持久日志必须保持合法前缀。
-11. Kernel提供Object、Execution、Capability、IPC、Lifecycle、Scheduler与Audit机制，业务策略尽量留在用户空间。
-12. Stronghold永久属于主应用，`group`是其专属Channel；Application身份只由`appId/realmId`表达。
+### 13.2 OS 领域本体
 
-### 13.2 OS领域本体
-
-| AIOS对象        | OS类比                | 固定语义                              |
+| AIOS 对象       | OS 类比               | 固定语义                              |
 | --------------- | --------------------- | ------------------------------------- |
 | PrincipalAgent  | Security Principal    | 长期身份、人格、私有资源与授权主体    |
 | Thread          | TTY / Journal         | 持久交互边界与消息事实流，不执行代码  |
 | Task            | Job                   | 用户期望完成的工作，可跨多次执行      |
-| Process         | Process               | Task、Application或驻留服务的运行载体 |
+| Process         | Process               | Task、Application 或驻留服务的运行载体 |
 | Execution       | Execution attempt     | 一次有起止、预算、结果和因果链的运行  |
-| Tool Call       | System call           | 对Kernel Service或Adapter的结构化请求 |
+| Tool Call       | System call           | 对 Kernel Service 或 Adapter 的结构化请求 |
 | Context Runtime | Virtual address space | 本轮模型可见资源的临时映射            |
-| Workspace       | Filesystem namespace  | Principal或Application的可写文件空间  |
+| Workspace       | Filesystem namespace  | Principal 或 Application 的可写文件空间  |
 | Surface         | Display object        | 领域事实的可重建视觉投影              |
 
-`Task = 要完成什么`，`Process = 谁承载运行`，`Execution = 某次尝试`，`Turn = 一次用户可感知事务`，`Thread = 持久交流与事实记录`。禁止用Thread或“当前活跃Agent”推导执行主体。
+`Task = 要完成什么`，`Process = 谁承载运行`，`Execution = 某次尝试`，`Turn = 一次用户可感知事务`，`Thread = 持久交流与事实记录`；执行主体由显式 Execution 上下文携带，不依据 Thread 或前端当前活跃 Agent 推导。
 
 ### 13.3 Kernel Object
 

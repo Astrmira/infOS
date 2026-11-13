@@ -100,24 +100,27 @@ IntersectionObserver 负责可见性和重型节点生命周期，动态消息�
 ### 4.1 逻辑分层示例
 
 ```typescript
-// composables/chat/useChatFlow.ts (Logic 层)
-export function useChatFlow() {
-  const messages = shallowRef<ChatMessage[]>([])
-  async function sendMessage(text: string) {
-    /* ... */
+// composables/chat/useChat.ts (Logic 层)
+export function useChat(options: UseChatOptions = {}) {
+  const threadStore = useThreadStore()
+  const compositorStore = useCompositorStore()
+  async function sendMessage(content: string) {
+    /* 通过 chatApi 与 Store 推进会话生命周期 */
   }
-  return { messages, sendMessage }
+  return { sendMessage }
 }
 ```
 
 ```vue
-<!-- components/chat/ChatBox.vue (View 层) -->
-<script setup>
-const { messages, sendMessage } = useChatFlow()
+<!-- components/chat/ChatContainer.vue (View 层) -->
+<script setup lang="ts">
+import { useChat } from '../../composables/chat/useChat'
+
+const { sendMessage } = useChat()
 </script>
 <template>
-  <MessageList :items="messages" />
-  <ChatInput @send="sendMessage" />
+  <ConversationSurface ... />
+  <InputBar @send="sendMessage" />
 </template>
 ```
 
@@ -289,143 +292,99 @@ const { messages, sendMessage } = useChatFlow()
 
 前端是后端持久资源的视图订阅者，详细模型见 [A09_AIOS_ARCHITECTURE](./A09_AIOS_ARCHITECTURE.md)。
 
-- `activeAgentId`、`activeThreadId` 和窗口布局属于**窗口级 UI 状态**；后端不维护全局活跃 Agent/Thread。
-- Store 可缓存 Agent、Thread、消息等展示数据，但 SQLite/文件系统中的持久资源以 API 返回和事件流为准。
-- 发送聊天请求只提交 `{ threadId, content, attachmentIds? }`；不得将前端消息数组作为上下文上传。
-- 切换 Agent 必须连带选择/创建属于该 Agent 的 Thread，禁止交叉组合。
-- group 日志按据点 `roomId` 聚合展示；按 Agent 划分的 group Thread 仅服务后端隔离上下文，不能作为用户可见的房间分组。
-- SSE 必须以显式 `done` 判定成功结束，工具事件通过 `callId` 关联。
+- `activeAgentId`、`activeThreadId` 与窗口布局属于**窗口级 UI 状态**，后端不维护全局活跃角色或会话。
+- Store 缓存的 Agent、Thread、消息等展示数据以服务端 API 与事件流为准；发送聊天请求只提交 `{ threadId, content, attachmentIds? }`，不将前端消息数组作为上下文上传。
+- 切换 Agent 时联动选择或创建属于该 Agent 的 Thread，保持身份一致。
+- group 日志按据点 `roomId` 聚合展示；后端按 Agent 划分的 group Thread 仅服务隔离上下文，不作为用户可见的房间分组。
+- SSE 流以显式 `done` 标志判定成功结束，工具事件通过 `callId` 关联。
 
 ---
 
-## 8. Surface Protocol与Compositor
+## 8. Surface Protocol 与 Compositor
 
 ### 8.1 权威边界
 
-Surface是领域事实的语义视觉投影，不是业务真相。后端持有业务事实、Execution状态、Projection与可恢复的最终Surface Commit；客户端Compositor持有窗口级Surface Tree、布局、可见性、动画、输入焦点与Stable Block/Active Tail。Renderer崩溃、DOM销毁或窗口关闭不得改变权威状态，断线后必须可由领域事实和Projection Snapshot重建。
+Surface 是领域事实的语义视觉投影：后端持有业务事实、Execution 状态、Projection 与可恢复的最终 Surface Commit；客户端 Compositor 持有窗口级 Surface Tree、布局、可见性、动画、输入焦点与 Stable Block/Active Tail，Renderer 崩溃、DOM 销毁或断线后由领域事实与 Projection Snapshot 重建。
 
-Internal Surface Protocol仅供infOS系统组件、Projection、Shell与Compositor使用。第三方Application通过第二层Frontend Adapter接入Tab、任务、会话、状态和授权UI；未受信任的远程内容只能使用External Presentation Protocol或隔离WebView/iframe，不得向主Renderer提交Vue组件、HTML、JavaScript或DOM Patch。Frontend Adapter只能通过类型化IPC访问自己的Backend Adapter，不持有远程Credential、Kernel Service或任意本地端口权限。
+Internal Surface Protocol 供系统组件、Projection、Shell 与 Compositor 使用。第三方 Application 通过第二层 Frontend Adapter 接入 Tab、任务、会话、状态与授权 UI；远程非信任内容使用 External Presentation Protocol 或隔离 WebView/iframe 呈现（不向主 Renderer 注入 Vue 组件、HTML、脚本或 DOM Patch）。Frontend Adapter 仅通过类型化 IPC 访问自身 Backend Adapter，不直接持有远程凭据、Kernel Service 或任意本地端口权限。
 
 ### 8.2 语义节点与操作
 
-当前节点类型包括 `markdown`、`thinking`、`native-reasoning`、`model-retry`、`code`、`math`、`mermaid`、`tool-call`、`tool-result`、`status`、`error`、`attachment`、`approval`、`progress`、`input`、`panel`、`table`、`notification`、`document` 和 `programmable-island`。节点有 `nodeId`、`revision` 和生命周期标记；完整定义见 `packages/shared/src/types/surface.types.ts`。
+当前节点类型包括 `markdown`、`thinking`、`native-reasoning`、`model-retry`、`code`、`math`、`mermaid`、`tool-call`、`tool-result`、`status`、`error`、`attachment`、`approval`、`progress`、`input`、`panel`、`table`、`notification`、`document` 和 `programmable-island`（均带有 `nodeId`、`revision` 与生命周期标记，完整定义见 `packages/shared/src/types/surface.types.ts`）。
 
 协议操作固定为：
 
 ```text
-surface.open
-surface.append-text
-surface.append-tool-arguments
-surface.upsert-node
-surface.patch-node
-surface.commit
-surface.fail
-surface.dispose
+surface.open / surface.append-text / surface.append-tool-arguments
+surface.upsert-node / surface.patch-node / surface.commit / surface.fail / surface.dispose
 ```
 
-实时帧包含协议版本、Surface 身份、generation、revision、sequence、operationId 和具体操作；同一 generation 内的 sequence 递增。
+实时帧携带协议版本、Surface 身份、`generation`、`revision`、`sequence`（同一代次内递增）、`operationId` 与操作载荷。聊天区 HTML 保持源码展示，可执行内容仅在独立沙箱 Surface 运行；流式帧仅做帧合并，不人为拆词减速，也不落入持久日志。
 
-聊天HTML始终作为源码展示；可执行内容只能进入独立沙箱Surface。流式Frame不进入持久日志，网络delta只做帧合并，不得人为拆词减速。
+### 8.3 Compositor 与核心交互规则
 
-### 8.3 Compositor职责
+- **Surface 树与生命周期**：Compositor 管理 Surface Tree、Revision 与稳定 Node ID，路由键鼠与无障碍输入，按可见性冻结动画、Canvas、视频与重型组件；流式渲染分离稳定区（已完成复杂子树保持稳定身份，Mermaid/KaTeX/代码/工具卡各自持有独立生命周期）与活动尾部，非当前视图继续推进 Projection 但暂停无效 DOM 更新。
+- **富文本与公式缓存**（`chatRichRenderer`）：同步返回 HTML 使用 `renderChatRichText`，管理缓存使用返回 `{html, mathReady}` 的 `renderChatRichTextResult`，`prepareChatRichText` 按需加载公式依赖（`peromath` 围栏与渲染共用 Marked 词法与语言归一化规则）。窗口内存驻留含资源卡、隔离预览分段与已净化 HTML 的渲染快照（源码、预览模式与语言未变时复用分段对象及 DOM）；未就绪公式降级结果不入底层 HTML 缓存、组件驻留快照或共享缓存，待依赖就绪事件到达后对可见视图重渲染（离屏等恢复可见再渲染，预览销毁或替换时清理订阅）。缓存只存当前窗口内存。
+- **全局审批兜底**：`useApprovalStore` 前台每 `4` 秒拉取全局 pending 列表，窗口隐藏或被应用标签遮盖时降为每 `60` 秒补齐，恢复可见立即刷新（弥补 Gateway 仅向当前角色输入席位推送的局限）；等价结果复用原 Map 引用避免冗余更新，停止轮询时清理定时器。
+- **游标分页与预算**：Conversation Projection 按游标返回请求窗口与 `hasMoreBefore / beforeCursor`，追加历史时按 `messageId + revision` 复用对象，工具结果按 `callId` 建立索引（不在模板渲染阶段线性扫描 Surface Node）。输入栏 Token 计数在 ReAct 期间读取当前 Thread 与 Principal 的活动 Surface 逐轮更新（区分请求估算与上游实测，与累计 Token 消费分列）并暂停草稿预算请求，切换角色或 Thread 清空旧预览；草稿预算预览不触发远程记忆检索并标注「不含待检索记忆」。模型配置页重拉模型列表先清空旧候选，接口失败展示后端真实错误，返回空列表时提示手动输入模型名。
+- **附件上传与录音入口**：输入栏单个「文件」选择入口、拖拽文件与粘贴文件复用同一流式处理——立即生成本地 `0ms` 缩略占位，最多 `3` 路并发异步校验能力、建会话并上传原件（上传完成前锁定发送按钮直至获取 `attachmentId`）；单文件上限 `100 MiB`，适格图片与小文本分别走原生识图、转述或上下文装配，超大文本、非 UTF-8、未知格式或模型不支持的图像保留原件引用（Agent 仅获得服务端存储路径与引用，目录拖入提示先压缩，嵌套输入栏防重传，切换会话撤销未完成上传批次）。录音按钮按会话设置所选模式（转写／原音）并在开始前复核真实能力。
+- **会话设置面板与滑块**（`SessionSettingsPanel.vue`、`SessionModelControls.vue`、`SessionSlider.vue`、`SessionSegment.vue`）：
+  - 输入栏页脚左侧入口复用 `InputBarFoldout`（`variant="text"`，自定义 `trigger` 与 `head-actions` 插槽，点击外部/Escape/外部滚动/切 Thread 关闭、窗口缩放重定位、`no-drag` 标记）展示模式图标、当前模式与模型名称；`SessionModelControls.vue` 读写模型与思考设置，`InputBar.vue` 保存模式、执行权限与识图／语音，采用**乐观先行 + Last-Write-Wins**，后台持久化不阻塞连续切换与发送，失败回滚至最近权威值。
+  - `SessionSlider.vue` 由同一组档位名称生成等宽标签与刻度，原生透明 `input[type=range]` 对齐可见刻度（`input` 预览、`change` 与点按节点直接提交，失焦/切换 Thread 清理预览，思考首档为「跟随」）。
+  - 思考档位按钮按模型支持顺序循环切换；`SessionSegment.vue` 用 `transform` 移动等宽选中条并支持 `radiogroup` 键盘导航、网格等高说明与 `grid-template-rows` 折叠过渡；执行权限提升至 `auto_approve` 或 `full` 时先进入虚线手柄待确认状态，经用户确认后再保存。
+- **输入栏工具轨与 Skills**（`InputBar.vue`、`input-toolbar.css`、`ThreadSkillControls.vue`、`ThreadExperiences.vue`）：
+  - 入口统一使用 `input-tool-trigger` 机械分仓键帽样式；左侧会话设置、Skills 与会话工具采用「色块徽标仓 + 标签计数」双仓键帽，末尾为指令与添加文件；右侧承载角色主会话「生活经历」（`ThreadExperiences.vue`，展开右侧抽屉时自动收起输入栏弹层）、会话心流与像素切角晶环上下文容量指示器（默认展示顺时针占用晶环与百分比，悬停/聚焦显示精确现用／上限 Token 与轮次），紧接语音与发送主键帽；仅据点群聊在输入框上方保留房间与成员状态条。紧凑布局收敛为等宽图标键帽，移动布局扩大触控热区。
+  - 会话工具弹窗按「已启用系统协议项 → 普通启用项 → 关闭项（含模式未开放项）」分组，组内按 `packageId` 聚合同包工具并按函数名排序，开关变化即时重排且搜索保持排序顺序。
+  - `ThreadSkillControls.vue` 提供本会话 Skills 勾选、搜索与一键全关，保存期间锁定发送与冲突配置操作，极简模式暂停生效但保留选择（契约见 [M02](./M02_CAPABILITY_GATE.md#32-会话-skills)）。
+- **Diff 预览与正文排版**：文件写入与编辑折叠栏与展开视图共用一次预览计算，参数流按 `75ms` 合并更新并在结束时对齐真实执行统计（支持读取引用、行范围与批量步骤；旧文不可用时删除数标为待确认）；折叠释放 Diff 轨道、后台暂停解析、长文件保持窗口化渲染。Markdown 正文行距 `1.9`（段落/标题/引用/列表各自留白，流式分块间保留同节奏且空块不占位），工具轨迹与原生思考宽度为正文的 `96%`（窄屏铺满）。
 
-- 管理Surface Tree、Revision和稳定Node ID；
-- 将Surface安排到聊天、窗口、通知、桌宠或任务中心；
-- 路由键盘、鼠标、触控和辅助功能输入；
-- 根据可见性冻结动画、Canvas、视频与重型组件；
-- 支持增量Commit、回放、重连和最终权威渲染；
-- 阻止不可信内容越过沙箱与Presentation边界。
+### 8.4 性能与 UX 不变量
 
-流式渲染采用稳定区与活动尾部：已完成复杂子树保持稳定身份，快速流与最终完整渲染分离；Mermaid、KaTeX、代码和工具卡拥有独立生命周期。非当前视图继续推进Projection，但停止无意义DOM更新。
-
-聊天富文本在客户端窗口内存中驻留完整渲染快照，包含资源卡、隔离预览的分段与已净化 HTML。内容、预览模式和语言未变化时保留原分段对象及 DOM；滚动恢复、页面重新激活或会话信息变化不重新分段和解析。组件持有当前快照，不受共享缓存淘汰影响；组件重挂载可复用有容量上限的最近快照。流式尾部不进入共享缓存，源码更新或语言切换才生成新结果，离屏期间继续暂停解析和媒体。缓存只服务当前客户端窗口，不写入服务端或浏览器长期存储。
-
-`chatRichRenderer` 保留同步返回 HTML 的 `renderChatRichText`；管理缓存的调用方使用 `renderChatRichTextResult` 的 `html/mathReady`。`prepareChatRichText` 按需准备公式依赖，`peromath` 围栏与渲染共用 Marked 词法和语言归一化规则。依赖未就绪的源码降级结果不进入底层 HTML 缓存、组件驻留快照或共享快照；聊天与资源预览订阅依赖就绪事件后重渲染，销毁/替换预览时清理订阅，离屏聊天等恢复可见再渲染。
-
-审批集合独立于主界面呈现：`useApprovalStore` 前台每 4 秒拉取全局 pending，窗口隐藏或被应用标签覆盖时降为每 60 秒补齐，恢复可见立即刷新。Gateway 新审批只投递当前角色的输入席位，不能替代所有角色的全局兜底；结果等价时保留原 Map，避免重复触发依赖更新。停止 Store 轮询会同时清理前台/后台定时器。
-
-Conversation Projection 必须支持游标窗口，Snapshot 只返回请求窗口内的消息与对应 Surface，并携带`hasMoreBefore/beforeCursor`。前端追加历史时按`messageId + revision`复用已有对象，不得整体替换未变化的消息树；实时 Frame 只更新目标 Surface。工具结果必须按`callId`建立索引，禁止模板渲染阶段反复线性扫描 Surface Node。
-
-输入栏 Token 计数在 ReAct 中读取当前 Thread 与 Principal 的活动 Surface 状态，逐轮更新，并区分请求估算与上游实测。生成期间停止下一轮预算预览请求，防止旧 HTTP 响应覆盖实时统计；切换角色或 Thread 清空旧预览，结束后再恢复草稿预算预览。输入占用不与累计 Token 消费混用。
-
-草稿预算预览不触发远程记忆检索，提示注明“不含待检索记忆”；发送后的逐轮统计仍包含本轮实际注入的记忆。模型配置页重新获取模型列表时清空旧候选，接口失败展示后端的真实原因；服务商成功返回空列表时提示手动填写模型名称，不显示获取成功的通知。
-
-输入栏以单个“文件”入口选择任意类型的文件，也支持向对话区域拖入文件或粘贴文件，三种入口复用同一上传、预览和发送流程。粘贴或拖入文件后立即在本地生成 `0ms` 占位缩略预览，并以最多 3 路并发异步校验能力、建会话及上传原件；原件仍上传中时锁住发送按钮直至拿到服务端 `attachmentId`。原件上限为 100MB；支持且足够小的图片、文本沿用原生识图、转述或上下文装配，大文本、未知格式、非 UTF-8 文本及当前模型无法识别的图片只保留原件引用。Agent 获得的是服务端存储路径与 attachment 引用，不使用客户端本地路径。拖入目录只提示先压缩，嵌套输入栏不会重复上传；切换会话会撤销尚未完成批次并清理迟到的附件。录音按钮按会话设置面板中选择的语音方式（转写／原音）录制，并在开始前复核实际能力。
-
-输入栏页脚左侧通过主设置入口打开会话设置，模式图标、当前模式与模型名称分别占据图标区和两行文字。入口复用 `InputBarFoldout` 的 Teleport、定位、材质变量与开合动画（`variant="text"`，自定义 `trigger` 与 `head-actions` 插槽）。`SessionSettingsPanel.vue` 组织面板，`SessionModelControls.vue` 读写会话模型与思考设置，会话模式、执行权限和识图／语音由 `InputBar.vue` 保存，面板向输入栏发出选择意图；上述会话设置均采用乐观先行与最新意图覆盖（Last-Write-Wins），后台持久化期间不阻塞控件连续切换或消息发送，失败时回滚至最近一次权威状态。弹层点击外部、按 Escape、外部滚动及切换 Thread 时关闭，窗口缩放时重新定位，卸载释放监听。
-
-`SessionSlider.vue` 从同一组档位名称生成等宽标签与刻度，内部轨道连接首尾标签中心。透明的原生 `input[type=range]` 承接鼠标、触屏与键盘输入，原生手柄中心与可见刻度对齐。`input` 事件只预览，`change` 事件提交。档位文字与上方轨道刻度节点均可直接提交对应下标，取消或失焦时清理预览。模型思考的首档为“跟随”，其余档位沿用共享模型兼容规则。`SessionModelControls.vue` 提交后立即乐观更新当前档位并同步可用模型缓存，成功后对齐服务端结果，失败且无更新提交时回滚已保存值，切换 Thread 清理预览并忽略旧回执。后台刷新保留已有模型图标，解除控件禁用本身无需重新请求配置。
-
-思考档位的图形与当前值整体作为按钮，点击按当前模型支持的顺序切换下一档，末档回到跟随，提示文字展示下一档名称。执行权限当前值同样支持循环切换，并复用 `commitExecution`，提升到自动审批或完整权限时先进入待确认状态。
-
-`SessionSegment.vue` 用 transform 移动等宽选中条，键盘遵循 radiogroup 约定。临时保存锁维持控件原有颜色，能力不可用的具体选项单独弱化。各档说明叠在同一网格预留高度，面板预留滚动条空间，折叠区用 `grid-template-rows` 过渡。执行权限的待确认档位以虚线手柄标识，提升到自动审批或完整权限经用户确认后才交给输入栏保存。各选择器处理自己的方向键，面板关闭方向键轮转按钮。
-
-输入栏工具行的入口统一使用 `input-tool-trigger`，由 `InputBar.vue` 与 `input-toolbar.css` 提供统一硬朗机械分仓键帽样式。会话设置、Skills 与会话工具采用左侧色块徽标仓 + 右侧标签计数的双仓键帽，指令与添加文件位于左侧工具轨末端；右侧状态区承载角色主会话的“生活经历”（`ThreadExperiences.vue`，紧贴会话心流左侧，展开右侧抽屉时自动收起输入栏弹层）、会话心流入口与像素切角晶环上下文容量指示器（默认展示顺时针占用晶环与纯百分比，悬停或聚焦展开精确现用／上限 Token 与轮次说明），紧接语音与发送主键帽；仅据点群聊在输入框上方保留房间与成员状态条。`InputBarFoldout` 浮层显式使用 Electron 的 `no-drag` 区域。紧凑布局将入口收为等宽图标键帽，完整操作名称由提示和无障碍标签提供，会话设置图标继续标示高权限状态；移动布局为同一组入口扩大点击区域，弹层内容由各组件单独管理。
-
-会话工具视窗自动排列为已启用系统协议项、普通启用项、关闭项（含模式未开放项）。各区内按真实 `packageId` 聚合同包工具，包内按函数名排序，包与独立工具按最小函数名排序；不维护工具名称或前缀顺序表。分组来源由内置清单、扩展 Package、MCP 服务及应用注册自动提供。开关状态变化时响应式重排，搜索在排序后执行以保持相对顺序，排序不修改原始工具数组。
-
-`ThreadSkillControls.vue` 复用 `InputBarFoldout`，在对话和工作区输入栏提供本会话 Skills 勾选、搜索及全部关闭。选择由会话接口保存，保存期间锁定发送与冲突配置操作；切换 Thread 或卸载后忽略旧请求回执。仅用户选中的技能指引进入后续上下文，极简模式暂停使用并保留选择；权限与数据契约见[会话 Skills](M02_CAPABILITY_GATE.md#32-会话-skills)。
-
-文件写入与编辑的折叠栏显示增删行数，和展开的 Diff 共用一次预览计算。参数流按 75ms 合并，结束立即采用实际执行统计；读取引用、行范围和批量步骤均可预览，旧文不可用时删除数显示待确认，不能伪装成已写入。折叠时释放 Diff 轨道实例，后台视图停止预览解析，长文件继续窗口化渲染。
-
-Markdown 正文行距为 1.9，段落、标题、引用和列表分别设置留白；流式分块之间显式保留同样的段落节奏，空白块不额外占位。工具轨迹与原生思考的宽度为正文的 96%，窄屏恢复完整宽度；主题继续复用现有颜色令牌。
-
-### 8.4 性能与UX不变量
-
-Surface 协议处理保持生成代次、帧序号与提交状态一致。工具与审批节点在恢复时沿用稳定身份。未收到 `commit/done` 的流标记为截断，保留恢复所需的原始记录。
+Surface 协议处理保持 `generation`、帧序号 `sequence` 与提交状态一致；工具与审批节点恢复沿用稳定身份。缺少 `commit / done` 结束标记的流标记为截断并保留恢复所需的原始记录。
 
 ### 8.5 工作区焦点与材料展示
 
-工作区 Tab 必须等真实 Thread 就绪后再创建文件树与终端会话。切换 Agent 或 Thread 时清除终端引用和显式选区，同时保护未保存的编辑器缓冲。“本轮材料”只控制下一次请求，展示实际附带的文件、选区和终端。近期工具结果由统一上下文预算自动管理，不提供独立材料列表或手动材料管理入口；诊断详情可通过 Context Manifest 查看本轮采用和预算降级情况。
+工作区 Tab 等待真实 Thread 就绪后创建文件树与终端会话；切换 Agent 或 Thread 时清除终端引用与显式选区并保护未保存编辑器缓冲。「本轮材料」展示下一次请求将附带的文件、选区与终端；近期工具结果由统一上下文预算自动管理，不另设手动材料入口，具体裁剪与采用情况可在 Context Manifest 查看。
 
 ---
 
 ## 9. Electron 应用标签宿主
 
-Electron 主窗口顶部使用 `DesktopTabBar`，固定首页承载原有综合面板。新标签页通过 `DesktopNewTab` 提供网址搜索、应用入口和工作区快捷入口。浏览器与独立 Web 子应用由主进程 `DesktopTabManager` 使用 `WebContentsView` 承载，前端通过 `useDesktopTabs` 投影带 Revision 的标签快照。
+Electron 主窗口顶部使用 `DesktopTabBar`，固定首页承载原综合面板，`DesktopNewTab` 提供网址搜索、应用与工作区快捷入口；浏览器与独立 Web 子应用由主进程 `DesktopTabManager` 基于 `WebContentsView` 托管，前端通过 `useDesktopTabs` 投影带 Revision 的标签快照：
 
-- 主进程持有标签、原生视图、可见性与关闭流程；前端持有新标签页输入和布局测量。
-- 切换标签保留页面；关闭标签释放其 `webContents`，不停止 Arca Host 或其他后台任务。
-- 用户浏览器标签不参与 Agent 临时页面的空闲回收；用户活动标签与 Agent 操作目标分别维护。
-- 主题、更新中心与系统窗口控制属于外壳；应用内的重复窗口控制在嵌入模式下隐藏。
-- Arca 使用受限 preload，通过草稿状态上报保护关闭流程；外部网页不加载系统 preload。
-- 全局对话框可见时隐藏原生子视图，关闭对话框后恢复活动标签；尺寸由布局测量与窗口缩放共同确定。
-- 浏览器部署继续使用原有综合面板，Electron 专属标签能力不引入前端 Electron 依赖。
+- 主进程持有标签、原生视图、可见性与关闭流程，前端持有新标签页输入与布局测量（浏览器部署保持原综合面板，不引入前端 Electron 依赖）。
+- 切换标签保留页面，关闭标签释放 `webContents` 而不终止 Arca Host 等后台任务；用户浏览器标签独立于 Agent 临时页面空闲回收，各自维护活动目标。
+- 外壳负责主题、更新中心与系统窗口控制（嵌入模式下隐藏子应用内重复窗口控制）；Arca 使用受限 preload 上报草稿状态以保护关闭流程，外部网页不挂载系统 preload；全局对话框可见时隐藏原生子视图，关闭后按最新布局尺寸恢复。
+- 对话容器通过 `BrowserObserver.vue` 呈现 Agent 浏览器只读旁观小窗（位置与尺寸由前端维护，仅调用发现与取帧接口，收起或不可见时停止取帧，规则见 [A04](./A04_DEPLOYMENT.md#只读旁观画面)）。
+- 侧栏移除独立应用分组；社交配置并入系统设置；Arca 的运行、连接与诊断由其自身「设置 → 连接与运行」承载（Electron 从新标签页进入，浏览器从状态栏应用入口进入，Host 离线仍可进入连接设置）。
 
-对话容器通过 `BrowserObserver.vue` 展示 Agent 浏览器的只读旁观小窗，展示位置和尺寸全部由前端维护。组件只调用会话发现与取帧 API，不挂载网页、不传递输入或视口尺寸；收起及页面不可见时停止取帧。采集、权限、会话隔离与失效规则统一见 [部署说明：只读旁观画面](A04_DEPLOYMENT.md#只读旁观画面)。
-
-侧栏不再包含应用分组；社交配置归入“设置”。Arca 的运行、连接和诊断界面由 Arca 自身的“设置 → 连接与运行”承载，不再注册为综合面板 Tab。Electron 从新标签页打开 Arca，浏览器部署从状态栏应用入口打开。Host 离线时仍可进入 Arca 的连接设置。
+---
 
 ## 10. 桌宠 HUD 与主应用对话
 
-Pet3DView 是角色的轻量交互面，不承载完整对话历史。空闲只保留菜单入口，悬停后提供“对话 / 语音 / 互动 / 更多”；触碰反应、语音状态、字幕与需要处理的事项分别展示。完整正文保留在主应用同一 Thread，通过 agentId/threadId/messageId 定位。旧统一大气泡路径已移除。
+`Pet3DView` 是角色的轻量交互面（不承载完整历史，已移除旧统一大气泡路径）：空闲仅留菜单入口，悬停展示「对话 / 语音 / 互动 / 更多」，触碰反应、语音状态、字幕与待办分别独立展示；完整正文保存在主应用同一 Thread，通过 `agentId / threadId / messageId` 定位。
 
-语音设置由 Electron 主进程持有，Windows 全局 PTT 支持侧键与按下/松开状态。麦克风预先准备，关闭、取消与权限迟到有明确的资源边界。TTS 只读取独立 spokenReply，缺少口语答复时不得回退正文。
+语音设置由 Electron 主进程持有，Windows 全局 PTT 支持鼠标侧键与按下／松开状态，麦克风预先准备并具备关闭、取消与延迟授权边界；TTS 仅读取独立 `spokenReply` 通道，缺少口语答复时不回退朗读正文。
 
-## 11. 个人与外观整页草稿
+---
 
-`UserSettingsTab`（设置中心「个人与外观」）持有用户信息、语言、外观、健全模式、壁纸与感官动效的统一草稿；助手回复预填充与动态填充深度已拆入 `PromptManagementTab` 的「回复策略」（`PromptReplyStrategyPanel.vue`）子页维护。选择项与开关立即提交，文本编辑只修改草稿，附近的保存按钮提交整页；旧的可选自动保存开关不再控制这套固定交互。
+## 11. 个人与外观、桌面感知及权限设置
 
-`useSystemSettingsPage` 通过页面作用域收集各区域快照。每次点击固定当时的值，KV 配置批量写入，背景、天气及设备操作沿同一队列执行，避免请求乱序。背景材质滑块在调整结束时保存；天气文本也参与其他入口的保存，头像则在确认裁切后上传。子组件离开该页面时仍可保持各自原有行为。
+### 11.1 个人与外观整页草稿
 
-未读取成功的配置不能以默认值提交。保存失败保留草稿，重试重新收集整页；后续任意保存都会按顺序继续未完成的设备或资源操作，已成功的操作不重复执行。刷新不会覆盖已有文本草稿。不同服务与设备接口并非跨端原子事务，任一部分失败时显示失败并允许重试。
+- **页面分工**：`UserSettingsTab`（「个人与外观」）管理用户信息、语言、外观、健全模式、壁纸与感官动效统一草稿；助手回复预填充与动态填充深度拆分至 `PromptManagementTab` 的「回复策略」（`PromptReplyStrategyPanel.vue`）。开关与选项立即提交，文本改动进入草稿由保存按钮整页提交（移除旧可选自动保存开关）。
+- **统一提交队列**（`useSystemSettingsPage`）：按页面作用域收集快照，每次点击固定当前值——KV 配置批量写入，背景、天气与设备操作按同一队列顺序执行以防乱序；背景材质滑块于调整结束时保存，天气文本参与保存，头像在确认裁切后上传。未成功读取的配置不以默认值回填覆盖；部分失败保留草稿供重试，后续保存仅继续尚未完成的设备/资源步骤而不重复执行已成功部分（刷新不丢失未保存文本草稿）。
 
-### 桌面感知、权限与独立面板
+### 11.2 桌面感知、权限与独立面板
 
-主窗口按心智模型将原桌面与家拆分为三处：共享空间（置物架与地点记忆）归入 `CompanionsTab.vue`，桌宠快捷键与桌面感知归入设置中心「感知与桌宠」（`DesktopPerceptionSettingsTab.vue`，`perception_pet`），桌面操作开关、内置／追加保护名单、文件保护限额与授权记录归入设置中心「桌面权限与安全」（`DesktopSecuritySettingsTab.vue`，`desktop_security`）。状态栏感知卡片支持就地启停感知，点击设置或权限入口时由 `MainView` 直接打开设置中心 `perception_pet` 或 `desktop_security`（仅在 `desktop_home` 已摘出为独立面板时通过 `revealPerceptionSettings()` 广播定位）。
+- **三处拆分**：主窗口将原桌面与家拆分为共享空间（归入 `CompanionsTab.vue`）、桌宠快捷键与感知（设置中心 `DesktopPerceptionSettingsTab.vue`，`perception_pet`）与桌面权限安全（`DesktopSecuritySettingsTab.vue`，`desktop_security`）；状态栏感知卡片支持就地启停并由 `MainView` 直达对应设置页（独立面板摘出时经 `revealPerceptionSettings()` 定位）。
+- **独立面板同步**：`DesktopHomeSettings.vue` 注册为 `desktop_home` 承接 Electron 摘出面板窗口（`#/panel/desktop_home`），各子分区通过 `v-if` 按需挂载，角色与 Thread 选择器由共享空间与授权记录共用；`usePerception` 在订阅期间通过同源 `BroadcastChannel` 传递跳转请求，最后一个订阅者卸载时关闭通道。桌面操作总开关与停止快捷键走 `DesktopControlSettings` 即时保存，原生设备设置走 IPC，后端文件保护提供保存与重置；浏览器端只呈现共享空间、授权记录与文件保护（详细契约见 [B02](./B02_DESKTOP_AUTOMATION.md)）。
 
-`DesktopHomeSettings.vue` 继续通过 `tabRegistry` 注册为 `desktop_home` 以承载已摘出的 Electron 独立面板窗口（`#/panel/desktop_home`），各子分区均通过 `v-if` 按需挂载，不再后台驻留隐藏实例。角色与 Thread 范围选择器由共享空间和授权记录共用。`usePerception` 在订阅期间通过同源 `BroadcastChannel` 传递分区跳转请求，使已摘出的面板也能切到感知分区，最后一个订阅者卸载时关闭通道。
-
-桌面操作开关与停止快捷键使用 `DesktopControlSettings` 的即时保存路径，原生设备设置通过各自 IPC 提交。后端文件保护保留明确的保存与重置操作。浏览器仅呈现共享空间、授权记录和后端文件保护分区。各数据来源与权限约束见 [桌面自动化](B02_DESKTOP_AUTOMATION.md)。
+---
 
 ## 12. 内容区宽度与紧凑工作台
 
-主应用的 `.main-content` 是 `app-content` 内联尺寸容器。角色管理、已安装拓展与备份页的布局断点按此容器计算，不能把窗口宽度当成减去导航栏后的可用宽度；适配规则集中于 `assets/responsive-pages.css`。角色图鉴在窄内容区将角色列表改为横向条目、档案改为下方工作区，保留档案抽屉入口。
-
-角色图鉴左栏将标题、数量与刷新组织为同一标题行，`AgentCardTransfer.vue` 提供紧凑的角色卡工具行。导入按钮、导出按钮组、数量角标、刷新与新增入口显式使用直角边框。导入按钮调用文件选择，PNG、ZIP 格式按钮直接导出当前角色，拖放与批量导入预览共用原有处理入口。未保存修改时禁用导入导出，并用同一说明行提示保存。窄内容区将工具行放在横向角色列表上方，隐藏常驻拖放说明，动作的完整名称保留在悬停提示与无障碍标签中。
-
-工作区的 `useWorkspaceLayout` 用 ResizeObserver 读取自身宽度。可用宽度不超过 1000px 时启用局部紧凑模式，初次切入收起两侧栏；用户展开资源或协作栏时互斥显示，并提供遮罩和 Escape 关闭。该模式不更改 Electron 全局的移动布局标记，宽窗口仍保留三栏与拖动调宽。窗口宽度媒体查询不得在此模式之外将已展开侧栏暗中改成悬浮层。
-
-启动器将未配置模型显示为警告，但允许进入应用；模型列表读取失败显示检查未完成，不当作未配置。检测逻辑与固定状态文案位于 `composables/launcher/launcherChecks.ts`，检测卡片不显示原始错误正文。
-
-_本文档由 Carola 整理，适用于 infOS-TS 前端架构规范。_
+- **容器断点**：主应用 `.main-content` 为 `app-content` 内联尺寸容器，角色管理、已安装扩展与备份页的布局断点（集中于 `assets/responsive-pages.css`）均依据此容器宽度计算；角色图鉴在窄内容区将列表切换为横向条目、档案置于下方工作区并保留抽屉入口。
+- **角色卡工具行**（`AgentCardTransfer.vue`）：左栏标题、数量与刷新合为一行；导入按钮、PNG/ZIP 导出按钮组、数量角标、刷新与新增按钮采用显式直角边框（共用拖放与批量导入预览，有未保存修改时禁用导入导出并给出提示行）。窄内容区将工具行移至横向列表上方、隐藏常驻拖放说明并将完整动作名保留在 `title` 与无障碍标签中。
+- **工作区局部紧凑模式**（`useWorkspaceLayout`）：通过 `ResizeObserver` 监听工作区自身可用宽度，`≤ 1000px` 时进入局部紧凑模式并初次收起两侧栏，展开资源或协作栏时互斥呈现并提供遮罩与 Escape 关闭；该模式不修改 Electron 全局移动布局标记，宽窗口继续保留三栏与拖拽调宽。
+- **启动器状态检测**（`composables/launcher/launcherChecks.ts`）：未配置模型显示警告并允许进入应用；模型列表读取失败展示检查未完成状态（不混作未配置，卡片不暴露原始错误正文）。

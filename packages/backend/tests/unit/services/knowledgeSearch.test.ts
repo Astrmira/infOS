@@ -79,6 +79,7 @@ async function fixture(
     return { document, part }
   })
   const payloads = new Map<number, Record<string, unknown>>()
+  const indexedVectors = new Map<number, number[]>()
   // 数据库版本与索引快照独立，不能靠共享对象让旧结果自动消失。
   const versions = new Map<string, { revision: number; status: string }>(
     entries.map(({ document }) => [
@@ -93,8 +94,10 @@ async function fixture(
     allNodeIds: () => [...payloads.keys()],
     contains: (id: number) => payloads.has(id),
     delete: (id: number) => payloads.delete(id),
-    upsertWithId: (id: number, _vector: number[], payload: Record<string, unknown>) =>
-      payloads.set(id, payload),
+    upsertWithId: (id: number, vector: number[], payload: Record<string, unknown>) => {
+      indexedVectors.set(id, [...vector])
+      payloads.set(id, payload)
+    },
     indexText: vi.fn(),
     buildTextIndex: vi.fn(),
     flush: vi.fn(),
@@ -109,6 +112,12 @@ async function fixture(
   }
   const repo = {
     readyParts: () => entries,
+    readyVersions: () => new Map([...versions].filter(([, value]) => value.status === 'ready').map(([id, value]) => [id, value.revision])),
+    get: (id: string) => {
+      const document = entries.find((entry) => entry.document.id === id)?.document
+      const version = versions.get(id)
+      return document && version ? { ...document, ...version } : undefined
+    },
     version: (id: string) => versions.get(id),
     generation: () => 'a'.repeat(64),
     partInfo: (part: KnowledgePartRow) => ({
@@ -131,10 +140,20 @@ async function fixture(
     directory,
   )
   index.rebuild()
-  return { index, versions, embedding, store }
+  return { index, versions, embedding, store, entries, indexedVectors }
 }
 
 describe('知识检索与原文展开', () => {
+  it('同版本重新向量化后发布新向量，原文按字符位置正确展开', async () => {
+    const { index, entries, indexedVectors } = await fixture(['🎀中文原文😀。'], { vectors: true })
+    entries[0]!.part.embeddingJson = '[0,1]'
+    index.rebuild()
+    expect(indexedVectors.get(1)).toEqual([0, 1])
+    const result = await index.search({ partIds: ['1'], expand: true, offset: 2 })
+    expect(result.items[0]?.content).toBe('中文原文😀。')
+    expect(result.items[0]?.contentOffset).toBe(2)
+  })
+
   it('多路召回去重后最多返回20项，默认只有摘要和原文节选', async () => {
     const ids = Array.from({ length: 30 }, (_, i) => i + 1)
     const { index } = await fixture(

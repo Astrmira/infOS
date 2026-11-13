@@ -13,9 +13,9 @@ Content-Type: application/json
 {"code":"配对码","name":"PeroperoChat 手机","remember":true,"credentialMode":"bearer"}
 ```
 
-成功响应的 `data` 包含 `{deviceId, expiresAt, token}`，其中授权 `expiresAt` 为毫秒时间戳。原生端把这份**设备令牌**存进安全存储，界面和后台服务复用它；后续 HTTP、WebSocket 握手携带 `Authorization: Bearer <token>`。不要分别配对两次，不要把实例管理令牌当手机设备令牌。默认浏览器配对仍只写 HttpOnly Cookie，不回传 token。`/login` 同样支持显式 `credentialMode`。
+成功响应的 `data` 包含 `{deviceId, expiresAt, token}`，其中授权 `expiresAt` 为毫秒时间戳。原生端将此**设备令牌**写入安全存储，界面和后台服务共用同一令牌；后续 HTTP、WebSocket 握手携带 `Authorization: Bearer <token>`（区别于仅用于实例管理的管理员令牌，避免同一台手机重复配对）。默认浏览器配对仅写 `HttpOnly` Cookie 而不回传 `token`；`/login` 同样支持显式 `credentialMode`。
 
-原生端不依赖 WebView 与 Service 共享 Cookie，不把 token 放进日志或通知跳转参数。`expiresAt` 到期需要重新授权；撤销设备、退出登录会使对应 WebSocket 失效。临时切换独立模式只断开订阅，**不调用 `/logout`**。
+原生端独立于 WebView Cookie 存储，且不在日志或通知跳转参数中暴露 `token`。`expiresAt` 到期需重新授权；撤销设备或退出登录会使对应 WebSocket 失效。临时切换独立模式时仅断开订阅，**不调用 `/logout`**。
 
 ## 2. 轻量连接
 
@@ -37,15 +37,15 @@ Content-Type: application/json
 }
 ```
 
-`hello.payload.token` 可省略。服务器优先使用 HTTP 升级时验证的设备身份，该旧字段只用于未进行传输层认证的兼容连接；不会再拿设备令牌与实例管理令牌比较。`deviceId` 由服务器确定，客户端不能指定。
+`hello.payload.token` 可省略。服务器优先使用 HTTP 升级时验证的设备身份，该兼容字段仅服务于未做传输层认证的连接，且仅校验设备令牌。`deviceId` 始终由服务器分配与绑定。
 
-收到 `hello_ack` 后检查 `features` 包含 `notifications-v1`，并核对 `deviceId`。此连接只允许 `gateway.notifications.pull`、`gateway.notifications.receipt`、`gateway.notifications.presence` 与心跳，不注册能力 Host，不抢占其他界面的 Node Session 或 Input Seat。其他业务请求返回 `GATEWAY_NOTIFICATION_ONLY`。
+收到 `hello_ack` 后检查 `features` 包含 `notifications-v1`，并核对 `deviceId`。此连接仅开放 `gateway.notifications.pull`、`gateway.notifications.receipt`、`gateway.notifications.presence` 与心跳，不注册能力 Host，也不占用其他界面的 Node Session 或 Input Seat；其他业务请求返回 `GATEWAY_NOTIFICATION_ONLY`。
 
-每 25～30 秒发送 `type: "heartbeat"`、空 payload，收到 `heartbeat_ack`。超过 90 秒无活动会断开。原生端需设握手和心跳响应超时，并使用带抖动、有限上限的断线退避；网络恢复时立即重试。认证失败或授权撤销需提示重新授权，不能无限重试无效凭据。
+每 25～30 秒发送 `type: "heartbeat"`、空 payload，收到 `heartbeat_ack`。超过 90 秒无活动服务端会断开连接。原生端配置握手与心跳响应超时，采用带抖动且有上限的断线退避策略并在网络恢复时立即重连；遇认证失败或授权撤销则停止重试无效凭据并提示用户重新授权。
 
 ## 3. 实时提示与补收
 
-所有 RPC 沿用上面的信封，把 `type` 改成 `request`，payload 使用下表；响应 `type: "response"`、`id` 与请求一致，数据直接在 payload 中。
+所有 RPC 沿用上述信封，将 `type` 设为 `request`，`payload` 见下表；响应 `type: "response"`、`id` 与请求一致，数据位于 `payload` 中。
 
 | 操作 | payload |
 |---|---|
@@ -55,11 +55,11 @@ Content-Type: application/json
 | 实际已读 | 同上，`state: "read"` |
 | 前台状态 | `{"action":"gateway.notifications.presence","foreground":true,"threadId":"正在显示的会话"}` |
 
-`hello_ack`、`heartbeat_ack` 都包含 `latestSequence`；新通知产生时另外发送 `push`，payload 为 `{"action":"notification_available","latestSequence":123}`。这些是补收提示，不能直接拿来推进客户端游标。
+`hello_ack`、`heartbeat_ack` 均包含 `latestSequence`；新通知产生时另发 `push`，`payload` 为 `{"action":"notification_available","latestSequence":123}`。上述序号仅作为服务端水位提示（触发拉取），客户端分页游标仍由 `pull` 响应维护。
 
-每次成功握手、网络恢复，及收到新序号提示后，串行拉取分页。即使提示丢失，下一次握手或心跳也能发现落后。第一页 `afterSequence` 使用本地保存的位置；首次使用零。`limit` 为 1～100。
+每次成功握手、网络恢复以及收到新序号提示后，串行拉取分页；若中途提示丢失，下一次握手或心跳也会发现游标落后。第一页 `afterSequence` 使用本地持久化游标（首次为 `0`），`limit` 取值范围 `1～100`。
 
-补收正在进行时仍需记下新提示的最大水位；本轮结束后若游标落后，继续补收，不能因当前忙碌而丢弃提示。
+补收进行中收到更高水位提示时记录最新目标水位；本轮完成后若本地游标仍落后则继续补收，确保不遗漏新通知。
 
 分页响应：
 
@@ -86,36 +86,36 @@ Content-Type: application/json
 }
 ```
 
-分页覆盖此授权设备可访问的所有角色，不能按当前选中角色另建或跳过这个游标。数据库中的序号跨重启保留，与普通 Gateway 内存事件游标无关。
+分页游标与序号覆盖该授权设备可访问的全部角色，跨重启持久化于数据库，独立于普通 Gateway 内存事件游标及当前选中角色。
 
 **本地事务顺序：**
 
-1. 以服务器实例、设备身份、`notificationId + revision` 去重，将整页通知和 `nextSequence` 一起持久化到本地收件箱。
-2. 本地事务成功后再发送 `received` 回执。不要因为刚收到了网络包就确认。
-3. 按本地未展示队列调用系统通知；展示成功后持久化展示标记，再发送 `presented`。
-4. `hasMore` 为 true 时继续拉下一页；空通知页也要保存返回的 `nextSequence`。不要把 `latestSequence` 当下一页位置。
+1. 以服务器实例、设备身份、`notificationId + revision` 去重，将整页通知与 `nextSequence` 一起持久化到本地收件箱。
+2. 本地事务提交成功后再发送 `received` 回执（确保落盘后才确认接收）。
+3. 按本地未展示队列触发系统通知；展示成功后持久化展示标记，再发送 `presented`。
+4. 即使返回空通知页也持久化 `nextSequence` 作为下次拉取起点，并在 `hasMore` 为 `true` 时基于 `nextSequence` 继续翻页（而非跳用 `latestSequence`）。
 
-每批回执最多 100 条。成功响应 `{accepted}` 后可移除这批待发回执；过时修订或已删除项目会被忽略，不需要无限重试。失败则保留并重试。重连后从零拉取也会排除该设备已确认收到的项目，因此**接收回执提交后，本地收件箱承担尚未展示通知的恢复责任**。每台设备只启动一个原生消费服务，界面不再启动第二套系统通知消费循环。
+每批回执上限 100 条。服务端返回 `{accepted}` 后移除该批待发回执；过时修订或已删除项目会被忽略而无需继续重试，失败则保留重试。重连后即使从零拉取也会自动过滤该设备已确认 `received` 的条目，**提交 `received` 回执后即由本地收件箱负责尚未展示通知的恢复**。每台设备仅运行一套原生通知消费服务，避免前端或界面再起第二套消费循环。
 
-数据库恢复到旧快照，导致客户端游标超过服务器序号时，返回 `resetRequired: true`。客户端将游标复位为零重新补收，保留本地去重记录。若用户主动清空本地通知库，也应重新配对为新设备，避免沿用已确认收到的旧设备状态。
+当数据库恢复到旧快照导致客户端游标高于服务器序号时，服务端返回 `resetRequired: true`；客户端保留本地去重记录并将游标复位为 `0` 重新补收。若用户主动清空本地通知库，建议重新配对为新设备以避免受旧设备 `received` 记录过滤。
 
 ## 4. 收到、展示与已读
 
-- `received`：该设备已安全保存通知，不表示用户阅读。
-- `presented`：该设备已展示通知，不影响其他设备的待收记录。
-- `read`：用户实际查看后提交，将通知标为全局已读，停止其他设备尚未发生的补收；不替代任务中心自身的已读操作。
+- `received`：该设备已安全落盘通知，仅代表投递确认而非已读。
+- `presented`：该设备已触发系统通知展示，与其他设备的待收记录互不影响。
+- `read`：用户实际查看后提交，将通知标记为全局已读并停止其他设备后续补收（独立于任务中心自身的已读状态）。
 
-旧桌面 `gateway.notifications.ack` 保留原请求格式，认证设备的回执改为该设备的 `presented`。不会再因为电脑展示过 Toast，手机就漏收通知。客户端已经展示的系统通知由客户端管理；本协议不承诺跨设备即时撤下已展示的系统通知。
+旧桌面 `gateway.notifications.ack` 保留原有请求格式，认证设备的回执在服务端记录为该设备的 `presented`（各端独立跟踪展示状态）。已弹出的系统通知生命周期由本地客户端管理，协议层面不支持跨设备撤回已展示的系统通知。
 
 ## 5. 前台静默与导航
 
-界面与后台复用同一设备身份，但各自使用独立连接标识。界面打开目标会话时发送 `presence`，每 30 秒及会话切换时更新；退后台发送 `foreground:false`。前台声明 90 秒失效，断线也失效，普通心跳不会延长它。原生 Service 也可代界面发送声明，但不能在界面退出后继续声明前台。
+界面与后台复用同一设备身份，并使用各自独立的连接标识。界面打开目标会话时发送 `presence`，每 30 秒及会话切换时更新；退后台发送 `foreground:false`。前台声明 90 秒或断线后自动失效，普通心跳不续期。原生 Service 可代界面发送声明，并在界面退出后停止声明前台状态。
 
-同设备正在显示目标会话时，分页条目的 `presentation` 为 `silent`：仍存收件箱并确认接收，只跳过系统横幅。其余情况为 `notify`；原生端展示前再检查一次实际界面状态和 `expiresAt`，避免网络在途时用户已切到该会话。静默状态不能视作实际已读。
+同设备正在显示目标会话时，分页条目的 `presentation` 为 `silent`（正常落盘并提交 `received` 回执，但跳过系统横幅，仍不标记为 `read`）；其余情况为 `notify`。原生端展示前复核当前实际界面状态与 `expiresAt`，防止网络传输途中用户已切至对应会话。
 
-每台手机只选一个前台状态发布者，推荐由 Service 接收界面生命周期事件后代发；不要由界面和后台分别维持相互矛盾的前台声明。`presentation` 是服务器租约推算的展示提示，原生端已知的实际界面状态优先。
+每台设备指定单一前台状态发布者（推荐由 Service 统一接收界面生命周期事件并上报），避免多方同时发冲突的 `presence`；若服务器根据租约推算的 `presentation` 与客户端实时界面状态不一致，以原生端当前真实界面状态为准。
 
-`target.kind` 支持 `conversation`、`task`、`reminder`、`application`，按实际存在的 `threadId/messageId/taskId/scheduleId/applicationCallId` 导航。点击通知后先核对服务器与当前模式，按已有 HTTP 接口重新读取目标；会话已删除、消息已撤回或任务不存在时，显示简短提示并返回会话列表／任务中心，不能创建幽灵消息或自动续接任务。
+`target.kind` 支持 `conversation`、`task`、`reminder`、`application`，按实际存在的 `threadId/messageId/taskId/scheduleId/applicationCallId` 导航。点击通知后核对服务器与当前模式，调用 HTTP 接口读取目标详情；若会话已删除、消息已撤回或任务不存在，仅显示简短提示并退回会话列表或任务中心。
 
 ## 6. 来源、过期与模式隔离
 
@@ -131,6 +131,6 @@ Content-Type: application/json
 
 ## 维护入口与协议验证
 
-服务端通知持久化入口为 `packages/backend/src/repositories/durableNotification.repo.ts`，设备目标筛选位于 `services/gateway/notificationTargetFilter.ts`；Web 客户端补收逻辑为 `packages/frontend/src/composables/main/useRemoteNotifications.ts`。迁移 `0022_device_notifications.sql` 定义对应持久结构。
+服务端通知持久化入口为 `packages/backend/src/repositories/durableNotification.repo.ts`，设备目标筛选位于 `packages/backend/src/services/gateway/notificationTargetFilter.ts`；Web 客户端补收逻辑为 `packages/frontend/src/composables/main/useRemoteNotifications.ts`。迁移 `packages/backend/src/database/migrations/0022_device_notifications.sql` 定义对应持久结构。
 
-修改协议时围绕设备隔离、游标分页、重复回执、失效连接、前台状态过期与配对撤销建立回归；服务端模拟不能代替移动端对系统后台存活和通知权限的验证。故障定位依次检查持久通知、目标设备、补收游标和 received/displayed/read 回执，不能将服务端已生成当作手机已展示。
+协议回归验证围绕设备隔离、游标分页、重复回执、失效连接、前台状态过期与配对撤销展开（移动端系统后台保活与通知权限需结合移动端实机环境验证）。故障排查依次核对持久通知记录、目标设备筛选、补收游标与 `received`/`presented`/`read` 回执状态，区分服务端生成、投递确认与客户端实际展示三个阶段。

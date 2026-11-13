@@ -1,79 +1,77 @@
 # 运行时与依赖安全基线
 
-本文说明运行时选择、依赖审计和发行门禁的维护契约。版本下限与公告来源由策略文件维护，验证结果留在 CI 与审计产物中；文档不凭历史通过记录宣称当前依赖安全。
+> **适用范围**：客户端凭据生命周期、Node 运行时版本门禁、依赖漏洞审计回补与原生依赖发行校验
 
-## 本机客户端凭据与请求恢复
+版本下限与安全公告来源统一由策略文件维护，每次审核与测试结果留存于 CI 与审计产物中。
 
-Electron 主进程的 `clientCredential.ts` 读取当前数据目录的 `client-access.json`，正常读取复用一秒。仅对文件占用等临时 I/O 错误，最多复用最近五秒内成功读取的凭据；文件删除、内容损坏或切换数据目录不沿用缓存。服务端仍逐请求验证凭据，缓存不延长其有效期，也不绕过撤销。远程连接只使用已选服务器凭据，不回退成本机身份。
+---
 
-可信主应用的媒体请求拦截器只补齐缺失的非空 Authorization，不覆盖 fetch 已明确携带的身份。凭据 IPC 仅向可信窗口的主帧开放。原始凭据不写入日志。
+## 1. 本机客户端凭据与请求恢复
 
-前端仅给当前业务服务端自动附加凭据。发生 401 时，本机 GET/HEAD 可强制重读凭据；只有读到了不同的非空值才重试一次。写操作不自动重放，同一失效凭据不重复重试，旧服务器或旧凭据请求的迟到结果不触发当前身份退出。
+- **短时读取复用与容错**：Electron 主进程 `clientCredential.ts` 读取当前数据目录 `client-access.json`：正常读取结果缓存复用 `1` 秒；遇到文件占用等临时 I/O 异常时最多复用最近 `5` 秒内成功读取的凭据，文件被删、损坏或切换数据目录时立即清除缓存。服务端仍逐请求验证凭据有效性，远程连接仅使用显式选定的服务器凭据而不回退至本机身份。
+- **凭据发送与 401 处理**：可信主应用媒体拦截器仅补充缺失的非空 `Authorization`（不覆盖显式携带的身份），凭据 IPC 仅向可信窗口主帧开放，原始凭据不写入日志。前端仅向当前业务服务端附加凭据；遇 `401` 时本机 `GET / HEAD` 请求强制重读一次凭据，仅在取得不同的非空值时重试一次（写操作不重放，失效凭据不重复试，旧服务或旧凭据的迟到响应不触发当前登录退出）。
+- **队列轮询鉴权收敛**：队列轮询未获本机凭据就绪时暂停业务读取；收到 `401` 后切换为间隔查询公开身份状态，确认就绪后再恢复队列读取，避免循环产生无效 `401`。
 
-队列轮询没有特殊的免鉴权入口。本机凭据尚未就绪时暂停业务读取；收到 401 后改为有间隔地查询公开身份状态，确认恢复后再读取队列，不持续制造相同的业务 401。
+---
 
-## 两类 Node 运行时
+## 2. Node 运行时门禁与发行检查链
+
+### 2.1 两类运行时判定边界
 
 | 执行路径 | 实际运行时 | 判定依据 |
 | --- | --- | --- |
 | 源码后端、Linux 服务、Docker、CI 脚本 | 独立 Node.js | `nodeMinimums` |
-| Electron 内置 Daemon 的 Node 模式 | Electron 内嵌 Node.js | `electronEmbeddedNodeMinimums` 及 Electron 基线 |
+| Electron 内置 Daemon 的 Node 模式 | Electron 内嵌 Node.js | `electronEmbeddedNodeMinimums` 与 Electron 基线 |
 
-策略入口为 `scripts/runtime-security-policy.json`，实现入口为 `scripts/runtime-security.cjs`。独立 Node 与 Electron 内嵌 Node 分开判断，未知主版本与预发布版本按门禁规则拒绝。兼容放行不能表述为相应安全漏洞已修复；内嵌版本低于独立安全下限时保留差异警告，不能用该兼容规则放宽 Docker 或 Linux 的独立 Node 要求。
+策略清单与实现分别为 `scripts/runtime-security-policy.json` 与 `scripts/runtime-security.cjs`：独立 Node 与内嵌 Node 分别核对主版本，未声明主版本及预发布版本默认拒绝；允许兼容例外时保留差异告警而不放宽独立 Node（Docker / Linux）门槛。升级宿主机 Node 不改变内置 Daemon 运行时，核验统一以目标可执行文件自身输出的 `process.versions` 为准。
 
-Electron 的开发依赖、锁文件和发行配置必须一致。升级宿主 Node 不会改变内置 Daemon 的内嵌运行时；检查实际可执行文件的 `process.versions`，不能使用构建机 Node 或类型声明代替证据。
+### 2.2 五步发行检查链
 
-## 发行检查链
+1. `security:runtime`：核对 Node、版本清单、锁文件、Electron 配置与 Docker 镜像基线。
+2. `security:electron`：探测本地 Electron 二进制（清理继承的 `NODE_OPTIONS`，不加载应用及用户数据）。
+3. 标签发布流水线在业务构建前强制执行检查（覆盖标准版、Steam 与便携版）。
+4. `scripts/electron-security-before-pack.cjs`：打包入口门禁检查（不可被安装器钩子绕过）。
+5. `scripts/electron-security-after-pack.cjs`：核验最终解包产物的实际运行时版本，防止下载缓存或打包配置漂移。
 
-1. `security:runtime` 核对当前 Node、清单、锁文件、Electron 配置及 Docker 镜像基线。
-2. `security:electron` 探测本地 Electron 二进制。探测清除继承的 `NODE_OPTIONS`，不加载应用或用户数据。
-3. 标签流水线在业务构建前执行检查，标准版、Steam 和便携版遵守同一规则。
-4. `scripts/electron-security-before-pack.cjs` 在打包入口检查；安装器钩子不能绕过该入口。
-5. `scripts/electron-security-after-pack.cjs` 核验最终解包产物的实际版本，避免下载缓存或构建配置导致产物偏离声明。
+变更运行时版本时需同步更新 `.node-version`、根 `package.json`、`pnpm-lock.yaml`、Electron 发行配置、Dockerfile 与工作流，具体版本下限以 `runtime-security-policy.json` 为单一权威。
 
-更新运行时时同时审阅 `.node-version`、根 `package.json`、`pnpm-lock.yaml`、Electron 发行配置、Dockerfile 与工作流。具体下限以策略 JSON 为准，避免在多个文档复制版本数字形成第二权威源。
+---
 
-## 审计与精确回补
+## 3. 依赖审计与精确回补
 
-`scripts/dependency-security.cjs` 调用官方审计端点，保留原始报告并单独记录评估结果。网络失败、不完整报告或缺失证据不能当作零漏洞。入口 `security:audit:raw` 输出原始结果，`security:audit` 进行分类、回补核验和门控。
+- **审计与评估分离**：`scripts/dependency-security.cjs` 调用官方审计端点（`security:audit:raw` 输出原始结果 `TEMP/security-audit/raw.json`，`security:audit` 输出评估分类 `evaluation.json` 并执行门禁）。网络失败、不完整报告或缺失证据直接判定失败。
+- **回补清单绑定**：`scripts/security-backports.json` 将每条精确回补绑定公告号、包名、精确版本、补丁文件、SHA-256 与回归测试；`pnpm.patchedDependencies`、`pnpm-lock.yaml`、实际补丁文件与清单必须完全一致，同包新公告、版本漂移、补丁失效或回归失败均会阻断。上游发布兼容修复后应升级依赖并成套清理补丁与清单项；回补仅抑制已验证行为风险而不改写原始报告记录：
 
-回补清单为 `scripts/security-backports.json`，每项绑定公告、包名、精确版本、补丁文件、SHA-256 与回归测试。pnpm 的 patchedDependencies、锁文件、实际补丁和清单必须一致；同包新公告、其他版本、补丁失效或回归失败仍须阻断。
-
-| 回补对象 | 必须保护的行为 |
+| 回补对象 | 必须保护的安全行为 |
 | --- | --- |
-| http-cache-semantics 的缓存重新验证 | 清零或不可存储的响应不能被客户端 max-stale 重新启用；保留正常公开缓存，覆盖 Cookie、private、no-store、no-cache、Vary 边界 |
-| file-type 的 CommonJS 兼容链 | ASF 子头的整数、最小尺寸和剩余长度合法，解析游标不能因负负载倒退；同时保留合法图片识别与既有 CommonJS API |
+| `http-cache-semantics` 缓存重校验 | 清零或不可存储响应不被客户端 `max-stale` 重新激活；保留正常公开缓存，覆盖 `Cookie`、`private`、`no-store`、`no-cache`、`Vary` 边界 |
+| `file-type` CommonJS 兼容链 | 校验 ASF 子头整数、最小尺寸与剩余长度合法性，防止负负载导致游标倒退，同时保留合法图像识别与 CommonJS API |
 
-回补不改变上游版本号，原始扫描仍可能报告原公告。报告位于 `TEMP/security-audit/raw.json` 与 `evaluation.json`，CI 保存审阅产物；不能称为“上游已修复”或删除原始 finding 来制造清零结果。上游发布兼容修复后，优先升级并成套删除补丁、清单条目和例外核验。
+- **私有工作区 Importer 误报过滤**：针对审计工具将工作区路径末段与应用版本拼成同名 npm 包的误报，评估器仅在同时满足「属于私有包、真实包名不同、版本完全一致、无实际依赖路径、完整锁文件不存在同版本依赖」五项条件时予以识别过滤；混合 Finding 继续保留真实依赖风险（该过滤不影响 Electron 二进制门禁）。
 
-### 私有工作区 importer 误报
+---
 
-审计可能把工作区 importer 路径末段与应用版本组合成同名 npm 包。评估器只有同时满足私有包、真实名称不同、版本完全匹配、无真实依赖路径、完整锁文件不存在同名同版本依赖等条件时，才识别为工作区误报。任一证据缺失按原公告处理；混合 finding 必须保留真实依赖部分。该分类不改变 Electron 二进制门禁。
+## 4. 应用安全边界
 
-## 应用安全边界
+- **主窗口隔离**：固定开启 `sandbox`、`contextIsolation`、`webSecurity`，关闭 Node 集成、`webview` 与混合不安全内容，附加窗口选项禁止覆盖上述安全配置。
+- **桌宠资源协议与 CORS**：仅受理只读请求并核验 Origin；正式 `file` 页面与精确开发来源分别设置 CORS，不关闭 `webSecurity`。
+- **外部浏览器视图**：使用独立内存 Session，默认拒绝浏览器权限请求与权限检查，网页内容不继承宿主权限。
+- **窗口激活**：仅委托客户端 `WindowProvider` 处理，目标名称作为纯数据传递而不拼接进 Shell 或脚本；缺乏提供者、非法目标或激活失败分别返回稳定错误，不降级为本机命令行执行。
+- **剪贴板异步提交**：写入必须 `await` 成功后才向调用方确认。
 
-- 主窗口固定 sandbox、contextIsolation、webSecurity，关闭 Node 集成、webview 与不安全混合内容；额外窗口选项不能覆盖安全设置。
-- 桌宠资源协议只接受只读请求，校验 Origin；正式 file 页面与精确开发来源分别处理 CORS，不能关闭 webSecurity 解决资源加载问题。
-- 外部浏览器使用独立 Session，权限请求与权限检查默认拒绝；网页内容不获得宿主权限。
-- 窗口激活只委托客户端 `WindowProvider`，目标名称按普通数据传递，不拼入 Shell 或脚本。缺少提供者、非法目标和执行失败分别返回稳定错误，不能降级为本机命令执行。
-- 异步剪贴板写入必须等待成功；未完成写入不能提前返回成功。
+软件策略与 OS 隔离详见 [B01](./B01_PRODUCTIVITY_RUNTIME.md)，身份、Capability 与 Realm 授权链见 [M02](./M02_CAPABILITY_GATE.md) 与 [A09](./A09_AIOS_ARCHITECTURE.md)。
 
-生产力运行时的软件策略和 OS 隔离边界见 [B01](./B01_PRODUCTIVITY_RUNTIME.md)；设备身份、Capability 与 Realm 的调用授权见 [M02](./M02_CAPABILITY_GATE.md) 和 [A09](./A09_AIOS_ARCHITECTURE.md)。
+---
 
-## 原生依赖与兼容维护
+## 5. 原生依赖、Koffi 与构建目标边界
 
-仓库通过 npm 接入 TriviumDB、node-pty、better-sqlite3 等原生依赖，不维护这些依赖的 Rust 源码或 Cargo 工程。`scripts/rebuild-daemon-deps.mjs` 按 Electron 声明重建指定 ABI 依赖，`scripts/collect-daemon-deps.mjs` 收集实际运行文件。升级时分别核对 ABI、存储格式、资源路径与目标架构；源码依赖能安装不代表安装包完整。
+- **原生 npm 依赖构建**：TriviumDB、`node-pty`、`better-sqlite3` 等均通过 npm 接入（仓库不维护其 Rust 源码或 Cargo 工程）。`scripts/rebuild-daemon-deps.mjs` 按 Electron 声明重编 ABI，`scripts/collect-daemon-deps.mjs` 收集运行产物；升级时同步核对 ABI、存储格式、资源路径与目标架构。
+- **Windows x64 Koffi 收集与产物 FFI 自检**：Koffi 3 用于全局按住说话、原生窗口图标与透明背景；原生二进制位于 `@koromix/koffi-win32-x64`。公共 `afterPack` 阶段调用 `scripts/electron-native-runtime.cjs` 从 Koffi 作用域解析同版本平台包，将二进制与许可证复制至 `resources/koffi/win32_x64/` 并记录版本、架构与 SHA-256（缺失即中止打包）。同一流水线随后复制最终 Electron 二进制并在独立 Node 模式子进程中从 `app.asar` 入口加载 Koffi、核对目录版本并调用 `user32.GetAsyncKeyState` 验证 Windows FFI（覆盖标准版、Steam 与便携版；实际交互体验另需实机验证）。
+- **透明窗口与前端兼容目标**：Windows 透明窗口通过 Koffi 调用 DWM 仅关闭系统 backdrop（原接口不可用时保持透明配置），不使用易破坏透明合成的 Electron `backgroundMaterial`；维护需检查桌宠、开屏与通知窗的首次显窗与恢复显示。前端语法兼容目标集中定义于 `scripts/vite-browser-compat.ts`，需同时覆盖 `optimizeDeps` 预打包与正式产出（涵盖 Web、Electron、子应用与 Wiki 入口）。
 
-Windows x64 壳层的 Koffi 同时用于全局按住说话、原生窗口图标与透明背景处理。Koffi 3 的原生二进制位于 `@koromix/koffi-win32-x64` 平台包，不能只分发 `koffi` 的 JavaScript 主包。公共 `afterPack` 调用 `scripts/electron-native-runtime.cjs`，从 Koffi 自身的依赖作用域解析同版本平台包，将二进制与许可证复制到上游加载器支持的 `resources/koffi/win32_x64/` 路径，并记录版本、目标架构和 SHA-256。缺少平台包或版本不一致时停止发行，不降级成仅保留功能不可用提示。
+---
 
-同一发行流程使用最终 Electron 可执行文件的副本，在独立子进程的 Node 模式中从 `app.asar` 的公共 Koffi 入口加载模块，核对资源目录和包版本，再调用 `user32.GetAsyncKeyState` 验证 Windows FFI。该检查覆盖标准版、Steam 版和便携版；它验证发行包的模块查找路径、原生模块加载及目标接口调用，不替代桌宠录音、快捷键按下与松开或窗口透明合成的完整运行验证。新增 Electron 平台或架构须同步扩展目标包收集与真实运行验证，不能套用构建机架构。
+## 6. 排查顺序与回归入口
 
-Windows 透明窗口不能通过 Electron `backgroundMaterial`（包括 none）关闭系统背景，该路径可能破坏透明合成。现有实现使用 koffi 调用 DWM 仅关闭系统 backdrop，原生接口不可用时保持透明配置。维护者应检查桌宠、开屏与通知层的首次显示和重新显窗，不能以普通不透明窗口替代验证。
-
-前端语法目标集中于 `scripts/vite-browser-compat.ts`。依赖预打包和正式输出分别使用明确目标，Web、Electron、子应用和 Wiki 入口都须审阅；只改 build.target 不能解决 optimizeDeps 的语法兼容问题，也不能伪造 supported 掩盖编译器限制。
-
-## 维护顺序与故障定位
-
-先确认失败属于版本声明、实际二进制、上游审计、回补证据还是资源收集，再修改对应权威文件。门禁失败应保留真实错误，不跳过检查或把检查对象换成构建机运行时。需要兼容例外时明确范围、保留差异，并记录消除条件。
-
-补丁回归入口由回补 JSON 指定；运行时与审计分类用例分别为 `packages/shared/tests/runtimeSecurity.test.ts`、`dependencySecurity.test.ts`。回归应验证过旧运行时、混入真实漏洞依赖、缺失锁文件和被修改补丁等失败路径。执行任何测试、静态检查或构建前仍遵守根目录 AGENTS.md；具体结果属于执行记录，不写入本文。
+- **排障顺序**：先区分问题归属（版本声明、实际二进制、上游审计、回补证据或原生收集），再定位并修改对应权威清单，保持失败报错完整透传；新增兼容例外时须明确作用域、差异说明与消除条件。
+- **单元测试入口**：回补校验用例位于清单指定文件，运行时门禁与审计分类回归分别位于 `packages/shared/tests/runtimeSecurity.test.ts` 与 `dependencySecurity.test.ts`（涵盖过旧版本、漏洞依赖混入、缺失锁文件与补丁篡改等失败分支）。执行测试或构建指令需遵守仓库根目录 `AGENTS.md`。

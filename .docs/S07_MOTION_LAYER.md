@@ -69,6 +69,6 @@
 
 ## 5. 约束
 
-- 只对 `transform` 和 `opacity` 做动画；不要对 `width`、`height`、`top`、`left`、`margin` 做过渡。
-- 长列表（消息流）不使用 `MotionList`；消息入场只给最后几条播放。
-- 同一区域最多一个持续动画（见 S06 §10.3）。
+- 动效属性限定为 `transform` 和 `opacity`，避免对 `width`、`height`、`top`、`left`、`margin` 做布局过渡。
+- 长列表（消息流）不包裹 `MotionList`；消息入场动效仅作用于末尾数条。
+- 同一区域同一时间仅保留一个持续动画（见 S06 §10.3）。

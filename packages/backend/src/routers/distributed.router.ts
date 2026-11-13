@@ -126,7 +126,7 @@ export function createDistributedRouter(ctx: AppContext) {
       if (signal.aborted) return new Response(null, { status: 499 })
       throw error
     }
-    return new Response(new Uint8Array(bytes), {
+    return new Response(new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), {
       headers: {
         'Content-Type': 'application/vnd.infos.full-sync',
         'Content-Length': String(bytes.length),

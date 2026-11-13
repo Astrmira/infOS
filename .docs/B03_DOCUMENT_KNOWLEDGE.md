@@ -10,7 +10,7 @@
 
 1. 统一 BOM、换行，使用本地 `o200k_base` 计数。
 2. 少于 **10,000 Token**：LLM 整篇输出摘要与关键词，保留一个部分。
-3. **10,000–400,000 Token**：LLM 按语义整理为少量部分，通常 2–8 部分，防御性上限 24 部分。
+3. **10,000–400,000 Token**：LLM 按语义整理为少量部分，通常 2–8 部分，上限 24 部分。
 4. 超过 **400,000 Token**：拒绝入库，提示先手动切分。
 5. 按配置对每部分的**摘要**进行 Embedding；未配置时跳过，失败时保留文本检索能力。
 
@@ -25,6 +25,8 @@
 - `@data/knowledge/knowledge.tdb` 是 BM25 与向量检索的派生索引。
 - `@data/knowledge/sources/<partId>.txt` 是供现有 ripgrep 检索的派生文本。
 - 采用标准 Drizzle 迁移 `0004_document_knowledge`，含 journal 与 snapshot；无新增运行时建表分支。
+
+`KnowledgeIndex` 常驻片段元数据、文档编号与修订、向量摘要指纹和可用标记。索引重建通过 Repository 逐份文档读取原文及向量，完成后释放正文。检索在异步召回前后分别批量读取可见就绪文档的修订，命中候选后按需读取原文，同次请求内复用同文档内容。删除、更新、隐私清理及向量配置切换仍在结果发布前核验，字符游标沿用 JavaScript 的 UTF-16 位置。
 
 整理任务通过 `KernelScheduler` 后台队列执行，串行组织资料，界面关闭不影响整理。状态为待整理、整理中、可检索、失败。原文与各部分只有在整理完成后一起发布。
 
@@ -70,10 +72,10 @@ BM25、摘要向量与正则分别召回，按 RRF 合并排名、去重，过�
 
 ## API
 
-详细端点见 [S02_API_SPEC](./S02_API_SPEC.md#11-文档知识库)。HTTP 检索与 Agent 工具调用复用同一个服务；HTTP 接口使用 camelCase，工具参数使用 manifest 中的 snake_case。
+详细端点见 [S02_API_SPEC](./S02_API_SPEC.md#12-文档知识库)。HTTP 检索与 Agent 工具调用复用同一个服务；HTTP 接口使用 camelCase，工具参数使用 manifest 中的 snake_case。
 
 ## 调用链与维护入口
 
-管理 API 将原件交给 `packages/backend/src/services/knowledge/knowledgeService.ts`，由调度任务整理、校验完整分段并发布可检索版本。手动检索、search_knowledge 和自动召回复用领域服务；ContextCompiler 只消费已发布资料，不承担整理写入。
+管理 API 将原件交给 `packages/backend/src/services/knowledge/knowledgeService.ts`，由调度任务整理、校验完整分段并发布可检索版本。手动检索、`search_knowledge` 和自动召回复用同一领域服务；`ContextCompiler` 仅消费已发布资料，不承担整理写入。
 
-排查未查库时分别检查资料是否可检索、工具引导是否因空库省略、召回开关、实际查询命中和生效提示词。开关关闭不等于禁用主动查询，索引失败也不等于原文丢失。修改发布流程时保护删除/更新后的版本守卫；修改召回时保护 knowledge、facts 与事件记忆三个独立区域及其预算。
+排查未查库时，分别检查资料是否已发布为可检索状态、工具引导是否因空库省略、自动召回开关、实际查询命中与生效提示词。自动召回开关关闭仅取消每轮上下文自动注入，不影响主动调用 `search_knowledge`；派生索引异常时主库原文仍完整保留。修改发布流程时需保护删除/更新后的版本守卫；修改召回时需保护 `knowledge`、`facts` 与事件记忆三个独立区域及其预算。

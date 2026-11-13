@@ -34,4 +34,4 @@ PDF 渲染与画布生命周期依据 [PDF.js 官方示例](https://mozilla.gith
 
 入口为 `packages/frontend/src/components/workspace/WorkspaceFilePreview.vue`，PDF、图片与媒体分别由同目录 `WorkspacePdfViewer.vue`、`WorkspaceImageViewer.vue`、`WorkspaceMediaViewer.vue` 承接，类型识别见 `packages/backend/src/services/workspace/workspaceFileType.ts`。
 
-音视频是否可播放取决于客户端编解码器，不能仅凭扩展名承诺支持。PDF 乱码先检查本地字体/CMap 等资源及实际响应，文件切换后旧请求和画布必须释放。预览与工作区写入分离，截断预览不能保存为完整文件；版本与写入契约见 [B01](./B01_PRODUCTIVITY_RUNTIME.md)。
+音视频实际可播放性取决于客户端编解码器支持，扩展名仅作类型识别参考。PDF 乱码先检查本地字体/CMap 等资源及实际响应，文件切换后旧请求和画布同步释放。预览与工作区写入链路分离，分段读取的预览内容仅作只读展示、不直接覆盖源文件；版本与写入契约见 [B01](./B01_PRODUCTIVITY_RUNTIME.md)。

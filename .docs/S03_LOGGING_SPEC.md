@@ -40,9 +40,7 @@ logger.info(t('logs.memory', 'Agent 八小时补记周期已完成'), { agentId:
 
 ## 2. 前端日志
 
-`packages/frontend/src/lib/logger.ts` 提供 `debug`、`info`、`warn` 和 `error`，并翻译诊断消息。Electron 环境下 `info`、`warn` 和 `error` 同时转发主进程；`debug` 在开发环境输出到控制台。
-
-禁止直接使用 `console.log`。
+`packages/frontend/src/lib/logger.ts` 提供 `debug`、`info`、`warn` 和 `error`，并翻译诊断消息。Electron 环境下 `info`、`warn` 和 `error` 同时转发主进程；`debug` 在开发环境输出到控制台。前端业务代码统一经由该 logger 输出，不使用 `console.log`。
 
 ---
 
@@ -79,8 +77,4 @@ logger.info(t('logs.memory', 'Agent 八小时补记周期已完成'), { agentId:
 
 ## 5. 健康检查
 
-`app.ts` 将健康路由挂载到 `/api/health`；具体响应见 `routers/health.router.ts`。Compose 后端健康检查使用 Node 请求该地址，前端检查 Nginx 的 `/healthz`，实际配置见根目录 `docker-compose.yml`。
-
----
-
-_本文档由 Carola 整理，适用于 infOS-TS 日志规范。_
+`packages/backend/src/app.ts` 将健康路由挂载到 `/api/health`；具体响应见 `packages/backend/src/routers/health.router.ts`。Compose 后端健康检查使用 Node 请求该地址，前端检查 Nginx 的 `/healthz`，实际配置见根目录 `docker-compose.yml`。

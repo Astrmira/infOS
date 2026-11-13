@@ -1,193 +1,129 @@
 # 提示词管理
 
-入口：主应用「设置 → 提示词」。人设仍在角色管理中编辑；框架决定是否使用人设。
+> **适用范围**：`packages/backend/src/services/prompt/`、SillyTavern 预设兼容、历史时间标记、工作模式轨迹复用与提示词编排（入口：主应用「设置 → 提示词」）
 
-## 使用
+人设仍在角色管理中编辑；提示词框架负责编排消息序列与变量注入。
 
-1. 页面顶部「新建框架」提供「infOS 原生格式 / SillyTavern 格式 / 自定义框架」。原生格式复制可编辑的默认编排；自定义框架可从完整正文或空白编排开始，不复制内置槽位、人设、规则或能力装配。酒馆格式使用独立宏解析器与历史插入规则，详见下文「酒馆预设兼容」。
-2. 「数据装配」按顺序生成变量，「区块」按顺序生成消息，可拖动或用箭头排序。
-3. 原生格式、自定义框架及槽位、组件、任务正文使用 Nunjucks。组件需显式调用 `{{ component("模板ID") }}`；插入的历史、记忆、工具结果不会递归执行模板语法。SillyTavern 正文使用酒馆宏，不送入 Nunjucks。
-4. 在「指派」选择框架、替换模板。优先级为全局、频道、角色、角色频道。框架可携带模板替换作为基础，范围指派继续覆盖它。
-5. 预览读取当前角色人设和用户称呼；历史、记忆等使用可编辑的示例 JSON。Token 数是模板文本的 o200k_base 计数，不包括图片成本与 Provider 的工具 Schema。
-6. 保存只更新草稿。发布通过格式、引用、循环依赖和消息角色顺序校验后生效。整轮主对话 / 社交 ReAct 复用开始时的装配结果；新发布影响下一轮。
+---
 
-内置模板可编辑或停用，内置框架可调整或清空。删除框架中的区块即从装配中移除对应槽位。复制的自定义资源可删除；仍存在的引用会阻止发布。
+## 1. 框架类型与基本使用
 
-内置框架除「infOS 默认」「社交默认」外还有「我的预设」；已有工作区在读取时补入缺少的内置框架，不改动原有框架与指派。表达层组件（思考模式、手册）在 `components/expression/`，作为预设区块引用。
+1. **框架类型**：「新建框架」支持「infOS 原生格式」「SillyTavern 格式」「自定义框架」：
+   - **infOS 原生格式**：复制可编辑的默认编排。
+   - **自定义框架**：从完整正文或空白自由编排开始，不复制内置槽位、人设、规则或能力装配（可关闭「保留对话历史」或改用原生 user/assistant 历史）。
+   - **SillyTavern 格式**：使用独立宏解析器与历史插入规则，通过「全部对话 / 指定范围 / 稍后指派」或编辑区「指派此框架」设置生效范围。
+2. **数据装配与区块**：「数据装配」按顺序生成变量，「区块」按顺序生成消息，均支持拖拽或箭头排序。
+3. **模板引擎隔离**：原生格式、自定义框架、槽位、组件与任务正文使用 Nunjucks（显式调用 `{{ component("模板ID") }}`）；插入的历史、记忆、工具结果不再递归执行模板语法。SillyTavern 正文仅走酒馆宏解析器。
+4. **指派优先级**：「指派」页选择生效框架与模板替换，优先级依次为 **全局 → 频道 → 角色 → 角色频道**；框架自身携带的模板替换作为基础，更具体的范围指派继续覆盖它。
+5. **预览与 Token 估算**：预览读取当前角色人设和用户称呼，历史、记忆等动态材料使用可编辑的示例 JSON；Token 数为模板文本的 `o200k_base` 计数（不含多模态图片成本与 Provider 工具 Schema 开销）。
+6. **发布生效时机**：保存仅更新草稿；发布通过格式、引用、循环依赖与消息角色顺序校验后生效（存在悬空引用或未支持启用宏时阻止发布）。整轮主对话 / 社交 ReAct 复用启动时快照，新发布从下一轮开始生效。
+7. **内置框架与恢复**：内置框架包含「infOS 默认」「社交默认」与「我的预设」，现有工作区读取时自动补全缺失内置框架而保留用户定制；内置模板可编辑、停用或清空区块，复制的资源可删除；表达层组件（思考模式、手册）位于 `components/expression/`；工具栏「内置预设」可将草稿还原至默认模板，发布后生效。
 
-工具栏「内置预设」可以将整个工作区恢复到内置草稿，确认发布后才替换当前运行版本。
+---
 
-## SelfMind 引导
+## 2. SelfMind 引导与自定义框架入口
 
-「组件 → SelfMind 引导」对应 `components/expression/selfminding`，定义发言前的引导正文与 `<selfMinding>` 输出约定。内置「输出约定」通过 `component()` 引用它，infOS 默认及「我的预设」沿现有输出格式装配。编辑正文后保存、发布，下一次执行读取新发布快照。组件可使用 `agent_name`、`owner_appellation` 等模板变量，也可停用。
+### 2.1 SelfMind 引导
 
-同一引导组件默认供引用它的框架共享。按角色或频道定制时，复制组件并在「指派 → 模板替换」中将 `components/expression/selfminding` 映射到副本。自定义框架可在适当区块显式引用 `{{ component("components/expression/selfminding") }}`，格式和生效范围由框架编排决定。
+- 「组件 → SelfMind 引导」对应 `components/expression/selfminding`，定义发言前引导正文与 `<selfMinding>` 输出约定；内置「输出约定」通过 `component()` 引用它，「infOS 默认」与「我的预设」沿用该格式。编辑保存并发布后，下次执行读取最新快照；组件内可使用 `agent_name`、`owner_appellation` 等变量，也可直接停用。
+- 默认情况下，引用它的框架共享同一引导组件；若按角色或频道定制，可在「组件」复制副本并在「指派 → 模板替换」将 `components/expression/selfminding` 映射至副本。自定义框架同样可显式引用 `{{ component("components/expression/selfminding") }}`。
+- 历史版本升级时，原样内置输出约定通过正文指纹自动转为组件引用，用户已修改或已替换的配置按显式引用保留（修改过输出约定的用户也可手动替换为该 `component()` 调用），历史发布原件留在版本库中。
 
-已知原样内置输出约定通过正文指纹升级为组件引用，已有用户正文及模板替换继续按其显式引用装配。修改过输出约定的用户可将原发言思考段替换为上述 `component()` 调用，以连接独立引导组件。历史发布原件由版本存储保留，运行快照沿内置升级规则读取。
+### 2.2 整套自定义框架与命名
 
-## 整套自定义框架入口
+- **「完整正文」**：直接编写系统提示词（变量与模板语法可选），创建后可继续拆分、排序区块。
+- **「自由编排」**：从空白消息序列开始，新增系统消息默认插在对话历史之前；**「保留对话历史」** 控制是否注入原生 user/assistant 历史。
+- **指派方式**：「全部对话」把全局及已有角色、频道（含社交）切换至新框架，同时保留原模板替换与任务提示词；「指定范围」绑定特定角色/频道（更具体指派继续优先）；「稍后指派」仅保存草稿。
+- **目录名称规范**：内置组件目录统一使用中文名称（自动纠正旧配置与本地草稿中和文件名一致的默认名称，保留用户自定义名与原文），英文模板 ID 作为稳定引用标识不变。
 
-- 「完整正文」：直接编写系统提示词，使用变量与模板语法均为可选。创建后可继续拆分、排序消息区块。
-- 「自由编排」：从空白消息序列开始。新增系统消息默认插在对话历史之前。
-- 「保留对话历史」：使用原生 user / assistant 消息；可关闭，不强制使用内置历史槽位。
-- 「全部对话」：将全局及已有角色、频道的框架指派都切换到新框架，包括社交频道。模板替换与任务提示词仍保留。
-- 「指定范围」：选择角色、频道，更具体的已有指派继续优先；「稍后指派」只创建草稿。
-- 框架编辑区的「指派此框架」进入生效范围编辑。所有指派均随发布生效，创建与保存不会立即更改正在运行的对话。
+---
 
-内置组件目录统一使用中文名称；旧配置与本地未保存草稿中与文件名相同的自动名称会修正，保留用户自定义名称、正文和历史发布原文。英文模板 ID 作为稳定引用标识保留。
+## 3. 历史对话时间、轨迹窗口与动态填充深度
 
-## 历史对话时间
+### 3.1 历史对话时间标记
 
-上下文编译器使用已有 `thread_messages.timestamp` 派生历史时间标记，不增加数据库字段，也不修改用户正文。每个会话按用户消息追加顺序计算：第一条有效时间消息作为起点，之后距上次标记满一小时的首条用户消息再标记；长期无对话不补空白小时，实际恢复对话的时刻成为新起点。原生历史和 `conversation_history` 模板变量均输出 `【对话记录时间：YYYY-MM-DD HH:mm】`。
+- 上下文编译器基于已有 `thread_messages.timestamp` 派生时间标记，不新增数据库字段也不改写数据库正文。
+- 每个会话按用户消息追加顺序计算：首条带有效时间的消息作为起点，此后距上次标记满 `1` 小时的首条用户消息追加一行标记（长期空白间隔不补空行，恢复对话时刻成为新起点）。原生历史与 `conversation_history` 模板变量统一输出 `【对话记录时间：YYYY-MM-DD HH:mm】`。
+- 已入库的当前用户输入使用同一套用户时间索引计算标记（命中规则则在发出时带同一行标记，转为历史后正文一致以保持前缀与热轨迹缓存身份），附件重建多模态正文时保留该行；应用通信、主动回合等不入库临时输入不加标记（当前时间由状态注入提供）。窗口滑动时依据从会话起点至读取边界的完整时间索引投影，避免重排既定标记；无效或缺失时间跳过，旧本地时间保留原值，来源自带时区偏移时保留偏移，标记格式不随界面语言翻译。
 
-已入库的当前用户输入与历史使用同一套标记：命中规则时，当前输入发送时就带上同一行标记，转为历史后正文不变，请求前缀保持一致；附件消息重建多模态正文时保留该标记。临时输入（应用通信、主动回合等不入库的输入）不加标记，当前时间仍由状态注入提供。标记依据从会话起点到本次读取边界（含当前输入）的用户时间索引计算，再投影到选中的历史，避免上下文窗口滑动时重排标记。只读取消息 ID 和时间，不额外加载窗口外正文；无效或缺失时间直接跳过。旧本地时间按数据库原值展示，不猜测时区；来源自带偏移时保留偏移。模型上下文标记固定，不随界面语言重新翻译。
+### 3.2 工作模式窗口与轨迹复用
 
-时间标记参与历史内容缓存键；当前输入的预期键按同一带标记正文计算，消息从当前输入转为历史时缓存身份不变，热轨迹可以继续复用。工作轨迹保存的输入原件即实际发送的带标记正文，恢复时不重复添加；原始输入哈希仍校验数据库原文，标记不写回数据库正文。
+- **主线与侧线读取**：主线通过 `ThreadService.getConversationHistory` 按独立消息与 `historyTokenBudget` 读取历史并在预算内恢复 `conversation_executions` 完整工具过程（详见 [主侧会话](./B26_MAIN_SIDE_THREADS.md)）。侧会话冷启动通过 `ThreadService.getWorkingMessagePairs` 按预算每页 8 个完整对话对（含失败与中断记录）向前分页；存在已提交热轨迹时，`ContextCompiler` 从 `promptReplayHistoryStart(channel:agentId:threadId)` 读取起点并沿游标加载后续对话对。
+- **来源校验与滑窗**：`preparePromptReplay` 按持久来源核对保留窗口顺序、内容身份、已送达回复、模型、工具、审批与系统前缀，并通过消息上的 `cacheControl.replayAnchor` 追踪工具结果、回复与动态快照的输入来源（即便输入滑出窗口，仍校验保留结果的来源）。`reactLoop` 派发前计算含工具定义的完整输入预算，超限时按闭合工具组前移至约 `80%` 目标预算（保护当前框架槽位、淘汰旧动态快照），成功运行提交投影后才更新读取起点；历史编辑、撤回、Skills 变动或模型/权限变化触发热轨迹失效并回退权威编译。
+- **进程内生命周期**：起点与热轨迹缓存有效期 `30` 分钟，最多 `64` 项、合计 `32 MiB`（单项超过 `16 MiB` 跳过保存），重启、过期或淘汰后重新按预算分页（实际发生滑窗仍会改变前缀，供应商缓存命中以接口用量为准）。源码入口：`services/llm/promptCache.ts`、`services/context/contextCompiler.ts`、`services/context/promptWindow.ts`、`services/thread/threadService.ts`。
 
-## 工作模式窗口与轨迹复用
+### 3.3 动态填充深度
 
-主线通过 `ThreadService.getConversationHistory` 按独立消息和 `historyTokenBudget` 读取历史。工作模式按来源修订恢复 `conversation_executions` 中的完整工具过程，发表、等待和执行结算分别持有身份。主线的协议与范围见[主侧会话参考](./B26_MAIN_SIDE_THREADS.md)。
+- 全局配置 `system.dynamicContextDepth`（设置中心「系统设定」或「提示词 → 回复策略」维护）存 `'0'`（默认「贴近本轮输入」）或 `'1'`（「前移到上轮输入」），后者将 `turn_context` 与附带插件资料移至上一条真实用户输入之前；完整工具组、当前附件与运行中执行状态保留原位置，若缺乏上轮用户输入或已滑出窗口则退回默认位置。
+- `PromptWorkspace.prepare` 将配置写入 `CompiledPromptPlan.dynamicContextDepth`，主上下文编译器与社交编译器通过 `bindDynamicContext` 绑定上一轮用户来源，最终 `requestCompiler.compileModelRequest` 在请求副本中重排带 `cacheControl.dynamicContextBefore` 的资料（保留规范消息历史并附加时间语义说明，同一轮重试、工具续轮与检查点沿用同份策略，变更深度在下一轮生效）。前移会随上一轮输入附近变化带来新前缀，请按需权衡提示词缓存收益；显式引用 `components/state/turn_context` 的区块由动态资料标记识别，酒馆预设 `in_chat` 深度沿用各自规则。源码入口：`packages/shared/src/contentMode.ts`、`services/prompt/requestCompiler.ts`、`services/context/contextCompiler.ts`、`packages/apps/social/runtime/compiler.ts`。
 
-侧会话工作模式冷启动由 `ThreadService.getWorkingMessagePairs` 按材料预算向前分页，每页八个完整对话对，包含失败和中断记录。存在已提交的热轨迹时，`ContextCompiler` 通过 `promptReplayHistoryStart(channel:agentId:threadId)` 读取起点，再按该消息游标加载后续完整对话对。起点随实际保留的模型投影移动，后续轮次向尾部追加。
+---
 
-`preparePromptReplay` 按持久化来源核对保留窗口的历史顺序、内容身份及已送达回复，并核对模型、工具、审批与系统前缀。完整对话对附带的游标之前材料仅用于恢复和校验，续接使用上一轮实际保留的投影。消息上的本地 `cacheControl.replayAnchor` 记录材料来源：工具结果、回复及动态快照沿用所属输入；即使输入已滑出，仍校验其保留结果的来源。容量交接和文件投影保留来源，滑窗通知随本次滑动更新锚点。原执行记录与数据库正文保持独立。
+## 4. 任务模板、版本恢复与 API
 
-`reactLoop` 继续在每次派发前计算包含工具定义的完整输入预算，超限时按闭合工具组批量前移，目标约为预算的 80%。本轮框架槽位受保护，旧轮动态快照随窗口退出。成功运行提交最终投影后，热轨迹才更新读取起点；编译和预算预览只读取起点。历史编辑、撤回、Skills 选择及模型或权限变化继续触发失效或兼容校验失败，再从权威历史编译。当前输入首次转为带时间标记的历史时，沿用上节的缓存身份规则。
+### 4.1 已接入任务
 
-起点与热轨迹共享进程内生命周期：有效期 30 分钟，最多 64 项、合计 32 MiB，单项超过 16 MiB 时跳过保存；重启、过期和回收后恢复按预算分页。该机制减少本地重建带来的前缀变化，实际发生滑窗时仍会改变历史前缀；供应商缓存命中以接口返回的用量为准。源码入口为 `services/llm/promptCache.ts`、`services/context/contextCompiler.ts`、`services/context/promptWindow.ts` 与 `services/thread/threadService.ts`。
+- 已接入任务共 8 项：**事件补记、记忆反思、每日札记、图片转述、知识整理、自动审批、社交记忆、据点管家叙述**。
+- 前 6 项通过稳定任务标识匹配 `tasks/runtime/*` 模板，社交记忆与管家继续使用原 MDP 模板键并走同一发布解析器；模型的选择、工具权限、输出校验与错误处理由各自领域服务持有（新增任务模板仅作为已有任务的覆盖正文，不自动创建新调度器；后台记忆固定 `task` 频道，自动审批沿用被审批操作原频道；未被运行时消费的历史 MD 归入组件管理）。
 
-## 动态填充深度
+### 4.2 版本、存储损坏恢复与 HTTP API
 
-入口为「系统设定」中紧邻预填充的「动态填充深度」。全局配置 `system.dynamicContextDepth` 保存字符串 `0` 或 `1`：默认 `0`「贴近本轮输入」；`1`「前移到上轮输入」将本轮最新的 `turn_context` 和附带插件资料放到上一条真实用户输入之前。深度按用户输入来源定位，完整工具组、当前附件与运行中执行状态沿用原位置。缺少上一轮用户输入或该输入已退出执行窗口时，动态资料保持本轮位置。
+- **持久存储与版本**：工作区保存于 `configs` 表的 `prompt.workspace.v1`（不改写仓库内置模板文件），发布保留最近 `30` 个完整版本并支持对比与回滚到草稿；JSON 导出覆盖完整工作区，导入校验通过后替换草稿。酒馆预设 JSON 为增量新增框架（先审阅兼容报告与排序方案再选择指派范围，单个框架也可导出为酒馆预设；缺 `format` 的旧配置内置归原生、其余归自定义）。
+- **酒馆附加面板**：酒馆框架额外提供「辅助提示词」「角色覆盖」「持久变量」面板——前两项随草稿发布与工作区导出，持久变量为独立运行时状态。
+- **并发与损坏保护**：保存使用修订号串行写入（冲突拒绝旧覆盖）；未保存修改暂存当前设备本地草稿（源码未闭合时亦保留文本）。存储损坏时自动备份原始内容并在管理页显示恢复错误，明确阻断依赖提示词的运行请求（不静默替换内置正文），重新发布有效配置即可恢复。
 
-`PromptWorkspace.prepare` 读取配置，写入本轮 `CompiledPromptPlan.dynamicContextDepth`；主上下文编译器和社交独立编译器通过 `bindDynamicContext` 绑定上一轮用户来源。规范消息仍按连续历史、本轮资料、本轮输入装配，`compileModelRequest` 只在最终请求副本中移动带 `cacheControl.dynamicContextBefore` 的资料，并附加时间语义说明。热轨迹继续校验规范历史、保留原始工具与媒体；同一轮的重试、工具续轮和检查点恢复沿用已编译策略。改变深度在下一轮生效，并通过计划身份校验释放旧布局的热轨迹。
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/prompts` | 读取草稿、默认目录、版本摘要与变量 |
+| `PUT /api/prompts/draft` | `{revision, bundle}` 保存草稿 |
+| `POST /api/prompts/validate` | 校验配置格式与引用 |
+| `POST /api/prompts/preview` | 基于示例渲染预览（不触发 RAG 或模型请求） |
+| `POST /api/prompts/publish` | 发布当前已保存草稿 |
+| `GET /api/prompts/versions/:id` | 读取指定发布版本完整内容 |
+| `POST /api/prompts/restore` | 将历史版本恢复至草稿 |
+| `POST /api/prompts/import/sillytavern` | `{preset, name?, profile?}` 解析预设并返回审阅结果 |
+| `POST /api/prompts/export/sillytavern` | `{bundle, frameworkId}` 导出草稿中的酒馆框架 |
+| `GET /api/prompts/variables?scope=...` | 查看全局（`$global`）或会话持久变量与作用域目录 |
+| `POST /api/prompts/variables/reset` | `{scope?}` 清空指定作用域或全部酒馆变量 |
 
-前移会使请求从上一轮输入附近产生新的前缀差异，缓存开销受上一轮正文、思考和工具结果长度影响。模型请求记录展示最终投影；框架预览接口保留规范编排并返回编译计划。显式引用 `components/state/turn_context` 的框架区块通过动态资料标记识别，改名后继续生效；酒馆预设自行声明的 `in_chat` 深度继续使用原规则。源码入口为 `packages/shared/src/contentMode.ts`、`services/prompt/requestCompiler.ts`、`services/context/contextCompiler.ts` 与 Social 的 `runtime/compiler.ts`。
+---
 
-## 任务
+## 5. 酒馆预设兼容契约
 
-已接入的任务：事件补记、记忆反思、每日札记、图片转述、知识整理、自动审批、社交记忆及据点管家叙述。
+入口：「设置 → 提示词 → 新建框架 → SillyTavern 格式」或顶部「导入」审阅 JSON 预设（导入仅进草稿不自动发布）。
 
-前六项使用稳定任务标识选择 `tasks/runtime/*` 模板。社交记忆和管家使用原有 MDP 模板键，走同一个发布解析器。任务的模型选择、工具权限、结果 JSON 校验与错误处理仍由对应服务管理。
+| 格式 | 起点 | 正文处理 |
+| --- | --- | --- |
+| infOS 原生格式 | 可编辑的内置槽位与数据装配 | Nunjucks |
+| SillyTavern 格式 | 酒馆 JSON 预设或新建编排 | 独立酒馆宏解析器 |
+| 自定义框架 | 完整正文或空白自由编排 | Nunjucks，不强制引用内置模板 |
 
-新增任务模板作为已有任务的替换项使用，不会自动创建新的后台调度器。后台记忆任务使用 `task` 频道；自动审批使用被审批操作的原频道。任务输入的数据继续来自运行时，不通过模板改写工具参数或权限。
+### 5.1 支持范围与宏语义
 
-历史遗留但未被运行时消费的 MD 文件归入组件，不冒充已接入的任务入口。
+- **预设与条目结构**：兼容 Chat Completion 预设 `prompts`、`prompt_order`（默认优先选用 `character_id = 100001`，可在导入审阅选择其他方案）、启停、角色、位置、深度、顺序及触发类型；旧版 `main_prompt`、`nsfw_prompt`、`jailbreak_prompt` 转换为可编辑条目。支持新聊天、新群聊、示例分隔、群聊点名、续写、代写、空消息替代、性格与场景格式等辅助字段导入编辑与回写。原预设未知字段、采样与连接参数作为源数据在导出时回写，不改写 infOS 模型设置或凭据。
+- **角色与示例消息**：描述、性格、场景、用户设定、示例对话与世界信息字段支持映射运行时变量、角色资料、手填或留空（世界信息不自动映射 infOS 记忆检索）。示例对话解析 `<START>` 与说话人行并拆为独立 user/assistant 消息（仅替换名字占位而不执行资料中的任意宏；无法识别说话人时保留原文并提示）。角色覆盖支持主提示词、历史后指令、`original` 展开（每条最多一次）与 `forbid_overrides`。
+- **宏、条件与变量**：支持常见名字与消息宏、嵌套参数、注释、空白控制、大小写反转、`random/pick/roll`（`pick` 在同一编译种子下稳定）、`if / else / /if`、块级 `setvar`、`#` 保留空白，以及 `.name / $name` 简写和 `= / ++ / -- / += / -= / || / ?? / ||= / ??= / == / != / > / >= / < / <=`（未命中分支与未采用默认值不写入变量）。`datetimeformat` 支持 `YYYY / MM / DD / HH / mm / ss`（暂不支持自定义时区与其他格式，预览报错）；运行时提供当前窗口消息序号（而非库内绝对序号）。替换产出的历史、资料与变量值不再递归执行宏。
+- **校验限制**：不导入 Text Completion 模板；未知触发类型保存在草稿但停用条目提示警告且启用时阻止发布；重复标识、缺失排序引用与损坏格式直接拒绝导入。
 
-## 版本和恢复
+### 5.2 深度排序、角色转换与持久变量
 
-配置保存在 `configs` 表的 `prompt.workspace.v1`，不修改仓库内的内置模板文件。发布保留最近 30 个完整版本，可比较与当前草稿的差异，恢复到草稿后再发布。JSON 导出包含整个工作区；导入先校验，再替换草稿。
+- **深度计算与合并**：按最旧到最新原生 user/assistant 消息（含当前用户消息）计深度：深度 `0` 位于最新消息之后、深度 `1` 位于最新消息之前、超出历史长度则插在开头；同深度按顺序升序并依 `assistant → user → system` 分组，同序同角色以换行合并。当前用户消息保留独立锚点以挂载附件与工作区上下文（关闭聊天历史开关仍保留本次用户消息，临时输入同样参与深度计算而不重复追加）。
+- **历史内部 system 消息转换**：由于通用 Provider 兼容层仅保证开头的 `system`，历史开始后出现的 `system` 条目留在原位置并转为带 `【系统指令】` 标记的 `user` 消息（预览同时标示原角色与转换警告，导出保持 `system` 角色）。
+- **变量持久契约**：回合开始读取变量快照，宏执行时只在内存累积变更，主对话或社交生成正常结束后经 SQLite 同一配置行原子提交（携带本轮所读版本校验以防并发覆盖，LLM 失败/取消不提交且不影响已执行工具与回复；主应用检查点携带待提交变更与去重 ID）。聊天变量按角色与会话隔离，全局变量在本机共享；会话分支时局部变量复制至新会话作用域随事务提交（详见 [会话分支](./B09_THREAD_INTERACTION_MODE.md#会话分支)）；主线重置通过 `resetThread` 推进 `scopeEpochs` 同事务清理局部变量并保持全局值，删除侧线另留墓碑。限额：单值 `200K` 字符、单轮每类最多 `1000` 个变量名、总存储 `4M` 字符 / `2000` 会话、提交去重保留最近 `512` ID。
 
-酒馆 JSON 导入是增量新增框架，先展示兼容报告和排序方案，再选择指派范围，不替换整份草稿。选中的酒馆框架可单独导出为酒馆预设。旧版本缺少 `format` 时，内置框架归为原生格式，其余归为自定义框架，原有正文保持不变。
+### 5.3 兼容与上下文边界
 
-酒馆框架增加「辅助提示词」「角色覆盖」「持久变量」面板。前两项随框架草稿发布；持久变量是独立运行状态，不进入发布版本和框架导出。预览只模拟变量变化，真实回合成功后提交。主应用后台检查点保留待提交变化，变量清空与 Thread 删除能阻止旧回合恢复已清理的状态。
+- **世界书与运行时边界**：世界书激活结果统一置于当前输入之前，不经过酒馆「世界信息（前/后）」插槽；不支持酒馆扩展脚本与 STScript。单个 ReAct 周期内整个宏与装配状态保持稳定（不在每次工具调用后重算）；支持 `normal` / `regenerate` / `quiet` 等 `generationType`（预览可切换，产品层暂不复刻酒馆续写拼接与 swipe 交互）。
+- **回答预填充（`system.assistantPrefill`）**：开关与正文（最多 `8000` 字符）支持 `once`（首次输出正式正文前每轮追加，纯工具轮次不消耗）与 `continuous`（每轮 ReAct 追加；社交链路独立请求，`once` 仅首轮生效）；旧配置按 `once` 迁移。执行开始时 `requestCompiler.resolveEffectivePromptPlan` 调用 `@infos/shared` 的 `resolveAssistantPrefillForChain` 按当前模型及回退链计算固定计划（生成 `assistantPrefill` 支持方式 `assistant_tail / deepseek_prefix` 或 `assistantPrefillSkipped` 跳过原因，由 `ModelRequestSnapshot.prefill / prefillSkipped` 持久化与热轨迹复用；任一链节点不支持或方式不一致时整体跳过并在首轮状态附带原因与 i18n 日志，不回退改写为 user/system 指令，也不在被接口拒绝后静默剥离重试）。预填充仅混入请求副本并仅在收到真实正文时拼回，工具空轮/失败/取消不写入正式消息（已生成真实片段以未完成进度保留）；缓冲在完成、失败或首次取消时确保释放。规则声明详见 [B22](./B22_PROVIDER_CONNECTIONS.md#回答预填充能力)。
+- **动态资料与工具定义**：`turn_context`、状态与 RAG 位于当前用户输入侧（可受「动态填充深度」前移），固定规则位于系统区域；插件 `context-provider` 在 Region 选材后插入本轮动态 user 资料，具体边界见 [A09 §8.1](./A09_AIOS_ARCHITECTURE.md#81-contextregion)。工具定义与 Schema 键统一稳定排序，工具菜单未变时复用装配结果；后台任务模板独立管理，不跟随聊天预设转成酒馆宏。
 
-保存使用修订号和串行写入，旧页面收到冲突时不能覆盖新配置。写盘失败保持原状态。未保存的编辑暂存在当前设备的本地草稿，源码尚未完整时也保留原文。
+### 5.4 实现与参考
 
-存储损坏时备份原始内容并在管理页显示恢复错误，提示词运行请求明确失败；不会悄悄换用内置内容继续执行。重新发布有效配置后恢复。
+- **实现源码**：`packages/shared/src/promptFormats.ts`、`types/promptWorkspace.types.ts`、`packages/backend/src/services/prompt/`（`promptWorkspace.ts`、`sillyTavernPreset.ts`、`sillyTavernMacros.ts`、`sillyTavernFramework.ts`、`requestCompiler.ts`）、前端 `packages/frontend/src/components/dashboard/tabs/PromptManagementTab.vue`、`SillyTavernFrameworkEditor.vue`；单测入口 `packages/backend/tests/unit/services/prompt/promptWorkspace.test.ts`。
+- **上游参考**：[SillyTavern Prompt Manager](https://docs.sillytavern.app/usage/prompts/prompt-manager/)、[SillyTavern 宏](https://docs.sillytavern.app/usage/core-concepts/macros/)、[Default.json](https://github.com/SillyTavern/SillyTavern/blob/release/default/content/presets/openai/Default.json)、[openai.js](https://github.com/SillyTavern/SillyTavern/blob/release/public/scripts/openai.js)。
 
-## API
+---
 
-- `GET /api/prompts`：草稿、默认目录、版本摘要和变量。
-- `PUT /api/prompts/draft`：`{revision,bundle}`。
-- `POST /api/prompts/validate`：校验配置，不调用模型。
-- `POST /api/prompts/preview`：渲染示例，不进行 RAG 或模型调用。
-- `POST /api/prompts/publish`：发布已保存草稿。
-- `GET /api/prompts/versions/:id`：读取完整发布版本。
-- `POST /api/prompts/restore`：恢复版本到草稿。
-- `POST /api/prompts/import/sillytavern`：`{preset,name?,profile?}`，解析预设并返回可审阅框架与兼容报告，不写入配置。
-- `POST /api/prompts/export/sillytavern`：`{bundle,frameworkId}`，导出当前草稿中的酒馆框架。
-- `GET /api/prompts/variables?scope=...`：查看全局或会话变量及会话目录，`$global` 表示全局。
-- `POST /api/prompts/variables/reset`：`{scope?}`，清空指定范围；省略 scope 重置全部酒馆变量。
+## 6. 编译链与维护契约
 
-## 酒馆预设兼容
-
-此节描述酒馆预设的导入、宏求值及历史插入契约。
-
-入口：设置 → 提示词 → 新建框架 → SillyTavern 格式。已有 JSON 预设通过顶部「导入」进入审阅面板，选好排序方案与生效范围后加入草稿。编辑、预览、保存、发布、版本恢复与其他框架共用；导入不会自动发布。
-
-### 三种格式
-
-| 格式             | 起点                       | 正文处理                       |
-| ---------------- | -------------------------- | ------------------------------ |
-| infOS 原生格式   | 可编辑的内置槽位与数据装配 | Nunjucks                       |
-| SillyTavern 格式 | 酒馆 JSON 预设或新建编排   | 独立酒馆宏解析器               |
-| 自定义框架       | 完整正文或空白自由编排     | Nunjucks，可完全不引用内置模板 |
-
-框架类型决定编排与正文处理方式，数据来源仍由上下文编译器提供。工具权限、工具 Schema、任务调度和任务结果校验不由提示词绕过。
-
-### 支持的格式与宏
-
-- Chat Completion 预设的 `prompts`、`prompt_order`、启停、角色、列表位置、历史内插入、深度、顺序与生成触发类型。默认优先选用 `character_id = 100001` 的排序方案；其他方案可在导入时选择。
-- 旧版 `main_prompt`、`nsfw_prompt`、`jailbreak_prompt` 转换为可编辑条目。
-- 角色描述、性格、场景、用户设定、示例对话、前后世界信息的数据映射。可映射运行时变量、填写角色资料、手动填写或留空；世界信息不会自动映射为 infOS 记忆检索。
-- 常见名字与角色字段宏、最后消息宏、嵌套参数、注释、空白控制、文字大小写与反转；聊天与全局两类变量宏；`random/pick/roll`。
-- `if / else / /if` 条件块、块式 `setvar` 等带参数宏、`#` 保留空白。未选中的分支和未采用的默认值表达式不执行变量写入。变量简写支持 `.name`、`$name`，以及 `= / ++ / -- / += / -= / || / ?? / ||= / ??= / == / != / > / >= / < / <=`。
-- 新聊天、新群聊、示例分隔、群聊点名、续写提示、用户代写提示、空消息替代、性格与场景格式等辅助字段可导入、编辑、发布并回写到酒馆预设。
-- 示例对话支持 `<START>` 分组与用户、角色说话人行，拆为独立 user / assistant 消息。示例只替换名字占位，不运行来自资料正文的任意宏；无法识别说话人时保留原文并提示。
-- 角色覆盖包含主提示词和历史后指令，支持 `original`，原文按需展开且每条最多一次。条目上的“禁止角色覆盖”对应 `forbid_overrides`。通用设置与指定角色设置合并，空字段继承。
-- 运行时提供模型名称、输入预算、上下文上限、输出配置，以及当前窗口的消息序号；不是完整聊天数据库的绝对序号。
-- 日期时间宏；`datetimeformat` 暂支持 `YYYY/MM/DD/HH/mm/ss` 格式片段。自定义时区与其他日期格式尚不支持，预览会明确报错。
-- 兼容变量可为未支持的简单宏提供固定文本。替换得到的历史、角色数据和变量值不再次执行宏。
-- 未知触发类型保存在草稿，启用它们会阻止发布；停用条目保留警告。重复标识、缺失排序引用和格式损坏直接拒绝导入。
-- 原预设未知字段、采样参数、连接配置作为源数据保留，导出时回写当前编排，不自动应用到 infOS 模型配置或凭据。
-
-### 深度与角色
-
-深度按最旧到最新的原生 user / assistant 消息计算，包含本次用户消息。深度 0 在最新消息后，深度 1 在最新消息前；超过现有历史长度时插入历史开头。同深度按顺序数升序，再按 assistant、user、system 分组，同顺序同角色的条目用换行合并。
-
-当前用户消息有单独位置标识，图片附件、工作区上下文根据该位置附加。关闭聊天历史标记仍保留本次用户消息；临时输入也参加深度编排，不额外重复追加。
-
-infOS 的通用 Provider 兼容层只保证开头的 system。为避免静默移动晚系统指令，酒馆适配器将历史开始后的 system **留在原位置**，改为带 `【系统指令】` 标记的 user 消息；预览显示实际角色、原角色和警告，导出保留预设的 system 角色。这是接口兼容策略，不能保证与酒馆在所有模型上的表现完全一致。
-
-### 变量持久化
-
-实际回合开始时只读取变量快照；宏在纯编译过程中生成变更，不写盘。主对话或社交生成正常结束后提交。聊天变量按角色与会话隔离，全局变量在本机酒馆会话间共享。主应用后台检查点包含待提交的变化与提交 ID，恢复时不会重新执行宏；重复提交通过 ID 去重。
-
-聊天与全局变化使用同一个 SQLite 配置行原子保存。提交时校验本轮读过的变量，发现并发冲突时整份变化拒绝，不覆盖另一轮结果。LLM 失败、取消或放弃生成不会提交。若生成完成后的持久化提交失败，界面会收到明确错误；已执行的工具及已保存的回复不因此删除。
-
-“持久变量”面板可查看并清空全局或会话范围，清空会推进存储 epoch。删除 SideThread 另存删除墓碑。主线清空重置通过 `resetThread` 推进对应 `scopeEpochs`，局部变量与 Thread 代次同事务清理，全局值保留，后续同 ID 请求使用新版本。完整规则见 [主侧会话](./B26_MAIN_SIDE_THREADS.md)。
-
-创建会话分支时，局部变量继承来源会话的当前值，以新 Thread 的作用域独立保存；全局变量继续共享。分支与普通变量提交使用同一串行队列，局部变量副本随新会话事务一起提交。历史截止与其他状态的继承规则见 [会话分支](./B09_THREAD_INTERACTION_MODE.md#会话分支)。
-
-预览默认读取全局变量，聊天变量为空；可在示例 JSON 中填写 `local_variables` / `global_variables` 对象覆盖初值。预览中的变量写入不会提交。变量单值最多 200K 字符、单轮每类最多访问 1000 个名称，总存储最多 4M 字符、2000 个会话，提交去重保留最近 512 个 ID。
-
-角色覆盖和资料属于 infOS 框架配置，使用整个工作区 JSON 导出保留；酒馆预设导出不代替角色卡导出。
-
-### 兼容边界
-
-- 不支持 Text Completion 的 instruct/context 模板导入。
-- 世界书见 [P01_WORLDBOOK](./P01_WORLDBOOK.md)：激活结果统一放在当前输入之前，不经过「世界信息（前/后）」标记。不实现酒馆扩展脚本、STScript 或完整酒馆运行时。未支持宏会显示兼容错误，启用时不能发布；不要把它当成完整酒馆环境。
-- 本轮宏状态、随机结果和装配结果由整个 ReAct 复用；不在每个工具调用后重新计算。`pick` 在相同编译种子下稳定，不模拟酒馆完整聊天位置与 reroll 状态。
-- 普通对话自动使用 `normal`，现有重新发送入口传 `regenerate`，后台任务使用 `quiet`。其他类型可在预览中选择，调用端也可显式传入 `generationType`；已接入对应辅助提示词，但不实现酒馆续写拼接、代写用户或 swipe 的完整产品交互。
-- 「系统设定」在健全模式旁提供独立的「预填充模式」，默认关闭。回答开头最多 8000 字符，留空不生效。`system.assistantPrefill` 原子保存开关、正文与 `mode`：`once` 在本次执行中出现第一段带正文的回复之前的每次请求都追加（纯工具调用轮次不算用掉），`continuous` 每次 ReAct 请求均追加；旧配置按 `once` 迁移。社交链路逐轮独立请求，`once` 只在第一轮追加。PromptWorkspace 在编译时读取配置，产出 `requestPlan` 和预览段；ContextCompiler 与社交编译器传递这份计划，统一的 `requestCompiler.compileModelRequest` 在请求末尾生成带 `assistant_prefill` 标记的 assistant 段。执行器不再直接读取全局配置；整轮重试沿用编译时策略。能否发送由下一条的有效预填充计划决定；不在接口拒绝时静默换成 system 指令。
-- **有效预填充计划**：全局开关只表示“用户想要预填充”。执行开始时 `requestCompiler.resolveEffectivePromptPlan` 按实际模型（主模型及整条回退链）调用共享规则 `@infos/shared` 的 `resolveAssistantPrefillForChain`，得到要么带发送方式（`assistant_tail` / `deepseek_prefix`）的 `assistantPrefill`，要么只带原因代码的 `assistantPrefillSkipped`。请求编译、输出拼回、输入预算估算、审计快照（`ModelRequestSnapshot.prefill` / `prefillSkipped`）、热轨迹身份和整轮重试都使用这同一份结果；Provider 不再自行丢弃末尾 assistant。能力判断只看本地配置，不发探测请求；回退链中任一模型不支持或发送方式不同，整份计划不发送。规则与模型卡片声明见 [B22](./B22_PROVIDER_CONNECTIONS.md#回答预填充能力)。
-- 跳过时首轮“正在思考”状态带上简短原因（`server.agent` 词条），并写一条 i18n 日志；不把未闭合的开标签挪进 user/system 冒充预填充，也不在接口报错后自动去掉预填充重发。
-- 预填充只加入请求副本，只与真实正文合并：纯工具调用、空响应或失败不拼回，也不把未完成消息写进对话或执行历史。原始模型转写只保留实际生成内容。对话日志按实际请求编号展示编译结果，能看到首次及持续填充；媒体与历史执行正文按引用展示，过大请求标记省略，旧记录仍读取初始快照。它独立于酒馆预设的续写交互。
-- 预填充判定缓冲在正常结束、直接失败与首次取消时都必须释放；真实已生成片段以未完成进度保留到最终投影和原始转写，不伪装成本轮成功答复。缓冲内新出现的思考开始事件与流式阶段使用相同处理规则；请求完成钩子在缓冲释放后读取本轮正文。
-- 动态状态、环境及 RAG 位于 `turn_context` 用户角色段，默认靠近当前用户输入；最终请求可按上节「动态填充深度」前移到上一轮输入之前。固定行为要求放在稳定的系统规则中。动态调试目录由 `runtime_debug` 空参数调用返回，不拼进工具说明。工具定义从注册原件生成副本，同一 ReAct 工具菜单未变化时复用装配结果；菜单变化才重新处理。Provider 统一稳定排序工具与 Schema 键，避免无意义的前缀变化；实际工具增减仍可能使上游缓存失效。
-- 主 Agent 的插件 `context-provider` 在 Region 选择完成后进入本轮动态 user 资料：原生框架复用历史后的 `turn_context`，酒馆在框架标记的当前输入前插入；无 managed assembly 时在独立历史之后插入。编译器更新当前输入索引且不重跑酒馆宏，插件变化不改系统与旧历史前缀；完整约束见 [A09 §8.1](./A09_AIOS_ARCHITECTURE.md#81-contextregion)。
-- 原生任务提示词仍在「任务」中独立管理；选择酒馆框架不会把后台任务模板改成酒馆宏格式。
-- 酒馆预设导入负责框架和变量。原生角色卡由角色管理单独导入，格式见 [原生角色卡](./P05_AGENT_CARD.md)。框架里的“角色覆盖 → 角色资料”用于配置提示词资料覆盖。聊天窗口裁剪、采样参数应用、名字发送策略、时区与完整日期格式仍按 infOS 的实现处理。
-- 预览 Token 数是文本计数，不包括图片、音频成本和 Provider 工具定义开销。
-
-### 实现位置
-
-- 共享格式与结构：`packages/shared/src/promptFormats.ts`、`types/promptWorkspace.types.ts`。
-- 预设解析与导出：`services/prompt/sillyTavernPreset.ts`。
-- 宏与历史装配：`services/prompt/sillyTavernMacros.ts`、`sillyTavernFramework.ts`。
-- 界面：`PromptManagementTab.vue`、`SillyTavernFrameworkEditor.vue`。
-- 维护回归关注导入导出、触发过滤、宏隔离、历史深度和图片定位；入口为 `packages/backend/tests/unit/services/prompt/promptWorkspace.test.ts` 及同目录预设/宏用例。
-
-### 参考
-
-- [SillyTavern Prompt Manager](https://docs.sillytavern.app/usage/prompts/prompt-manager/)
-- [SillyTavern 宏](https://docs.sillytavern.app/usage/core-concepts/macros/)
-- [默认 Chat Completion 预设](https://github.com/SillyTavern/SillyTavern/blob/release/default/content/presets/openai/Default.json)
-- [官方历史插入实现](https://github.com/SillyTavern/SillyTavern/blob/release/public/scripts/openai.js)
-
-## 编译链与维护边界
-
-`packages/backend/src/services/prompt/promptWorkspace.ts` 管理草稿、发布与指派。主 ContextCompiler 或 Social Compiler 读取各自权威数据，交给 MdpEngine 按生效框架快照装配，最后由请求编译器完成 Provider 请求。预览是示例数据渲染，不等于真实社交现场；缺少示例变量应显示诊断，不能用桌面状态补齐社交变量。
-
-固定规则与工具目录保持稳定，检索、时间、会话现场放在靠近输入的动态区。共享组件按变量是否存在渲染，不能因为变量名相同就跨 Realm 读取数据。社交记忆、联系人补充与心流的来源见 [B21](./B21_SOCIAL_CAPABILITIES.md)，角色三状态见 [B10](./B10_CHARACTER_STATE.md)，知识/事实召回见 [B03](./B03_DOCUMENT_KNOWLEDGE.md)。
+`promptWorkspace.ts` 管理草稿、发布与指派；主 `ContextCompiler` 或 `SocialAppCompiler` 读取各自隔离的数据域后交由 `MdpEngine` 装配生效框架快照，再由 `requestCompiler` 生成最终请求。排查问题时需区分示例 JSON 预览与真实运行时环境（缺失示例变量应报错提示，跨通道材料不可混用）：社交来源参见 [B21](./B21_SOCIAL_CAPABILITIES.md)，角色状态参见 [B10](./B10_CHARACTER_STATE.md)，知识/事实召回参见 [B03](./B03_DOCUMENT_KNOWLEDGE.md)。

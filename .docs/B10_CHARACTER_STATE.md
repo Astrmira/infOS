@@ -31,6 +31,6 @@
 
 - 事件类型与持久结构：`packages/backend/src/database/schema.ts`。
 - 重放、更新与撤回：`packages/backend/src/services/agent/petStateService.ts`。
-- 主会话注入：`packages/backend/src/services/context/contextCompiler.ts` 与 `services/mdp/prompts/slots/800_pet_state.md`。
+- 主会话注入：`packages/backend/src/services/context/contextCompiler.ts` 与 `packages/backend/src/services/mdp/prompts/slots/800_pet_state.md`。
 - 表现层：`packages/frontend/src/views/Pet3DView.vue`。
-- 回归入口为 `packages/backend/tests/unit/services/agent/petStateService.test.ts` 与 `mainSideLifecycle.test.ts`，覆盖角色共享、来源补偿、版本冲突与重置代次。
+- 回归入口为 `packages/backend/tests/unit/services/agent/petStateService.test.ts` 与 `packages/backend/tests/unit/services/mainSideLifecycle.test.ts`，覆盖角色共享、来源补偿、版本冲突与重置代次。

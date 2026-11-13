@@ -1006,7 +1006,7 @@ export class MemoryStoreRegistry {
       const openedStore = this.stores.get(tdbPath)
       if (!openedStore && !existsSync(tdbPath)) continue
       try {
-        total += (openedStore ?? this.getOrCreate(tdbPath)).nodeCount()
+        total += openedStore ? openedStore.nodeCount() : (this.describeStore(tdbPath).nodeCount ?? 0)
       } catch (error) {
         logger.warn(__t('logs.repositories', 'Store 节点统计失败: {0}', [tdbPath]), { error })
       }

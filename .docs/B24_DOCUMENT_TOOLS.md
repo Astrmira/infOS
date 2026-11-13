@@ -31,7 +31,7 @@
 - DOCX：由 docx 生成标题、段落、列表、基础文本强调、表格和 PNG/JPEG 图片，可继续用 Word 等应用编辑。
 - XLSX：由 ExcelJS 生成工作表，支持类型化单元格、显式公式及缓存结果、表头、冻结和筛选。公式不在服务端自动求值；普通等号字符串保持文本。
 - PDF：默认 PDFKit，通用服务端无需 Electron。支持随包中文字体、标题、正文、列表、分页表格和 PNG/JPEG 图片。
-- Chromium PDF：显式传 `engine: "chromium"`。在线 Electron 提供 `document.render/renderPdf`，后端按次申请能力句柄。独立后台页面不使用用户的浏览器标签、账户会话或键鼠席位。断连、取消或失败时返回工具错误，不偷偷换引擎，也不终止整个 ReAct。
+- Chromium PDF：显式传 `engine: "chromium"`。在线 Electron 提供 `document.render/renderPdf`，后端按次申请能力句柄。独立后台页面不使用用户的浏览器标签、账户会话或键鼠席位。断连、取消或失败时直接返回工具错误（不自动回退引擎，亦不中断整个 ReAct）。
 
 PDF/DOCX 支持 `template: standard|compact`、`paper: A4|Letter`、`landscape` 和 `marginMm`。PNG/JPEG 图片优先使用相对于 Markdown 源文件的工作区路径，也支持当前会话 `attachment:ID`。在线图片先保存到任务目录；转换器不直接访问外部网址。Office 转文稿时，图片集中附于文末，并在结果中说明版式变化。
 
@@ -66,13 +66,13 @@ XLSX 的结构化输入示例：
 
 - docx、ExcelJS、PDFKit、anydoc 与 Markdown 解析器是 backend 生产依赖，不进入移动客户端。
 - anydoc 在独立 Worker 内离线解析，拒绝自动调用 hosted OCR；取消或超时终止解析任务。扫描 PDF 返回需 OCR 的说明。
-- 默认中文字体位于 `backend/src/assets/documents/document-font.woff2`，复用项目已有 ZCOOL KuaiLe 字体，并随附 OFL。`INFOS_DOCUMENT_FONT` 可指定服务端物理字体路径，供 PDFKit 使用。
+- 默认中文字体位于 `packages/backend/src/assets/documents/document-font.woff2`，复用项目已有 ZCOOL KuaiLe 字体，并随附 OFL。`INFOS_DOCUMENT_FONT` 可指定服务端物理字体路径，供 PDFKit 使用。
 - Electron 与 Docker 的现有 backend assets 复制规则包含字体。无需另装 Office、Python、LibreOffice 或 Chromium。
 - 发行依赖收集保留文档库实际解析到的依赖版本，并检查当前平台 anydoc 原生模块，避免 Node 开发目录可用、发行包缺模块。
 - 单次原文件/成果各限 20MB，正文读取每页最多 32000 字符，工作簿最多 50000 单元格；服务端并发 2 个文档任务，总时限 60 秒。Chromium 页面另设 30 秒和 4MB HTML 限制。
 
 ## 维护入口
 
-后端领域入口为 `packages/backend/src/services/document/documentService.ts`。修改解析、生成或导出时，通过真实原件读回验证分页、中文、工作簿值类型与公式；只检查文件头或 mock 库成功返回不能证明文档可用。已有回归入口为 `packages/backend/tests/unit/services/documentService.test.ts`。
+后端领域入口为 `packages/backend/src/services/document/documentService.ts`。修改解析、生成或导出时，通过真实原件读回验证分页、中文、工作簿值类型与公式，以实际读回结果为准而非仅检查文件头或 mock 返回。已有回归入口为 `packages/backend/tests/unit/services/documentService.test.ts`。
 
 同时保护工作模式准入、输出根、禁止覆盖、大小/并发限制和取消释放。文档资源的投递与客户端预览继续遵循 [B12](./B12_MESSAGE_RESOURCES.md) 与 [B14](./B14_WORKSPACE_FILE_PREVIEW.md)，不在文档服务重复实现附件协议。

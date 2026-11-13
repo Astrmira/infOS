@@ -23,6 +23,8 @@ export interface KernelSchedulerLimits {
   maxRunning: number
   classConcurrency: Partial<Record<KernelExecutionClass, number>>
   agingIntervalMs: number
+  /** 最近终态摘要的缓存条数，历史按 Outbox 的保留周期按需读取。 */
+  maxCompleted?: number
 }
 
 export interface KernelScheduleInput extends CreateExecutionInput {
@@ -108,7 +110,9 @@ const CLASS_WEIGHT: Record<KernelExecutionClass, number> = {
  */
 export class KernelScheduler {
   private readonly records = new Map<KernelExecutionId, ScheduledRecord>()
+  private readonly completed = new Map<KernelExecutionId, KernelExecutionSnapshot>()
   private readonly queue: KernelExecutionId[] = []
+  private pendingAdmissions = 0
   private readonly running = new Set<KernelExecutionId>()
   private readonly listeners = new Set<(snapshot: KernelExecutionSnapshot) => void>()
   private readonly persistedSignatures = new Map<KernelExecutionId, string>()
@@ -216,13 +220,20 @@ export class KernelScheduler {
   }
 
   async submit(input: KernelScheduleInput): Promise<KernelExecutionSnapshot> {
-    if (this.queue.length >= this.limits.maxQueued) {
+    if (this.queue.length + this.pendingAdmissions >= this.limits.maxQueued) {
       throw new Error('KERNEL_SCHEDULER_BACKPRESSURE: Execution队列已满')
     }
     if (input.deadline && Date.parse(input.deadline) <= Date.now()) {
       throw new Error('KERNEL_EXECUTION_DEADLINE_EXPIRED: Execution截止时间已过')
     }
-    const descriptor = await this.executions.create(input)
+    // 创建持久身份期间预留名额，避免并发请求同时穿过队列上限。
+    this.pendingAdmissions++
+    let descriptor: KernelExecutionDescriptor
+    try {
+      descriptor = await this.executions.create(input)
+    } finally {
+      this.pendingAdmissions--
+    }
     const snapshot: KernelExecutionSnapshot = {
       descriptor,
       state: 'queued',
@@ -275,12 +286,15 @@ export class KernelScheduler {
   }
 
   get(executionId: KernelExecutionId): KernelExecutionSnapshot | null {
-    const record = this.records.get(executionId)
-    return record ? cloneSnapshot(record.snapshot) : null
+    const snapshot = this.records.get(executionId)?.snapshot ?? this.completed.get(executionId)
+    return snapshot ? cloneSnapshot(snapshot) : this.executions.getSnapshot(executionId)
   }
 
   list(): KernelExecutionSnapshot[] {
-    return [...this.records.values()].map((record) => cloneSnapshot(record.snapshot))
+    return [
+      ...[...this.records.values()].map((record) => cloneSnapshot(record.snapshot)),
+      ...[...this.completed.values()].map(cloneSnapshot),
+    ]
   }
 
   subscribe(listener: (snapshot: KernelExecutionSnapshot) => void): () => void {
@@ -298,7 +312,7 @@ export class KernelScheduler {
       record.snapshot.state = 'cancelled'
       record.snapshot.waitReason = undefined
       record.snapshot.completedAt = new Date().toISOString()
-      await this.executions.fail(record.snapshot.descriptor, new Error('Execution已取消'), true)
+      await this.executions.fail(record.snapshot.descriptor, new Error('Execution已取消'), true, cloneSnapshot(record.snapshot))
       this.emit(record)
       void this.pump()
     }
@@ -469,11 +483,11 @@ export class KernelScheduler {
       Math.max(0, Date.parse(record.snapshot.startedAt) - Date.parse(record.snapshot.queuedAt)) /
         1000,
     )
-    this.emit(record)
-    await this.executions.start(descriptor)
-    this.installDeadline(record)
-    const context = this.context(record)
     try {
+      this.emit(record)
+      await this.executions.start(descriptor)
+      this.installDeadline(record)
+      const context = this.context(record)
       await runWithKernelExecution(
         record.snapshot.descriptor,
         () => record.run(context),
@@ -485,11 +499,11 @@ export class KernelScheduler {
       } else if (record.controller.signal.aborted) {
         record.snapshot.state = 'cancelled'
         record.snapshot.completedAt = new Date().toISOString()
-        await this.executions.fail(descriptor, new Error('Execution已取消'), true)
+        await this.executions.fail(descriptor, new Error('Execution已取消'), true, cloneSnapshot(record.snapshot))
       } else {
         record.snapshot.state = 'completed'
         record.snapshot.completedAt = new Date().toISOString()
-        await this.executions.complete(descriptor)
+        await this.executions.complete(descriptor, cloneSnapshot(record.snapshot))
       }
     } catch (error) {
       if (record.pauseRequested) {
@@ -499,12 +513,12 @@ export class KernelScheduler {
         const timedOut = record.controller.signal.reason === 'deadline'
         record.snapshot.state = timedOut ? 'timed_out' : 'cancelled'
         record.snapshot.completedAt = new Date().toISOString()
-        if (timedOut) await this.executions.timeout(descriptor, error)
-        else await this.executions.fail(descriptor, error, true)
+        if (timedOut) await this.executions.timeout(descriptor, error, cloneSnapshot(record.snapshot))
+        else await this.executions.fail(descriptor, error, true, cloneSnapshot(record.snapshot))
       } else {
         record.snapshot.state = 'failed'
         record.snapshot.completedAt = new Date().toISOString()
-        await this.executions.fail(descriptor, error)
+        await this.executions.fail(descriptor, error, false, cloneSnapshot(record.snapshot))
       }
     } finally {
       if (record.deadlineTimer) clearTimeout(record.deadlineTimer)
@@ -545,6 +559,7 @@ export class KernelScheduler {
           if (completed) return
           completed = true
           record.snapshot.usage.concurrentIo = Math.max(0, record.snapshot.usage.concurrentIo - 1)
+          if (TERMINAL.has(record.snapshot.state)) return
           this.emit(record)
         }
       },
@@ -639,6 +654,14 @@ export class KernelScheduler {
 
   private emit(record: ScheduledRecord): void {
     const snapshot = cloneSnapshot(record.snapshot)
+    if (TERMINAL.has(snapshot.state) && !this.running.has(snapshot.descriptor.executionId)) {
+      const id = snapshot.descriptor.executionId
+      this.records.delete(id)
+      this.persistedSignatures.delete(id)
+      this.completed.set(id, cloneSnapshot(snapshot))
+      while (this.completed.size > Math.max(1, this.limits.maxCompleted ?? 256))
+        this.completed.delete(this.completed.keys().next().value!)
+    }
     for (const listener of this.listeners) listener(snapshot)
     if (!TERMINAL.has(snapshot.state)) this.persistState(snapshot)
   }

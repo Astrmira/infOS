@@ -46,7 +46,7 @@
 - 按住说话支持指针和键盘；释放、失焦、取消、切换或卸载时只结束本次按压一次。
 - 中文输入法选词期间不通过 Enter 发送消息。
 
-交互生命周期由 `packages/frontend/src/views/Pet3DView.vue` 管理，图标入口为 `components/pet/PetHudIcon.vue`。修改按住说话和浮层时须检查失焦、切换角色与卸载的资源释放；HUD 只投影已有状态，审批和提问提交继续由对应服务负责。
+交互生命周期由 `packages/frontend/src/views/Pet3DView.vue` 管理，图标入口为 `packages/frontend/src/components/pet/PetHudIcon.vue`。修改按住说话和浮层时须检查失焦、切换角色与卸载的资源释放；HUD 只投影已有状态，审批和提问提交继续由对应服务负责。
 
 
 ## 交互提醒与跳转

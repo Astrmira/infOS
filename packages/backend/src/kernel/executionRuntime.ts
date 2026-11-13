@@ -11,6 +11,7 @@ import type {
   KernelExecutionClass,
   KernelExecutionDescriptor,
   KernelExecutionId,
+  KernelExecutionSnapshot,
   KernelExecutionState,
   KernelExecutionUsage,
   KernelExecutionWaitReason,
@@ -95,12 +96,12 @@ export class ExecutionRuntime {
     return write
   }
 
-  async complete(descriptor: KernelExecutionDescriptor): Promise<void> {
+  async complete(descriptor: KernelExecutionDescriptor, snapshot?: KernelExecutionSnapshot): Promise<void> {
     await this.finish(descriptor, {
       state: 'completed',
       code: 'OK',
       completedAt: new Date().toISOString(),
-    })
+    }, snapshot)
   }
 
   /** 消息和工具状态已持久化后让出本段执行；用户继续时创建新的执行身份。 */
@@ -109,35 +110,41 @@ export class ExecutionRuntime {
     this.active.delete(descriptor.executionId)
   }
 
-  async timeout(descriptor: KernelExecutionDescriptor, error?: unknown): Promise<void> {
+  async timeout(descriptor: KernelExecutionDescriptor, error?: unknown, snapshot?: KernelExecutionSnapshot): Promise<void> {
     await this.finish(descriptor, {
       state: 'timed_out',
       code: 'DEADLINE_EXCEEDED',
       message: error instanceof Error ? error.message : error ? String(error) : undefined,
       completedAt: new Date().toISOString(),
-    })
+    }, snapshot)
   }
 
   async fail(
     descriptor: KernelExecutionDescriptor,
     error: unknown,
     cancelled = false,
+    snapshot?: KernelExecutionSnapshot,
   ): Promise<void> {
     await this.finish(descriptor, {
       state: cancelled ? 'cancelled' : 'failed',
       code: cancelled ? 'CANCELLED' : 'EXECUTION_FAILED',
       message: error instanceof Error ? error.message : String(error),
       completedAt: new Date().toISOString(),
-    })
+    }, snapshot)
   }
 
   get(executionId: KernelExecutionId): KernelExecutionDescriptor | null {
     return this.active.get(executionId) ?? null
   }
 
+  getSnapshot(executionId: KernelExecutionId): KernelExecutionSnapshot | null {
+    return this.outbox.executionSnapshot(executionId)
+  }
+
   private async finish(
     descriptor: KernelExecutionDescriptor,
     exitStatus: KernelExitStatus,
+    snapshot?: KernelExecutionSnapshot,
   ): Promise<void> {
     await this.stateWrites.get(descriptor.executionId)
     const type =
@@ -148,7 +155,7 @@ export class ExecutionRuntime {
           : exitStatus.state === 'timed_out'
             ? 'kernel.execution.timed_out'
             : 'kernel.execution.failed'
-    await this.appendState(descriptor, type, exitStatus.state, exitStatus)
+    await this.appendState(descriptor, type, exitStatus.state, exitStatus, undefined, snapshot?.usage, snapshot)
     this.active.delete(descriptor.executionId)
   }
 
@@ -166,6 +173,7 @@ export class ExecutionRuntime {
     exitStatus?: KernelExitStatus,
     waitReason?: KernelExecutionWaitReason,
     usage?: KernelExecutionUsage,
+    snapshot?: KernelExecutionSnapshot,
   ): Promise<void> {
     await this.outbox.enqueue({
       protocolVersion: 1,
@@ -182,6 +190,7 @@ export class ExecutionRuntime {
         waitReason,
         usage,
         exitStatus,
+        snapshot,
       },
     })
   }

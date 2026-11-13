@@ -370,8 +370,7 @@ export class StrongholdLifeService {
       this.chat.pruneDeferredReplies()
       this.activities.recover()
       this.watches.recover()
-      for (const exchange of this.repo.list<ExchangeData>('exchange')) {
-        if (exchange.data.status === 'closed') continue
+      for (const exchange of this.repo.list<ExchangeData>('exchange', undefined, ['active', 'quiet'])) {
         const pending = this.chat.pendingReplyIds().some((id) => {
           const message = this.chat.getReplyIntent(id)?.message
           return message && JSON.parse(message.metadataJson).lifeExchangeId === exchange.id

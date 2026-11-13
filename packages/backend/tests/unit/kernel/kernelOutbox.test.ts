@@ -7,6 +7,7 @@ import {
   ExecutionRuntime,
   KernelOutboxDispatcher,
   KernelOutboxRepository,
+  KernelScheduler,
 } from '@infos/backend/kernel'
 import { ThreadRepository } from '@infos/backend/repositories/thread.repo'
 
@@ -39,6 +40,26 @@ afterEach(() => {
 })
 
 describe('消息事务 Outbox', () => {
+  it('运行时摘要淘汰和调度器重建后可读取持久终态，查询结果可独立修改', async () => {
+    const outbox = new KernelOutboxRepository(createDb())
+    const runtime = new ExecutionRuntime(outbox)
+    const scheduler = new KernelScheduler(runtime, {
+      maxQueued: 8, maxRunning: 1, classConcurrency: {}, agingIntervalMs: 100, maxCompleted: 1,
+    })
+    const first = await scheduler.submitAndWait({ principalId: 'pero', class: 'interactive', run: async (context) => {
+      context.consume({ llmCalls: 1, inputTokens: 30, outputTokens: 10 })
+    } })
+    await scheduler.submitAndWait({ principalId: 'nana', class: 'interactive', run: async () => undefined })
+    const restored = scheduler.get(first.descriptor.executionId)!
+    expect(restored).toEqual(first)
+    restored.usage.inputTokens = 999
+    const restarted = new KernelScheduler(new ExecutionRuntime(outbox))
+    expect(restarted.get(first.descriptor.executionId)).toMatchObject({
+      state: 'completed', usage: { llmCalls: 1, inputTokens: 30, outputTokens: 10 },
+    })
+    expect(restarted.get('missing-execution' as KernelExecutionId)).toBeNull()
+  })
+
   it('Execution状态、WaitReason、Usage与timed_out终态应持久化为Durable Event', async () => {
     const db = createDb()
     const outbox = new KernelOutboxRepository(db)

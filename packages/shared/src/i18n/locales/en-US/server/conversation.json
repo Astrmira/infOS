@@ -1,4 +1,7 @@
 {
+  "执行队列已满，请稍后再试": "The execution queue is full. Please try again later.",
+  "会话不存在或已删除": "The conversation does not exist or has been deleted.",
+  "会话执行已中断，请重试": "The conversation was interrupted. Please try again.",
   "消息已变化，请重新选择后再生成": "The message has changed. Select it again to regenerate.",
   "重新生成动作可取消后重新发起": "Cancel this regeneration action to start a new one.",
   "此操作需要主会话执行": "This action requires a main conversation execution",

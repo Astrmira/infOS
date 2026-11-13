@@ -67,11 +67,11 @@
 
 ### 2.5 API 业务状态码
 
-| 约束                      | 说明                                               |
-| ------------------------- | -------------------------------------------------- |
-| 命名格式                  | **UPPER_SNAKE_CASE**                               |
-| 只允许使用规范表中的 code | 新增必须更新 `API_SPEC.md`                         |
-| 示例                      | `OK`, `NOT_FOUND`, `LLM_ERROR`, `VALIDATION_ERROR` |
+| 约束 | 说明 |
+| --- | --- |
+| 命名格式 | **UPPER_SNAKE_CASE** |
+| 允许值来源 | 仅使用规范表中注册的 code，新增须先更新 [S02_API_SPEC.md](./S02_API_SPEC.md) |
+| 示例 | `OK`, `NOT_FOUND`, `LLM_ERROR`, `VALIDATION_ERROR` |
 
 ---
 

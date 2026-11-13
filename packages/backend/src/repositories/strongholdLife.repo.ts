@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { DrizzleDb } from '../database'
 import { strongholdLifeRecords } from '../database/schema'
 import { AppError } from '../lib/appError'
@@ -26,10 +26,11 @@ export class StrongholdLifeRepository {
     return row ? this.decode<T>(row) : undefined
   }
 
-  list<T>(kind: LifeKind, roomId?: string): LifeRecord<T>[] {
+  list<T>(kind: LifeKind, roomId?: string, statuses?: string[]): LifeRecord<T>[] {
     return this.db.select().from(strongholdLifeRecords).where(and(
       eq(strongholdLifeRecords.kind, kind),
       roomId === undefined ? undefined : eq(strongholdLifeRecords.roomId, roomId),
+      statuses === undefined ? undefined : inArray(sql<string>`json_extract(${strongholdLifeRecords.dataJson}, '$.status')`, statuses),
     )).all().map((row) => this.decode<T>(row))
   }
 

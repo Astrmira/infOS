@@ -20,14 +20,14 @@
 
 使用独立持久浏览会话 `persist:infos-napcat-webui`，不注入 infOS preload。主页面导航限于当前 NapCat 本机来源和 WebUI 路径，不向普通浏览标签转发带凭据的弹窗 URL。
 
-后台等待使用代次保护，关闭标签后不自动重开。等待超过 45 秒显示可重试错误；进程退出显示已停止。旧进程的停止超时只作用于该子进程，不得误停新进程。
+后台等待使用代次保护，关闭标签后不自动重开。等待超过 45 秒显示可重试错误；进程退出显示已停止。旧进程的停止超时仅作用于对应子进程，与新启动进程完全隔离。
 
-界面分别显示进程、管理页和 Bot 连接状态。QQ 登录的具体状态在 NapCat 原生页面展示；连接失败不能直接当成 QQ 未登录。运行日志默认折叠，展开时才挂载终端。
+界面分别显示进程、管理页和 Bot 连接状态。QQ 登录的具体状态在 NapCat 原生页面展示，通道连接失败与 QQ 登录状态分开诊断。运行日志默认折叠，展开时才挂载终端。
 
 当前入口针对本机 Electron 管理的 NapCat。浏览器和 Docker 部署仍使用外部 NapCat，不开放任意远程管理地址。
 
 ## 源码与故障定位
 
-主进程入口为 `electron/main/services/napcat.ts`，安装、进程修复、管理页和状态分别拆分到同目录 napcatInstallation、napcatRuntimeRepair、napcatWebUi、napcatDashboard 模块。修改登录入口时同时核对私有 Session、导航白名单和凭据脱敏，不能直接复用普通浏览器标签的 preload。
+主进程入口为 `electron/main/services/napcat.ts`，安装、进程修复、管理页和状态分别拆分到同目录 `napcatInstallation`、`napcatRuntimeRepair`、`napcatWebUi`、`napcatDashboard` 模块。修改登录入口时同步核对私有 Session、导航白名单和凭据脱敏，保持与普通浏览器标签 preload 的隔离。
 
-先按进程存活、WebUI 就绪、QQ 登录、Bot 到后端连接四层定位故障；不要以重启某一层替代判断。社交协议与账号生命周期见 [B21](./B21_SOCIAL_CAPABILITIES.md)。
+排查故障时依次按进程存活、WebUI 就绪、QQ 登录、Bot 到后端连接四层逐步定位后再作处理，避免通过重启某一层掩盖问题原因。社交协议与账号生命周期见 [B21](./B21_SOCIAL_CAPABILITIES.md)。

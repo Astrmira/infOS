@@ -56,6 +56,26 @@ afterEach(async () => {
 })
 
 describe('DistributedSyncService 完整快照', () => {
+  it('分块压缩加密保留既有认证封装和二进制正文，并清理导出文件', async () => {
+    const dataDir = path.join(root(), 'data')
+    await mkdir(path.join(dataDir, 'assets'), { recursive: true })
+    // 覆盖多个 256 KiB 输入块，随机字节避免内容被压缩为极小包。
+    const content = randomBytes(512 * 1024 + 17)
+    await writeFile(path.join(dataDir, 'assets', 'binary.bin'), content)
+    const service = new DistributedSyncService(dataDir,
+      { $client: { backup: async (target: string) => writeFile(target, '数据库快照') } } as never, 'server-binary')
+    const key = randomBytes(32)
+    const encrypted = await service.createEncryptedSnapshot(key.toString('base64'))
+    const bundle = decryptBundle(encrypted, key)
+    expect(Buffer.from(bundle.files['assets/binary.bin']!, 'base64')).toEqual(content)
+    expect(bundle.manifest.files.find((file) => file.path === 'assets/binary.bin')?.sha256)
+      .toBe(createHash('sha256').update(content).digest('hex'))
+    const damaged = Buffer.from(encrypted)
+    damaged[12] = damaged[12]! ^ 1
+    expect(() => decryptPayload(damaged, key)).toThrow()
+    expect(await readdir(path.join(dataDir, '.backup-state', 'work'))).toEqual([])
+  })
+
   it('应同步全部用户数据并排除机器身份和运行时瞬态', async () => {
     const dataDir = path.join(root(), 'data')
     await mkdir(path.join(dataDir, 'principals', 'pero', 'workspace'), { recursive: true })

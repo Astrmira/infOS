@@ -42,17 +42,17 @@
 | 下线 | 断线、Offer 撤销、应用被禁用或停止时，调用 `offline` / `offlineAll`。工具会立即从 `ToolRegistry` 和管理层中整条移除。 |
 | 释放 | Realm 释放时，接入记录和在线工具一并撤销，之后可以重新接入。旧声明无法重新上线，在线状态和注销完成均按 Realm 实例核对，避免影响新实例。 |
 
-子应用工具不会常驻工具列表。子应用没启动、或已经断开时，主 Agent 的工具定义、角色能力配置页和会话工具菜单里都看不到它的工具，这符合 A10 §5.4 “不得保留离线占位工具”的要求。
+子应用工具不常驻列表：当子应用未启动或已断开连接时，主 Agent 的工具定义、角色能力配置页和会话工具菜单中同步移除其工具（见 [A10 §5.4](./A10_APPLICATION_INTEGRATION.md#54-双向-capability-与-tool-projection)）。
 
 ## 3. 排序与提示词缓存
 
-动态工具上下线时，应尽量不让模型的提示词缓存失效。因此：
+动态工具上下线时需保持模型提示词缓存前段稳定：
 
-- `services/agent/toolOrder.ts` 提供统一的比较函数 `compareToolNames`：常驻工具排在前面，动态工具排在后面，两组内部都沿用原来的函数名字母序。
-- 发给模型的函数定义（`canonicalTools`）和系统提示词中的工具说明（`CapabilityGate.describeTools`）都使用这个顺序。
-- 装配根通过 `setDynamicToolPredicate((name) => applicationTools.has(name))`，把在线的子应用工具标记为动态工具。
+- `packages/backend/src/services/agent/toolOrder.ts` 提供统一比较函数 `compareToolNames`：常驻工具排在前面，动态工具排在后面，两组内部沿用函数名字母序。
+- 发给模型的函数定义（`canonicalTools`）和系统提示词中的工具说明（`CapabilityGate.describeTools`）共用此顺序。
+- 装配根通过 `setDynamicToolPredicate((name) => applicationTools.has(name))` 将在线子应用工具标记为动态工具。
 
-这样一来，子应用上线或下线只会改动工具列表的末尾，前面常驻工具那一段保持不变。独立子应用进程没有注入这条判定，排序和原来一样。
+子应用上下线仅改变工具列表末尾，前段常驻工具保持不变；独立子应用进程未注入该判定，沿用默认字母序。
 
 ## 4. 冲突与不支持的声明
 
@@ -77,13 +77,13 @@ source?: { kind: 'application'; appId: string; appName: string }
 - 角色能力配置里写 `application:*`，表示“放行当前在线的全部子应用工具”，判定依据是工具 `packageId` 以 `application:` 开头。和 `mcp:*` 一样，只在默认作用域生效，ambient / follow_up 作用域不受影响。
 - 前端从 `*` 展开为显式列表时，内置工具逐个列出，同时保留 `application:*` 与 `mcp:*`，不因当前离线丢失授权。
 - 前端显示与后端均识别这两种通配符。在通配符状态下关闭单个动态工具时，把所有覆盖它的通配符展开为其余可见工具的显式白名单；保存后该工具不再被通配符放行。
-- 展开后的同类新工具不会自动获权，需要重新勾选或恢复通配符；其他工具类别的通配符不受影响。
+- 展开后的同类新工具不自动获权，需重新勾选或恢复通配符；其他工具类别的通配符不受影响。
 
-修复说明：通配符不是真实工具名，原实现在按通道工具求交集时就已经把它过滤掉了，`mcp:*` 因此从未生效。现在两个通配符都直接从角色配置中读取。
+由于通配符并非真实工具名（若参与通道工具集求交集会被过滤），`application:*` 与 `mcp:*` 均直接从角色能力配置读取并在当前在线或已注册工具范围内求值。
 
 ## 6. 接入新的子应用
 
-1. 在子应用 manifest 中声明 `endpoints`、`offeredCapabilities` 和 `toolProjections`。`ApplicationIntegrationService` 会校验每个投影是否绑定了已声明、并且已发布的 Operation。
+1. 在子应用 manifest 中声明 `endpoints`、`offeredCapabilities` 和 `toolProjections`。`ApplicationIntegrationService` 会校验每个投影是否绑定了已声明且已发布的 Operation。
 2. 在装配根注册该子应用的 Realm，然后调用 `applicationTools.declare(realm, manifest)`。
-3. 把得到的接入凭据交给 `ApplicationCapabilityRuntime`。如果需要定制调用方式，通过 `toolInvocation` 回调扩展。
-4. 不要直接调用 `realm.registerTool(..., { hostProjection: true })` 或 `toolRegistry.register` 来暴露子应用工具。
+3. 把得到的接入凭据交给 `ApplicationCapabilityRuntime`。如需定制调用方式，通过 `toolInvocation` 回调扩展。
+4. 宿主投影工具统一通过 `applicationTools.declare` / `online` 注册，不直接调用 `realm.registerTool(..., { hostProjection: true })` 或 `toolRegistry.register`。

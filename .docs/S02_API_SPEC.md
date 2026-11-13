@@ -6,8 +6,6 @@
 
 ## 1. 统一响应信封
 
-主侧会话的领域契约见 [主侧会话与角色持续状态](./B26_MAIN_SIDE_THREADS.md)。相关入口包括 `POST /api/chat/threads/latest`（兼容路径，返回唯一主线）、`POST /api/chat/threads`（创建侧线）、`POST /api/chat/threads/:id/reset`（清空主线）、`GET /api/chat/threads/:id/experiences`（亲历来源）和 `POST /api/chat/threads/:id/fork`（侧线检查点复制）。Thread 响应包含主侧类型、代次与操作能力，服务端独立校验生命周期。
-
 JSON 业务接口使用以下信封。Router 应优先使用项目级响应工厂；`apiContractMiddleware` 为适用的 API 响应补齐默认 `message`，并拦截未注册业务码。SSE、文件与资源响应使用各自的格式。
 
 ```typescript
@@ -163,12 +161,12 @@ throw new AppError('NOT_FOUND', { message: t('errors.backend', '目标会话不�
 
 ---
 
-## 6.1 校验与状态绑定
+### 6.1 校验与状态绑定
 
-- 所有Zod请求校验必须使用项目级`validate()`包装器，禁止直接使用`@hono/zod-validator`的默认错误体。
-- 校验失败统一返回HTTP 400与`VALIDATION_ERROR`信封，字段错误放入`data.fields`。
-- HTTP 201必须使用`CREATED`，HTTP 202必须使用`ACCEPTED`；动作成功但未创建新资源时使用HTTP 200与`OK`。
-- Router不得手写未在`ResponseCode`、`CODE_MESSAGES`与本文档注册的业务码。
+- 所有 Zod 请求校验必须使用项目级 `validate()` 包装器，避免直接使用 `@hono/zod-validator` 的默认错误体。
+- 校验失败统一返回 HTTP 400 与 `VALIDATION_ERROR` 信封，字段错误放入 `data.fields`。
+- HTTP 201 必须使用 `CREATED`，HTTP 202 必须使用 `ACCEPTED`；动作成功且未创建新资源时使用 HTTP 200 与 `OK`。
+- Router 仅使用在 `ResponseCode`、`CODE_MESSAGES` 与本文档注册的业务码。
 
 ---
 
@@ -184,13 +182,13 @@ throw new AppError('NOT_FOUND', { message: t('errors.backend', '目标会话不�
 
 ## 9. AIOS Thread、SSE 与能力契约
 
-交互 API 的领域边界以 [A09_AIOS_ARCHITECTURE](./A09_AIOS_ARCHITECTURE.md#10-api-与流式契约) 为准：后端从 `threadId` 推导 `agentId`、`channel` 和上下文策略，客户端只提交当前输入，不得上传权威历史。
+交互 API 的领域边界以 [A09_AIOS_ARCHITECTURE](./A09_AIOS_ARCHITECTURE.md#10-api-与流式契约) 为准：后端从 `threadId` 推导 `agentId`、`channel` 和上下文策略，客户端仅提交当前输入。主侧会话的领域契约见 [主侧会话与角色持续状态](./B26_MAIN_SIDE_THREADS.md)，核心生命周期入口包括 `POST /api/chat/threads/latest`（兼容返回唯一主线）、`POST /api/chat/threads`（创建侧线）、`POST /api/chat/threads/:id/reset`（清空主线）、`GET /api/chat/threads/:id/experiences`（亲历来源）和 `POST /api/chat/threads/:id/fork`（侧线检查点复制）；Thread 响应携带主侧类型、代次与操作能力。
 
 - `ThreadChannel` 仅包含 `desktop`、`group`；前者由主 Agent Compiler 处理，后者专属于 Stronghold。
-- Social、Arca、Coding 等 Application Realm 身份由 `appId/realmId` 表达，不得扩大全局 `ThreadChannel` 联合。
+- Social、Arca 等 Application Realm 身份由 `appId/realmId` 表达，保持全局 `ThreadChannel` 枚举精简。
 - 内部工具调用与结果使用 `callId` 关联，并投影为 Surface 节点；具体字段以共享类型和投影实现为准。
-- `done` 是成功结束的显式事件，前端收到 EOF 但未收到 `done` 时不得视作成功。
-- Provider 节点的能力协议与 SSE 业务流分离；能力调用消息的类型必须由 shared 包统一定义。
+- `done` 是流式成功结束的显式事件，前端收到 EOF 但缺少 `done` 时按异常截断处理。
+- Provider 节点的能力协议与 SSE 业务流分离，能力调用消息的类型统一由 `@infos/shared` 定义。
 
 主线交流按独立消息、逻辑执行和待回应事项持久化，完整来源及恢复合同见[主侧会话参考](./B26_MAIN_SIDE_THREADS.md)。Projection 消息提供可选 `publicationId`、`executionId`、`sourceMessages`，独立过程记录标记 `executionRecord`。`surface.publish` 同步执行中的正式发言，`surface.settled` 结算含零条发言的执行。
 
@@ -208,22 +206,22 @@ throw new AppError('NOT_FOUND', { message: t('errors.backend', '目标会话不�
 - gateway.select_principal 将当前客户端的消息投影身份切换为指定角色；Input Seat 仍独立申请与续租。
 - 语音识别二进制请求保留实际 Content-Type 编码参数；取消后客户端不再把迟到识别结果提交为对话。
 
-## 档案人工修订
+## 11. 档案人工修订
 
-以下接口使用标准信封，成功返回新版本记录，其 `id` 与旧版本不同。用户只能修改列明字段，不接受来源对话标识、所属角色或事实对象的覆盖。
+以下接口使用标准信封，成功返回新版本记录（生成新的 `id`）；用户仅可修改列明字段，来源对话、所属角色与事实对象保持不变。
 
 | 方法 | 路径 | 请求 |
 | --- | --- | --- |
 | PATCH | `/api/memories/:id` | `narrative`、`importance`、`affect{tones,valence,arousal}`、`participants/places/objects/topics`、`expectedStatus`、`regenerateVector`（默认 false）、UUID `operationId` |
 | PATCH | `/api/knowledge/facts/:id` | `statement`、可选 `source/confidence`、UUID `operationId` |
 
-正文最多 20,000 字符；每组标签最多 100 项、每项最多 200 字符；重要度与情感数值为 0–10 整数，可信度为 0–1。相同草稿的网络重试沿用同一个 `operationId`。版本或状态冲突返回 `CONFLICT`（409）；索引尚未完成返回 `RESOURCE_BUSY`；向量生成不可用或失败返回 `EMBEDDING_ERROR`。接口不会追加聊天来源覆盖或触发人工版本的后台反思。归档记忆保持归档；历史和已撤回事实不可编辑。
+正文上限 20,000 字符；每组标签最多 100 项、每项最多 200 字符；重要度与情感数值为 0–10 整数，可信度为 0–1。相同草稿的网络重试沿用同一个 `operationId`。版本或状态冲突返回 `CONFLICT`（409）；索引未完成返回 `RESOURCE_BUSY`；向量生成失败返回 `EMBEDDING_ERROR`。人工修订维持原归档状态，历史与已撤回事实保持只读。
 
-## 11. 文档知识库
+## 12. 文档知识库
 
 所有端点位于 `/api/knowledge`，使用标准信封。共享事实端点保持原有合同。
 
-`GET /api/knowledge/recall-settings` 读取独立的自动召回设置；`PUT /api/knowledge/recall-settings` 接受完整的 `{ "documentAutoRecall": false, "factAutoRecall": false }`，两个字段必须为布尔值，默认均关闭。只控制对应资料的自动注入，不控制手动查询工具，也不改变 `memory.runtime`。
+`GET /api/knowledge/recall-settings` 读取独立的自动召回设置；`PUT /api/knowledge/recall-settings` 接受 `{ "documentAutoRecall": false, "factAutoRecall": false }`（默认关闭，只控制自动注入，不影响手动查询工具与 `memory.runtime`）。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -239,5 +237,3 @@ throw new AppError('NOT_FOUND', { message: t('errors.backend', '目标会话不�
 导入和重试返回 `202 ACCEPTED` 与文档状态，LLM 整理在后台执行。重建返回 `202 ACCEPTED`，进度通过各文档 `vectorStatus` 获取。检索默认返回摘要与原文节选，`expand` 展开原文；结果包括 `version`、`truncated`，长部分包括字符游标 `nextOffset`。
 
 入库规则、存储与工具上下文生命周期见 [B03_DOCUMENT_KNOWLEDGE](./B03_DOCUMENT_KNOWLEDGE.md)。
-
-_本文档由 Carola 整理，适用于 infOS-TS 后端 API 规范。_

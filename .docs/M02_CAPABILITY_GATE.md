@@ -22,10 +22,10 @@ Agent Channel Root Policy
 
 ## 2. 强制规则
 
-1. 持久`ThreadChannel`仅包含`desktop | group`；未知Channel必须fail-closed，禁止回退到desktop。
-2. `group`专属于Stronghold；Application Realm不能借用主应用Channel能力矩阵。
-3. 模型可见工具定义和执行期Handler必须使用同一Gate快照及Capability判定。
-4. Runtime Context显式携带Principal、Process、Execution、Agent、Thread/Realm和Capability Handle；禁止使用全局活跃角色。
+1. 持久 `ThreadChannel` 仅包含 `desktop | group`；未知 Channel 按 fail-closed 拦截，不回退到 `desktop`。
+2. `group` 专属于 Stronghold；Application Realm 使用独立 Capability 体系，不复用主应用 Channel 能力矩阵。
+3. 模型可见工具定义和执行期 Handler 使用同一 Gate 快照及 Capability 判定。
+4. Runtime Context 显式携带 Principal、Process、Execution、Agent、Thread/Realm 和 Capability Handle，不读取全局活跃角色。
 5. 请求级Scope只能取交集；`ambient`清空Skills指引，资源范围继续收窄。
 6. 文件和Terminal能力必须绑定Resource Scope与Workspace Mount，路径执行containment检查。
 7. 删除、命令执行、网络、副作用写入等高风险动作必须进入统一Policy/Approval/Receipt链路。
@@ -59,8 +59,4 @@ Social、Arca、Coding等Application通过Realm Capability、Shared Port和Bound
 
 ## 4. 配置与审计
 
-Agent、Package和用户资产可声明能力需求，但用户层覆盖不得绕过系统最小安全规则。拒绝、审批、Provider转发、执行结果与撤销必须关联`principalId/processId/executionId/callId`和目标Object Generation。Capability Handle不得进入Prompt、Surface正文或普通日志。
-
----
-
-_本文档由 Carola 整理，适用于 infOS 能力门控规范。_
+Agent、Package 和用户资产可声明能力需求，同时用户层覆盖始终受系统最小安全规则约束。拒绝、审批、Provider 转发、执行结果与撤销均关联 `principalId/processId/executionId/callId` 和目标 Object Generation。Capability Handle 仅存于受信任运行时上下文，不写入 Prompt、Surface 正文或普通日志。

@@ -12,7 +12,7 @@
 - 优先使用供应商回传的 usage，不使用聊天消息中的本地 Token 估算，也不从旧聊天反推消耗。账本从实际记录开始积累；正在执行但尚未结束的调用不计入已结算用量。
 - 记录成功、失败、取消和中断状态。失败或中断时已收到的 usage 仍保留；缺失或非法计数存为 NULL，而不是零。只有部分回传时标记为部分上报；界面没有该维度的计数时显示「—」。
 - 输入包含缓存输入。Anthropic 的普通输入、缓存读取、缓存创建先合并；缓存数量另存为输入的子项，不重复加入总量。OpenAI 缓存和思考、Responses 缓存和思考、Gemini 缓存和思考均保留；Gemini 输出包括其单列的思考 Token。
-- OpenAI Chat / Responses 保留标准明细 `cached_tokens`、`cache_write_tokens`，兼容中转的顶层 `cached_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`、`prompt_cache_hit_tokens`，以及 NewAPI 的 `cached_creation_tokens` 和明确上报的 TTL 写入分项（`services/llm/usage.ts` 的 `reportedCacheUsage`）。同义字段只取一个，优先协议标准字段，明确的零不会被其他别名覆盖。`prompt_cache_miss_tokens` 是未命中输入，不是缓存写入；仅在总输入缺失且 hit/miss 均上报时以两者之和补全输入。OpenAI 输入已包含缓存明细，不再次相加。来源不明的中转若改变计数语义，不能仅凭字段名证明账单正确。
+- OpenAI Chat / Responses 保留标准明细 `cached_tokens`、`cache_write_tokens`，兼容中转的顶层 `cached_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`、`prompt_cache_hit_tokens`，以及 NewAPI 的 `cached_creation_tokens` 和明确上报的 TTL 写入分项（`packages/backend/src/services/llm/usage.ts` 的 `reportedCacheUsage`）。同义字段只取一个，优先协议标准字段，明确的零不会被其他别名覆盖。`prompt_cache_miss_tokens` 是未命中输入，不是缓存写入；仅在总输入缺失且 hit/miss 均上报时以两者之和补全输入。OpenAI 输入已包含缓存明细，不再次相加；若来源中转修改底层计数语义，字段名本身不代表账单口径。
 - 总数优先保留供应商总量，并至少包含已知输入＋输出。供应商仅回传总数、未细分的部分在走势中用中性色展示；未上报和部分上报会提示统计不完整。
 - 调用归属以调用开始时间为准，统一保存 UTC 毫秒。统计请求携带界面设备的 IANA 时区，按当地自然日查询；跨夏令时不按固定 24 小时截断。夏令时回拨时重复出现的同名小时合并统计，Token 不丢失。
 - 用量记录独立于聊天历史，不因撤回、删除聊天或普通记忆重置而减少；恢复出厂设置会清空。费用、embedding 和独立 ASR/TTS 消耗暂不统计。
@@ -48,14 +48,12 @@ ORDER BY tool_changes DESC, system_changes DESC
 LIMIT 30;
 ```
 
-缓存优化边界见 [A02 §6.1](./A02_BACKEND_ARCHITECTURE.md#61-上游提示词缓存)。不发送缓存控制字段不代表上游不会自动缓存；统计只读取实际响应，不为获取缓存数字另发模型请求。
-
-OpenAI Chat / Responses 保留标准明细 `cached_tokens`、`cache_write_tokens`，兼容中转的顶层 `cached_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`、`prompt_cache_hit_tokens`，以及 NewAPI 的 `cached_creation_tokens` 和明确上报的 TTL 写入分项。同义字段只取一个；优先协议标准字段，明确的零不会被其他别名覆盖。`prompt_cache_miss_tokens` 是未命中输入，不是缓存写入；仅在总输入缺失且 hit/miss 均上报时以两者之和补全输入。OpenAI 输入已包含缓存明细，不再次相加；Anthropic 原生输入按其协议合并读取与写入。来源不明中转若改变计数语义，不能仅凭字段名证明账单正确。
+缓存优化边界见 [A02 §5.1](./A02_BACKEND_ARCHITECTURE.md#51-提示词前缀稳定性)。不发送缓存控制字段不代表上游不会自动缓存；统计只读取实际响应，不为获取缓存数字另发模型请求。
 
 协议口径参考：[Claude 缓存用量](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)、[Gemini Token 与思考计数](https://ai.google.dev/gemini-api/docs/generate-content/tokens)。
 
 ## 维护入口与统计边界
 
-`packages/backend/src/services/llm/tokenUsageService.ts` 统一记录供应商 usage，`repositories/tokenUsage.repo.ts` 负责时间聚合，`packages/frontend/src/components/usage/TokenUsageCard.vue` 展示账本。当前输入预算由上下文编译/请求估算提供，与消费账本不能混用。
+`packages/backend/src/services/llm/tokenUsageService.ts` 统一记录供应商 usage，`packages/backend/src/repositories/tokenUsage.repo.ts` 负责时间聚合，`packages/frontend/src/components/usage/TokenUsageCard.vue` 展示账本。输入预算由上下文编译/请求估算提供，与消费账本分别核算、互不混用。
 
-新增 Provider 的 usage 映射时检查输入是否已包含缓存、输出是否已包含思考以及总数是否重复累加；使用独立响应样例验证，不从同一映射函数生成预期。缺失字段保留 NULL，不能为了图表完整补零。
+新增 Provider 的 usage 映射时检查输入是否已包含缓存、输出是否已包含思考以及总数是否重复累加；使用独立响应样例验证，不从同一映射函数生成预期。缺失字段保留 NULL，不向图表或数据库强行补零。

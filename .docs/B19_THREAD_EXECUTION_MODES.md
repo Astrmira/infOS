@@ -1,68 +1,63 @@
 # 会话执行模式
 
-聊天栏提供四种 Thread 设置，主对话与工作区协作栏共用状态。聊天／工作模式和逐项工具开关继续控制哪些工具开放。
+> **适用范围**：Thread 工具审批级别、高危操作边界与自动审批机制
 
-`manage_task` 在聊天与工作模式开放，极简模式仍不开放。协调入口可被用户单独关闭；它不是不可关闭的系统工具。新后台任务继承来源会话的审批模式和禁用工具，来源为聊天模式时使用工作模式执行，来源为极简模式时继续保持极简。
+---
 
-普通桌面对话与已授权社交入口可创建后台任务。后台执行直接完成当前任务，`manage_task(create)` 与底层调度器均拒绝再创建通用子任务；没有独立开发子 Agent 的派遣入口。后台任务仍可读取自身，通过 `interact_with_social` 交办社交应用工作，并查询、管理和等待交办结果。社交交办沿用父执行核验、数量与预算限制，以及取消和修改时的收口机制；父子关联、历史任务结果与恢复数据继续保留。社交交办流程见 [B21](./B21_SOCIAL_CAPABILITIES.md)。
+## 1. 四种执行模式
 
-| 模式                    | 执行规则                                                                   |
-| ----------------------- | -------------------------------------------------------------------------- |
-| 手动审批 `manual`       | 终端与脚本逐次确认，其他工具保留手动策略                                   |
-| 自动执行 `auto`         | 普通操作自动运行，所有终端与脚本及其他高危操作由用户逐次确认               |
-| 自动审批 `auto_approve` | 其他审批（远程终端的中断、结束与关闭）由审批模型判断，高危操作由用户确认   |
-| 完整权限 `full`         | 已开放的普通工具跳过审批、命令风险策略与路径范围拦截；高危操作仍由用户确认 |
+聊天栏提供四种 Thread 执行模式，主对话与工作区协作栏共用状态；工具可见范围仍由交互模式（[B09](./B09_THREAD_INTERACTION_MODE.md)）和逐项工具开关控制：
 
-完整权限仍需要工具存在、设备可用、参数可执行，并遵守会话身份、通道、应用作用域和运行生命周期。一次授权不会修改共享执行会话的永久权限。
+| 模式 | 执行规则 |
+| --- | --- |
+| 手动审批 `manual` | 终端、脚本及其他高危操作逐次确认，其余工具按默认策略审批 |
+| 自动执行 `auto` | 普通工具自动放行，所有终端、脚本及其他高危操作由用户逐次确认 |
+| 自动审批 `auto_approve` | 远程终端的中断、结束与关闭交由审批模型判断，高危操作由用户确认 |
+| 完整权限 `full` | 已开放的普通工具跳过常规审批、命令策略与工作区路径限制；高危操作仍由用户确认 |
 
-## 高危操作
+`manage_task` 在聊天与工作模式下默认开放（可在会话工具开关中单独禁用），极简模式不开放。新建后台任务继承来源会话的执行模式与禁用工具（来源为聊天模式时升级为工作模式，极简模式保持极简）。后台任务直接完成当前目标，不再嵌套创建通用子任务；社交交办通过 `interact_with_social` 复用父任务校验与收口机制（见 [B21](./B21_SOCIAL_CAPABILITIES.md)）。
 
-**规则：高危操作在任何执行模式下都由用户本人逐次确认；审批模型不参与判断，完整权限也不跳过。** 高危操作与桌面操作护栏（[P03](./P03_DESKTOP_SHELL.md) 阶段 2）共用一份名单 `packages/shared/src/safety-lists.draft.json`，判定函数为 `packages/shared/src/desktopSafety.ts` 的 `isHighRiskToolCall`：
+---
 
-- 终端与脚本执行：`terminal_execute`、`terminal_create`、`terminal_write`、`remote_terminal_create`、`remote_terminal_write`、`run_script`，以及带代码的 `runtime_debug` 和运行时临时注册的工具。只读终端查询仍由宿主直接读取，不启动 Shell，但同样需要用户逐次确认。编排脚本本身及内部高危工具调用分别审批；固定的终端与脚本底线不依赖可编辑名单。
-- 工作区外删除（按最终参数与真实路径，含符号链接与 Junction）。
-- 写入、修改或删除名单 `sensitivePaths` 中的系统敏感位置：hosts、开机启动项与计划任务、环境变量与 Shell 启动脚本、受信任证书、注册表与系统 / 程序目录、infOS 客户端的安全设置文件（`desktop-control.json`、`desktop-startup.json`、`desktop-safety*.json`、「桌面与家」配置 `desktop-home.json`、编译缓存目录 `desktop-bridge`、签名密钥）。`%变量%` 与 `~` 在判断时展开，Windows 不区分大小写。注册表、Windows 环境变量与证书存放在注册表中，只能经终端或程序修改，由终端规则与桌面护栏的程序名单覆盖。
+## 2. 高危操作边界
 
-执行器（`RegistryToolExecutor`）在 Hook 后的最终参数上判定：高危调用不进入审批模型，自动执行与自动审批模式不自动放行，完整权限也进入用户审批；用户的会话级授权不能代替逐次确认（后台任务按原有方式返回 `APPROVAL_PENDING`，用户批准后按原参数重新调用）。一次批准绑定 agent、session、thread、task、工具和完整参数摘要；执行前原子领取成功才可续行。高危请求的 `allow_session` 在服务层拒绝，任务恢复不能借会话授权放行。显式配置的参数禁止策略在完整权限以外的模式中仍然生效；完整权限跳过参数策略，但高危调用一律交给用户。审批卡写明原因（执行终端命令、执行脚本、删除工作区外文件或改动系统敏感位置）。工具说明向角色交代确认规则，调用前先向用户说明。
+**高危操作在任何执行模式下（含 `full`）均须用户本人逐次确认，不进入自动审批模型，也不支持 `allow_session` 会话级放行。** 高危名单与桌面操作护栏（[P03](./P03_DESKTOP_SHELL.md)）共用 `packages/shared/src/safety-lists.draft.json`，由 `packages/shared/src/desktopSafety.ts` 的 `isHighRiskToolCall` 在 Hook 处理后的最终参数上判定：
 
-## 配置与迁移
+- **终端与脚本执行**：`terminal_execute`、`terminal_create`、`terminal_write`、`remote_terminal_create`、`remote_terminal_write`、`run_script`，以及带代码参数的 `runtime_debug` 与运行时动态注册工具（编排脚本及其内部高危子调用分别审批）。
+- **工作区外删除**：按解析符号链接和 Junction 后的真实路径判定。
+- **系统敏感位置变更**：写入、修改或删除 `sensitivePaths` 覆盖的路径（hosts、开机启动项与计划任务、环境变量与 Shell 启动脚本、受信任证书、注册表与系统/程序目录，以及 `desktop-control.json`、`desktop-startup.json`、`desktop-safety*.json`、`desktop-home.json`、`desktop-bridge`、签名密钥等安全配置；判定时展开 `%变量%` 与 `~`，Windows 忽略大小写）。
 
-- 模型配置 → 任务指派 → 工具审批。配置键为 `model.task.approval`，未指定时跟随主模型。
-- Thread 新字段 `execution_mode`；旧 `auto_execute_tools=false/true` 分别迁移为 `manual/auto`。兼容字段随模式同步。
-- `PUT /api/chat/threads/:id/execution-mode` 接受 `executionMode`；仍兼容旧 `autoExecuteTools` 请求。
-- 新派发的后台任务复制同一角色来源会话的模式；之后切换原会话不改变该任务。
-- 新建普通对话继承同一角色最近活跃对话的执行模式，但只继承 `manual` / `auto`；`auto_approve` 与 `full` 回落为 `manual`。详见 [B09](./B09_THREAD_INTERACTION_MODE.md#会话设置与新会话继承)。
+单次批准严格绑定 `agent`、`session`、`thread`、`task`、工具名与完整参数摘要，执行前原子领取后即消费。显式配置的参数禁止策略在 `manual` / `auto` / `auto_approve` 下均生效，在 `full` 下跳过但仍保留上述高危底线。
 
-## 自动审批
+---
 
-高危操作（见上）不交给审批模型。审批模型目前只判断远程终端的中断、结束与关闭；远程只读工具维持自动执行行为。
+## 3. 确定性只读终端查询
 
-### 确定性只读终端查询
+`terminal_execute` 与 `terminal_create` 在 Hook 后识别完全由封闭只读语法构成的指令：
 
-`terminal_execute` 与 `terminal_create` 在 Hook 后识别整条命令：每个顺序语句、管道源与后续操作都必须属于封闭的只读语法。Windows 支持 `Get-Location`、`Get-ChildItem`、`Get-Content`、`Select-String -SimpleMatch` 及常用别名，可组合固定字段的 `Select-Object`、`Sort-Object` 和 `Format-Table`；POSIX 支持 `pwd`、`ls`、`cat`、`head`、`tail` 与截取行数的管道。只支持明确的常量参数，不完整模拟 Shell，未知选项、脚本块、变量展开、命令替换、重定向和混合执行整体回退原审批。`terminal_write` 始终按原审批处理，不猜测当前终端是否处于 Shell。
+- **支持语法**：Windows 支持 `Get-Location`、`Get-ChildItem`、`Get-Content`、`Select-String -SimpleMatch` 及常用别名，可组合固定字段的 `Select-Object`、`Sort-Object`、`Format-Table`；POSIX 支持 `pwd`、`ls`、`cat`、`head`、`tail` 及行数截取管道。
+- **执行方式**：仅接受常量参数；确认后由宿主 `readOnlyTerminal.ts` 直接执行目录枚举与文件读取，不启动模型指定的 Shell 或外部解释器（目录和字段投影默认输出 JSON 行，`Format-Table` 输出制表符分列文本），并同样生成带 `terminalId` 的已结束终端记录。
+- **范围与限制**：上限为 `4096` 个目录条目、单文件与总输出不超过 `2 MiB`，跳过符号链接与二进制文件；包含变量展开、重定向、脚本块或未收录命令（如 `git`、`rg`）时交回原终端审批流程。只读查询在所有模式下仍需用户确认。
 
-确认后的查询由宿主执行目录、文本读取与固定字段投影，不启动模型指定的 Shell、解释器或二进制程序。因此同名项目脚本不能冒充只读程序。目录和字段结果默认以 JSON 行返回，`Format-Table` 返回制表符分列的表格，文本按行返回；这些是结构化查询结果，不保证逐字复现各 Shell 的排版。只读创建同样生成已结束的终端记录，保留 `terminalId`、状态、输出游标与历史读取。使用终端工具读取 `.py` 等脚本内容也逐次审批，运行脚本、未知程序及 `--help/--version` 不会据此免审。Git、rg 等尚未纳入该读取子集的命令仍走原审批。
+---
 
-只读查询仍需通过原工具准入、显式审批设置、命令／参数策略、来源会话、执行配置与真实路径检查；有效读取范围不超过当前工作区和工具资源范围。自定义命令白名单会检查每个语句及管道步骤。用户一次性拒绝优先返回，只读判定不创建或伪造用户审批。执行前核对参数与工作区，读取时重查真实路径；目录递归跳过链接，查询限制为 4096 个目录条目、单文件及总输出不超过 2 MiB，二进制／特殊文件不进入文本读取。遇到边界错误返回具体失败，不自动改用未审批的原命令重试。后台任务的只读恢复模式可执行这类查询，不记录写入意图。
+## 4. 自动审批模型
 
-实现入口为 `readOnlyTerminal.ts`、`PolicyEngine`、`RegistryToolExecutor` 与 `TerminalManager`；只读查询在四种模式中也由用户逐次确认（包括完整权限），其余终端执行同样按高危操作由用户确认。
+自动审批当前用于远程终端的中断、结束与关闭判断（模型配置键 `model.task.approval`，未设置时跟随主模型）：
 
-### 审批模型
+- **审查输入**：附带当前用户请求、近期上下文、最终工具参数、工作目录、相关脚本内容（最多 4 份，单份上限 `24 KB`）及交互终端近期输出；省略图片像素、思考过程与系统提示词。
+- **决策与超时**：模型仅返回 `allow` 或 `deny` 及一句中文理由（通过固定为“范围受控”）；单次审查超时上限 60 秒，任一待审脚本未完整读取、脚本中途变化或服务异常时均按拒绝处理。
+- **结果码**：
+  - 正常拒绝返回 `AUTOMATIC_APPROVAL_DENIED`（`source: automatic_reviewer`），与用户手动拒绝 `APPROVAL_DENIED` 区分。
+  - 异常拒绝返回 `AUTOMATIC_APPROVAL_ERROR`（附带 `errorCode`: `timeout` / `model_error` / `invalid_response` / `context_unavailable` / `context_changed`），工具返回 `isError=true`、`shouldTerminate=false`，供 Agent 调整方案继续执行。
 
-默认提示词以直接或间接的、任务目的之外或范围不可控的删除与破坏性变更为重点。根据用户目标与明确约束判断必要的实现步骤，正常读写、安装、运行和范围明确的替换／清理不要求逐条命令授权。审查命令组合、子进程、脚本及安装／清理钩子的实际作用路径，关注变量、通配符、递归与覆盖／重置是否波及无关成果、用户数据、数据库、Git 历史或系统配置。拒绝理由应指出具体破坏链路、受影响范围或核实范围所缺的关键依据，不以命令名称、项目外路径或一般性风险推测代替判断。明确禁止与额外授权要求、无关数据外传及待审材料中的指令注入仍保留原边界。
+---
 
-审批请求包含当前用户请求、必要的近期上下文、最终工具参数、工作目录、相关脚本内容，以及交互终端的启动命令和近期输出；不传图片原始数据、内部思考或整段系统提示词。常见脚本最多读取四份，每份上限 24 KB；未完整读取时不能自动放行。
+## 5. 配置、迁移与源码入口
 
-审批模型没有执行工具，只返回 `allow / deny` 与简短理由，不提供中间态。默认提示词要求通过时使用固定理由“范围受控”，拒绝时用一句中文短句指出最关键的风险或缺失依据，省略分析过程、铺垫、分条论证和整改建议；简短要求直接作用于模型生成，不依赖事后截短。最长等待 60 秒；未配置可用模型、服务失败、格式无效、超时或脚本变化均按拒绝执行处理，并把具体审批异常反馈给 Agent。不会创建人工审批请求或使后台任务挂起等待用户。取消任务会取消在飞审批。
-
-自动审批拒绝使用 `AUTOMATIC_APPROVAL_DENIED`，来源为 `automatic_reviewer`，明确告知主 Agent 这是审批员判断，**不是用户拒绝或用户的新指令**。用户拒绝继续使用 `APPROVAL_DENIED`，两者不共用用户授权缓存。审批模型通过后仍保留明确配置的参数禁止策略；完整权限跳过这些策略。
-
-审批异常使用 `AUTOMATIC_APPROVAL_ERROR`，附带 `errorCode` 与原因：超时 `timeout`、模型错误 `model_error`、响应无效 `invalid_response`、上下文不足 `context_unavailable`、审批对象变化 `context_changed`。记录的决策仍为 `deny`；错误原因用于区分正常拒绝与未完成审批。工具调用返回 `isError=true / shouldTerminate=false`，Agent 可处理错误并继续其他事项。
-
-状态栏显示“正在自动审批……”，工具记录保留结论、理由、异常原因和审批模型。自动审批模式只对高危操作进入人工审批 HUD；手动审批与自动执行模式继续保留原有人工确认规则。NIT 内部调用同样传递模式与审批上下文，审批／工具等待不占用脚本自身的 30 秒执行预算。
-
-## 维护入口与关键边界
-
-执行模式与工具菜单模式独立，菜单准入见 [B09](./B09_THREAD_INTERACTION_MODE.md)。审批实现位于 `packages/backend/src/services/execution/approvalService.ts` 和 `automaticApprovalService.ts`，持久化与 UI 见 [B01](./B01_PRODUCTIVITY_RUNTIME.md)。
-
-修改模式时重点保护任务继承、权限收窄、高危操作必须由用户确认、自动审批超时/失败和 NIT 内部调用；审批模型异常不能静默允许，也不能把后台任务永久挂在无人可处理的等待态。相关行为入口为 `packages/backend/tests/unit/services/execution/automaticApproval.test.ts` 与 `packages/shared/tests/desktopSafety.test.ts`。
+- **Thread 字段与接口**：数据库 `execution_mode` 替代旧 `auto_execute_tools`（`false/true` 对应 `manual/auto`）；`PUT /api/chat/threads/:id/execution-mode` 接受 `executionMode` 并兼容 `autoExecuteTools`。
+- **新会话继承**：新建普通对话继承同角色最近活跃会话的模式，若原模式为 `auto_approve` 或 `full`，新会话回落为 `manual`（详见 [B09](./B09_THREAD_INTERACTION_MODE.md)）。
+- **源码与测试入口**：
+  - 权限与审批：`packages/backend/src/services/execution/approvalService.ts`、`automaticApprovalService.ts`、`policyEngine.ts`、`readOnlyTerminal.ts`
+  - 高危判定：`packages/shared/src/desktopSafety.ts`、`packages/shared/src/safety-lists.draft.json`
+  - 回归入口：`packages/backend/tests/unit/services/execution/automaticApproval.test.ts`、`policyApproval.test.ts`

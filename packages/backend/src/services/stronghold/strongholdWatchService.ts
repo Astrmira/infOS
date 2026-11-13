@@ -148,8 +148,7 @@ export class StrongholdWatchService {
 
   recover(): void {
     const ready = new Map<string, Array<LifeRecord<WatchData>>>()
-    for (let record of this.life.repo.list<WatchData>('watch')) {
-      if (!['active', 'queued'].includes(record.data.status)) continue
+    for (let record of this.life.repo.list<WatchData>('watch', undefined, ['active', 'queued'])) {
       const ref = { agentId: record.agentId!, threadId: record.threadId!, generation: record.generation! }
       const source = record.sourceMessageId === null ? undefined : this.life.chat.getMessageEvent(record.sourceMessageId)
       if (!this.life.current(ref, record.roomId) || (record.sourceMessageId !== null && !source)) {

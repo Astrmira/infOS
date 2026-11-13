@@ -13,7 +13,7 @@
 - 启动先读取缓存，再异步更新；默认每 30 分钟刷新。相同地点的并发请求合并，失败后等待 5 分钟重试，单次上游请求限时 12 秒。
 - 临时地点缓存最多 24 项，并发上游查询最多 8 项。临时查询不修改默认地点。关闭服务时清理定时器并取消网络请求。
 - 前端多个卡片共用状态和缓存读取轮询，页面隐藏时暂停轮询；关闭最后一个卡片时释放轮询。
-- 上游地点匹配可能不是用户预期的区县，可展开检查并改用更完整地名或坐标。观测时间可能缺少日期和时区，获取时间不能视为观测时间。
+- 上游地点匹配可能与预期区县存在偏差，可展开检查并改用更完整地名或坐标。观测时间可能缺少日期和时区，获取时间与观测时间各自记录与展示。
 
 ## 接口
 
@@ -23,8 +23,8 @@
 
 ## 上下文与排障
 
-主 ContextCompiler 的 `buildStateSection` 读取 WeatherService 内存快照，产生 weather_location / weather_info，不在编译提示词时访问网络。`services/mdp/prompts/slots/800_pet_state.md` 将其置于 `<Current_Status>`；未配置地点时省略相关字段，不可用或超过两小时的天气不注入。
+主 ContextCompiler 的 `buildStateSection` 读取 WeatherService 内存快照，产生 `weather_location` / `weather_info`，不在编译提示词时访问网络。`packages/backend/src/services/mdp/prompts/slots/800_pet_state.md` 将其置于 `<Current_Status>`；未配置地点时省略相关字段，不可用或超过两小时的天气不注入。
 
-天气注明获取时间、来源和预报日期，不进入长期记忆。是否存在状态字段取决于调用方传入的变量，不能因共享模板就认为社交 Compiler 自动读取桌面天气或角色状态。社交编排见 [B21](./B21_SOCIAL_CAPABILITIES.md)。
+天气注明获取时间、来源和预报日期，不进入长期记忆。状态字段完全取决于调用方显式传入的变量，社交 Compiler 不会因复用共享模板而自动读取桌面天气或角色状态。社交编排见 [B21](./B21_SOCIAL_CAPABILITIES.md)。
 
-服务入口为 `packages/backend/src/services/weather/weatherService.ts`，卡片为 `packages/frontend/src/components/weather/WeatherCard.vue`，注入入口为 `packages/backend/src/services/context/contextCompiler.ts`。排查“卡片有数据但模型没有天气”时，依次检查快照时效、编译变量和当前生效模板；不要为此在编译热路径增加网络请求。
+服务入口为 `packages/backend/src/services/weather/weatherService.ts`，卡片为 `packages/frontend/src/components/weather/WeatherCard.vue`，注入入口为 `packages/backend/src/services/context/contextCompiler.ts`。排查“卡片有数据但模型没有天气”时，依次检查快照时效、编译变量和当前生效模板，保持编译热路径不触发网络请求。

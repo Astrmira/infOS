@@ -64,6 +64,8 @@
 
 空闲执行使用主线心流的 `currentGoal` 及本人正在参与或旁观的活动标题，优先当前参与记录指向的活动，其余情况仅选唯一有效活动。线索为空时显式跳过自动召回。完整房间、成员档案、可见历史和执行指令进入本次模型场景输入。检索文本与场景输入分别传递。
 
+据点历史按亲历编号倒序分页读取，每批 64 条，达到 Token 预算后结束读取，再按原顺序装配。最新单条消息沿用既有准入规则。完整回合窗口先在数据库中选出最近回合编号，再读取入选回合的全部有效亲历，支持交错发言。两条读取路径共同校验角色、主线代次、撤回状态和房间范围。
+
 公开事件的结构化载荷随亲历进入 `queryMemoryExperiencesThrough`，保留源消息编号、活动修订、公共进展和成员关系。后台沿既有 `experience:<id>` 覆盖键、角色开关、来源校验和遗忘截止加工事件记忆，日记与记事本继续按各自职责维护。记忆的归并、生长和检索策略在记忆领域演进。
 
 消息撤回取消相关关注、邀请和调度，公共活动保留来源变化标记。删除核心记忆继续由记忆领域处理，历史来源的有效性由消息与亲历合同维护。
@@ -71,6 +73,8 @@
 ## 恢复、备份与客户端
 
 Kernel 的 `stronghold-life-recovery` 每 5 秒核对生活状态并恢复持久回复请求。核对本身执行规则，接话仍经过 StrongholdRoundService 和 KernelScheduler。服务重建读取数据库状态、回应阶段、关注消费与回执，延后请求保留空闲等待属性。旧代次、无效亲历、离场及过期邀请在再次处理前结算。
+
+恢复查询在 SQLite 中筛选活跃交流、待处理关注和待回应邀请，进入领域处理后再解析正文。历史记录继续保留在权威表中，活动来源撤回仍沿活动恢复与失效入口核对。
 
 逻辑备份将生活记录纳入对话模块，并跟随所选主线及其房间来源选择。导入重写角色、Thread、对象与消息引用，关注和待回应邀请取消、交流收束、活动暂停且成员暂离。完整备份和分布式快照包含权威 SQLite 数据，恢复后执行当前迁移与生活状态核对。全量清空记录及恢复出厂覆盖生活表。
 
@@ -80,9 +84,9 @@ Kernel 的 `stronghold-life-recovery` 每 5 秒核对生活状态并恢复持久
 
 ## 源码入口
 
-- `database/strongholdLifeSchema.ts`、`database/migrations/0036_stronghold_life.sql`
-- `repositories/strongholdLife.repo.ts`
-- `services/stronghold/strongholdLifeService.ts`、`strongholdActivityService.ts`、`strongholdWatchService.ts`、`strongholdLifeContext.ts`
-- `services/stronghold/groupChatService.ts`、`strongholdCausality.ts`、`strongholdRoundService.ts`、`strongholdTurnService.ts`、`strongholdService.ts`
-- `tools/strongholdLife`、`tools/finishTask`、`routers/stronghold.router.ts`
-- `projections/strongholdProjectionService.ts`、`components/stronghold/StrongholdLifePanel.vue`
+- `packages/backend/src/database/strongholdLifeSchema.ts`、`packages/backend/src/database/migrations/0036_stronghold_life.sql`
+- `packages/backend/src/repositories/strongholdLife.repo.ts`
+- `packages/backend/src/services/stronghold/strongholdLifeService.ts`、`strongholdActivityService.ts`、`strongholdWatchService.ts`、`strongholdLifeContext.ts`
+- `packages/backend/src/services/stronghold/groupChatService.ts`、`strongholdCausality.ts`、`strongholdRoundService.ts`、`strongholdTurnService.ts`、`strongholdService.ts`
+- `packages/backend/src/tools/strongholdLife/`、`packages/backend/src/tools/finishTask/`、`packages/backend/src/routers/stronghold.router.ts`
+- `packages/backend/src/projections/strongholdProjectionService.ts`、`packages/frontend/src/components/stronghold/StrongholdLifePanel.vue`

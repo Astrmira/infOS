@@ -87,9 +87,9 @@ const dbPath = env.PERO_DATABASE_PATH ?? path.join(getDataDir(), 'infos.db')
 
 | 优先级 | 要求                                                                       |
 | ------ | -------------------------------------------------------------------------- |
-| **P0** | `<keep-alive>` 白名单控制（顶层缓存 MainView，主界面 Tab 范围见 A03）       |
-| **P0** | 使用 `useEventListener` / `useInterval` composable 管理事件/定时器生命周期 |
-| **P0** | SSE 流式 Markdown 采用"稳定区/尾部区"分段渲染 + 30fps 帧率限制             |
+| **P0** | `<keep-alive>` 白名单控制（顶层缓存 MainView，主界面 Tab 范围见 [A03](./A03_FRONTEND_ARCHITECTURE.md)） |
+| **P0** | 使用 `useEventListener` / `useInterval` composable 管理事件与定时器生命周期 |
+| **P0** | 流式 Markdown 采用“稳定区 / 尾部区”分段渲染，并通过 `requestAnimationFrame` 合并帧更新（60fps 上限；兼容旧路径 `useStreamMarkdown` 为 30fps） |
 | **P0** | IntersectionObserver 暂停不可见消息的动画/媒体                             |
 | **P1** | 历史消息分页与视口窗口化，保留滚动锚点，详见 A03                            |
 | **P1** | Tab 组件 `defineAsyncComponent` 异步加载                                   |

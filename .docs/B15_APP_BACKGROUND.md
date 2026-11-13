@@ -41,6 +41,6 @@
 
 ## 维护入口
 
-背景配置与文件由 `packages/backend/src/services/system/chatBackgroundService.ts` 管理；前端 `composables/ui/useAppBackground.ts` 处理应用生命周期，`assets/app-background.css` 提供统一材质变量。新增页面应消费这些变量，而不是另建透明度或毛玻璃配置。
+背景配置与文件由 `packages/backend/src/services/system/chatBackgroundService.ts` 管理；前端 `packages/frontend/src/composables/ui/useAppBackground.ts` 处理应用生命周期，`packages/frontend/src/components/layout/AppWallpaper.vue` 承载背景图层，`packages/frontend/src/assets/app-background.css` 与 `packages/frontend/src/assets/light-theme.css` 提供统一材质变量。新增页面应复用这些变量，保持与既有透明度与毛玻璃层级一致。
 
 排查背景切换不同步时核对服务端配置、前端对象 URL 与页面激活状态；切换和卸载须回收旧资源。深浅主题与可读性要求见 [S06](./S06_UI_UX_DESIGN_SPEC.md)。

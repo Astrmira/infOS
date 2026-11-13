@@ -27,4 +27,4 @@ PeroperoChat 使用独立的通知专用 Gateway 连接，回复完成时通知�
 
 后端完成事件入口为 `packages/backend/src/services/conversation/completionAlertService.ts`；Electron 的 `electron/main/services/completionAlertController.ts` 决定可见性、去重和声音，`completionAlerts.ts` 执行原生提醒。设置位于 `packages/frontend/src/components/notification/CompletionAlertSettings.vue`。
 
-排查漏提醒时分别核对业务终态、事件持久化、设备连接、客户端可见性与本机开关；声音失败不能阻断业务完成。桌面提醒的模拟用例不能证明实际听感或 OS 通知权限，移动端补收契约见 B23。
+排查漏提醒时分别核对业务终态、事件持久化、设备连接、客户端可见性与本机开关；声音或通知失败与业务终态解耦，不影响主流程完成。模拟单测仅验证逻辑分支与去重边界，实际听感与 OS 通知权限需通过端到端桌面环境确认；移动端补收契约见 [B23](./B23_DEVICE_NOTIFICATIONS.md)。

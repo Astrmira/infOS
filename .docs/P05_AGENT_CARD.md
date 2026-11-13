@@ -30,8 +30,8 @@ PNG 使用 `infos-agent` 文本块保存 ZIP 的 base64。已有 PNG 封面保�
 
 ## 源码入口
 
-- `services/agent/agentCardCodec.ts` 管理格式和边界。
-- `agentCardService.ts` 协调身份、导入与导出。
-- `agentCardInstall.ts` 管理资源安装与回滚。
-- `routers/agentCard.routes.ts` 管理请求和错误映射。
-- `components/dashboard/tabs/AgentCardTransfer.vue` 提供角色管理入口。
+- `packages/backend/src/services/agent/agentCardCodec.ts` 管理格式和边界。
+- `packages/backend/src/services/agent/agentCardService.ts` 协调身份、导入与导出。
+- `packages/backend/src/services/agent/agentCardInstall.ts` 管理资源安装与回滚。
+- `packages/backend/src/routers/agentCard.routes.ts` 管理请求和错误映射。
+- `packages/frontend/src/components/dashboard/tabs/AgentCardTransfer.vue` 提供角色管理入口。

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { KernelEventEnvelope, KernelEventId, KernelOutboxEventInput } from '@infos/shared'
+import type { KernelEventEnvelope, KernelEventId, KernelExecutionSnapshot, KernelOutboxEventInput } from '@infos/shared'
 import { and, eq, isNull, lt, lte, or, sql } from 'drizzle-orm'
 import type { DrizzleDb } from '../database'
 import { kernelOutboxEvents } from '../database/schema'
@@ -9,6 +9,16 @@ export type KernelOutboxRow = typeof kernelOutboxEvents.$inferSelect
 /** 将领域事务中产生的 Durable Event 持久化到 SQLite Outbox。 */
 export class KernelOutboxRepository {
   constructor(private readonly db: DrizzleDb) {}
+
+  /** 终态快照随事件持久化，供运行时摘要淘汰后按需查询。 */
+  executionSnapshot(executionId: string): KernelExecutionSnapshot | null {
+    const row = this.db.select({ payload: kernelOutboxEvents.payloadJson })
+      .from(kernelOutboxEvents)
+      .where(and(eq(kernelOutboxEvents.executionId, executionId),
+        sql`json_type(${kernelOutboxEvents.payloadJson}, '$.snapshot') = 'object'`))
+      .orderBy(sql`rowid DESC`).limit(1).get()
+    return row ? (JSON.parse(row.payload) as { snapshot: KernelExecutionSnapshot }).snapshot : null
+  }
 
   createEvent(input: KernelOutboxEventInput): KernelEventEnvelope<string, unknown> {
     return {

@@ -1,14 +1,14 @@
 # Package 与用户空间贡献系统
 
 > **适用范围**：`packages/backend/src/packages/`、`packages/shared/src/types/package.types.ts`
-> **状态**：内置贡献与显式授权的用户插件共存；安装、授权、激活相互独立
+> **状态**：内置贡献与显式授权的用户插件共存；安装、授权与激活相互独立
 > **最后更新**：2026-10-28
 
 ---
 
-## 1. 定位
+## 1. 定位与安装根
 
-`Package` 是 infOS 的安装、签名、版本、升级与分发单元，不是运行时对象，也不是权限主体。旧 Extension Loader、ExtensionManager、ServiceRunner 与 HookRegistry 已完全删除。
+`Package` 是 infOS 的安装、签名、版本、升级与分发单元，本身不是运行时实例或权限主体（早期 Extension Loader、ExtensionManager、ServiceRunner 与 HookRegistry 已全面移除）。
 
 ```text
 Package Manifest
@@ -20,21 +20,13 @@ Package Manifest
 → Runtime Object / Capability Offer / Tool ABI / Resource
 ```
 
-Package 的安装不等于激活，激活不等于授权。任何 Contribution 都不得因被发现、安装或加载而隐式扩权。
-
-用户 Package 的物理安装根统一为：
-
-```text
-@data/packages
-```
-
-历史 `@data/extensions` 只允许在安装边界执行一次性目录迁移，不得重新引入旧运行时。
+安装、激活与授权三者解耦：发现、安装或加载任何 Contribution 均不产生隐式授权。用户 Package 的统一物理安装根为 `@data/packages`（仅允许在安装边界对旧 `@data/extensions` 执行一次性原子目录迁移）。
 
 ---
 
-## 2. Manifest V2
+## 2. Manifest V2 与当前开放范围
 
-公共静态 ABI 定义在 `@infos/shared/types/package.types`。
+公共静态 ABI 定义在 `packages/shared/src/types/package.types.ts`：
 
 ```typescript
 interface PackageManifest {
@@ -50,308 +42,168 @@ interface PackageManifest {
 }
 ```
 
-一个 Package 可以声明多种 Contribution：
+Manifest 只描述静态意图，不存储运行实例、连接、Handle、进程或健康状态。`PackageContributionKind` 联合类型包含：
 
 ```text
-application
-service
-capability-provider
-runtime-adapter
-tool
-skill
-policy
-event-subscriber
-presenter
-web-ui
-asset
-context-provider
-agent-flow
+application / service / capability-provider / runtime-adapter / tool / skill
+policy / event-subscriber / presenter / web-ui / asset / context-provider / agent-flow
 ```
 
-这些名称对应 shared 中 `PackageContributionKind` 的当前联合类型；Service Process、Tool ABI 等是相关运行时概念。数据库 Schema 与迁移由对应领域维护，当前联合中没有独立的 `schema` 或 `migration` Contribution Kind。
+注：数据库 Schema 与迁移由所属领域内部维护，`PackageContributionKind` 中不提供 `schema` 或 `migration` 类型。
 
-Manifest 只描述静态意图，不保存运行实例、连接、Handle、进程或健康状态。
+### 2.1 当前生产开放与托管策略
 
-### 2.1 当前生产开放范围
+用户通过「工具与扩展 → 插件」上传 ZIP 安装至数据目录，安装阶段仅解析校验，不加载模块或安装依赖：
 
-用户通过“工具与扩展 → 插件”上传 ZIP，由服务端安装到数据目录。安装阶段不加载模块，也不准备依赖。
-
-1. 用户上传包使用 `trust: user | generated`；`signed` 还须通过现有 Publisher 与文件签名验证。上传包或用户扫描目录不能靠声明 `official` 冒充内置来源。
-2. 用户确认版本、内容摘要与申请权限后，执行型贡献才能获得 `runtime:execute` Grant。更新、回退、本地修改均须重新审核；启用状态跨进程重启保留。
-3. 当前已接通 `tool`、`skill`、`event-subscriber`、`service`、`capability-provider`、`context-provider`、`agent-flow`、`presenter`、`web-ui`、`asset`。
-4. `runtime-adapter`、`application`、`policy` 仍通过原有受控入口接入；上传包直接声明这些 Kind 会激活失败，不能冒充已实现。
-5. `runtime:execute` 是明确的本机代码信任授权，不是 OS 沙箱。Node 插件具有服务进程的实际权限；其他 Permission 声明不能被宣传成隔离 Node 内置模块的安全机制。普通 Agent 工具调用仍经过 CapabilityGate、Realm、执行模式和审批。
-6. Service Process 由现有 Supervisor 管理。进程分离用于生命周期管理，不表示操作系统权限隔离；没有 Capability Binding 的 Requirement 仍不能视为已授权。
-
-Contribution清单表示目标 ABI，不表示所有 Kind当前均已开放。
+1. **来源可信度**：用户上传包限定 `trust: user | generated`（仅内建来源为 `official`，`signed` 须通过 Publisher 与文件签名校验）。
+2. **授权与重载复审**：用户确认版本、内容摘要与申请权限后，执行型贡献方可获得 `runtime:execute` Grant；更新、回退或本地修改均需重新审核，启用状态跨进程重启保留。
+3. **当前开放的 Kind**：生产插件入口已开放 `tool`、`skill`、`event-subscriber`、`service`、`capability-provider`、`context-provider`、`agent-flow`、`presenter`、`web-ui`、`asset`。
+4. **受控系统级 Kind**：`runtime-adapter`、`application`、`policy` 仅限内置受控入口接入，用户上传包声明上述类型将在激活阶段失败。
+5. **代码信任边界**：`runtime:execute` 代表对本机 Node 代码的显式信任授权而非 OS 进程沙箱；Node 插件持有服务端进程的系统权限，Agent 工具调用仍需经过 CapabilityGate、Realm、执行模式与审批。`PackageProcessSupervisor` 管理 `service` 子进程用于生命周期隔离而非系统级沙盒，缺少 Capability Binding 的 Requirement 不构成授权。
 
 ---
 
-## 3. 安装边界
+## 3. 安装边界与运行时原子激活
 
-`PackageInstaller` 负责：
+### 3.1 `PackageInstaller` 职责
 
--发现 `manifest.json`；-校验 Manifest V2；-拒绝越出 Package Root 的 Entry；-将历史清单输入一次性投影为 Manifest V2；-将 `@data/extensions` 原子迁移到 `@data/packages`；-把已验证清单写入 `PackageRegistry`。
+- 发现 `manifest.json` 并校验 Manifest V2 结构；
+- 拒绝越出 Package Root 的路径 Entry；
+- 将历史清单输入一次性投影为 Manifest V2（`历史 manifest.json → LegacyPackageManifestInput → legacyPackageManifestToPackage() → PackageManifest V2 → Registry`；兼容投影仅留于安装边界做结构升级）；
+- 将历史 `@data/extensions` 原子迁移至 `@data/packages`；
+- 将已验证清单登记入 `PackageRegistry`。
 
-历史清单输入是安装边界私有结构，不属于 Shared 公共 ABI，也不得进入 Package Runtime。
+### 3.2 `PackageRuntime` 原子激活约束
 
 ```text
-历史 manifest.json
-→ LegacyPackageManifestInput
-→ legacyPackageManifestToPackage()
-→ PackageManifest V2
-→ Registry
+installed → activating → active → deactivating → installed
 ```
 
-兼容投影只保留数据升级价值，不保留旧 Loader、旧 Hook、旧 Service Locator 或旧执行语义。
+1. 激活前必须解析通过所有 `required = true` 的 Capability Requirement；
+2. 每个 Activator 必须返回释放函数或向 `LifecycleScope` 注册资源清理；
+3. 任一 Contribution 激活失败时，已激活项必须按逆序完整回滚；
+4. 停用时须完全回收 Tool、Skill 目录、Event Subscriber、Provider Offer、子进程及其他句柄；
+5. Package 内部隔离运行，不持有全局 `AppContext` 或直接访问其他 Package 实例。
 
 ---
 
-## 4. Runtime 与原子激活
+## 4. Contribution 语义与跨包协作
 
-`PackageRuntime` 按 Package 创建 `LifecycleScope`，并按 Contribution 顺序激活。
+### 4.1 贡献种类语义
 
-```text
-installed
-→ activating
-→ active
-→ deactivating
-→ installed
-```
+- **Tool ABI**：Tool 为面向模型的调用契约而非跨包通信协议；Tool Handler 仅调用 Bound Port，不直接持有 Provider 实例（`LLM Tool Call → ToolExecutor → CapabilityGate / Policy / Approval → Bound Port → Kernel Envelope → Provider`）。
+- **Skill Resource**：Skill 为按会话勾选的流程知识与 Context Resource（`SKILL.md → SkillLoader → Context Resource → Requirement → 现有 Handle/Policy 权限交集`），勾选后将正文装配入上下文；`requiredTools` 仅作 Capability Requirement 投影，不单独解锁工具权限（详见 [会话 Skills](M02_CAPABILITY_GATE.md#32-会话-skills)）。
+- **Service Process**：通过 `PackageProcessSupervisor` 托管与 `PackageProcessTransport`（默认逐行 JSON-RPC stdio）通信；服务能力须经由 Capability Offer 对外提供，不开放 `serviceId + method` 任意调用。
+- **Event Subscriber 与 Interceptor**：观察逻辑使用 Durable / Ephemeral Event Subscriber，串行转换或中止入口使用 `PackageInterceptor`（已废弃全局万能 Hook 管道）。
+- **Capability Provider / Runtime Adapter**：Provider 声明操作能力，Adapter 将外部运行时投影为 Kernel Object、Snapshot、Stable Handle 与 Verification；Consumer 权限独立核验。
+- **Presenter**：将业务事实或 Snapshot 投影为声明式 Surface Node，不持有前端组件实例且不向 SSE 写入二进制正文。
 
-约束：
+### 4.2 跨 Package 协作与权限交集
 
-1.激活前必须解析所有 `required=true` 的 Capability Requirement；2.每个 Activator 必须返回释放函数或注册到 LifecycleScope；3.任一 Contribution 失败时，已激活项必须逆序回滚；4.停用必须回收 Tool、Skill 目录、Event Subscriber、Provider Offer、Process 与其他资源；5. Package 不能持有全局 AppContext 或其他 Package 实例。
+跨 Package 交互唯一标准链路：`Capability Definition → Provider Offer / Consumer Requirement → Capability Directory → Policy Binding → Capability Handle → Bound Port → Kernel Envelope → Provider`。
 
----
-
-## 5. Contribution 语义
-
-### 5.1 Tool ABI
-
-Tool 是面向模型的调用 ABI，不是 Package 间协议。Tool Handler 可以调用 Bound Port，但不能直接获得 Provider 实例。
+实际有效权限始终取下列集合的交集（`Provider` 不代替 `Consumer` 扩权）：
 
 ```text
-LLM Tool Call
-→ ToolExecutor
-→ CapabilityGate / Policy / Approval
-→ Bound Port
-→ Kernel Envelope
-→ Provider
+Consumer Handle ∩ Provider Offer ∩ Provider 运行权限 ∩ 当前 Policy ∩ 资源 Scope ∩ Deadline / Generation
 ```
 
-### 5.2 Skill Resource
+设计边界禁止：直接 `import` 其他 Package 实现、共享 `AppContext / Repository / 数据库连接`、以 Tool 名称做包间 RPC、使用全局 Service Locator 或将 `Capability Handle` 注入 Prompt/日志。
 
-Skill 是按会话选择的任务知识与 Context Resource。导入后进入候选清单，用户在对话栏勾选后直接装配完整正文；`requiredTools` 只投影为 Capability Requirement，不能解锁权限。作用域与资源读取规则见[会话 Skills](M02_CAPABILITY_GATE.md#32-会话-skills)。
+### 4.3 权限层级与临时授权
 
-```text
-SKILL.md
-→ SkillLoader
-→ Context Resource
-→ Requirement
-→现有 Handle/Policy 的权限交集
-```
-
-### 5.3 Service Process
-
-Service 是运行载体，通过 `PackageProcessSupervisor` 管理。跨进程调用使用 `PackageProcessTransport`，默认实现为逐行 JSON-RPC stdio。
-
-Service 必须通过 Capability Offer 发布能力，不能被 Consumer 通过 `serviceId + method` 或进程对象直接调用。
-
-### 5.4 Event Subscriber 与 Interceptor
-
-观察型逻辑使用 Durable/Ephemeral Event Subscriber；需要串行转换或中止的受控入口使用 `PackageInterceptor`。禁止恢复万能 Hook 管道。
-
-### 5.5 Capability Provider / Runtime Adapter
-
-Provider 声明可实现操作，Adapter 把外部 Runtime 投影成 Kernel Object、Snapshot、Stable Handle 与 Verification。Provider 不能成为 Consumer 的权限来源。
-
-### 5.6 Presenter
-
-Presenter 把业务事实或 Runtime Snapshot 投影为 Surface Node，不直接持有前端组件实例，也不把二进制正文塞入 SSE。
-
----
-
-## 6.跨 Package 协作
-
-唯一标准路径：
-
-```text
-Capability Definition
-→ Provider Offer / Consumer Requirement
-→ Capability Directory
-→ Policy Binding
-→ Capability Handle
-→ Bound Port
-→ Kernel Envelope
-→ Provider
-```
-
-有效权限是以下集合的交集：
-
-```text
-Consumer Handle
-∩ Provider Offer
-∩ Provider 运行权限
-∩当前 Policy
-∩资源 Scope
-∩ Deadline / Generation
-```
-
-禁止：
-
--直接 import 其他 Package 的实现；-共享 AppContext、Repository 或数据库连接；-通过 Tool 名称作为 Package 间协议；-使用全局 Service Locator；-把 Capability Handle 放入 Prompt 或普通日志；
-
-- Provider 代替 Consumer 获取更高权限。
-
----
-
-## 7.权限与信任
-
-Package Trust 只描述来源可信度，不直接授予能力。权限声明仍需在安装、激活和调用阶段分别验证。
-
-```text
-Package Permission       安装时静态意图
-Capability Requirement 运行时所需能力
-Capability Handle       实际可使用权限
-Policy / Approval       当前调用裁决
-```
-
-审批产生的临时授权必须可撤销、可到期、可收窄，并绑定 Principal、Execution、资源与操作。
-
----
-
-## 8. 资源原语与架构扩展约束
-
-Package 扩展沿用统一运行时与授权链。下列资源原语是设计扩展的约束，不表示每种资源已有独立产品接口：
-
-```text
-Asset / File Handle
-Transfer Object
-Runtime Event Subscription
-Scoped Credential
-```
-
-这些原语分别服务Browser、Social附件、Cloud Sync、模型资源、MCP与Document Runtime。实现顺序服从固定依赖：先建立Kernel Object与Execution身份，再建立Envelope与Capability Handle/Bound Port，最后开放Runtime Adapter、Web/Document Runtime和更强隔离；不得绕过基础协议直接增加应用专用Host API。
-
-### 8.1 Skill、Tool与Application边界
-
-- Package是安装与分发单元，可以贡献Application、Service Process、Capability Provider、Runtime Adapter、Tool ABI、Skill Resource、Policy、Event Subscriber、Presenter与Asset。
-- Skill是Context Resource与流程知识，只能声明Capability Requirement；加载Skill不得解锁父Execution没有的能力。
-- Tool是Capability面向LLM的ABI；Application和Package之间直接使用Bound Port，不以Tool名作为内部RPC。
-- Consumer不得导入Provider实现、持有对方实例、共享AppContext或使用任意`serviceId + method`绕过契约。
-- Provider权限不能替Consumer扩权；有效权限始终是Consumer Handle、Provider Offer、Provider运行权限、Policy、资源Scope与Deadline/Generation的交集。
-
-### 8.2 统一Application模型
-
-infOS只有一种通用自治Application形态：稳定Application Identity、独立Host/领域逻辑、按需独立Store/Authority、独立生命周期与故障边界，以及可选Capability、Client、Tool ABI和内部Agent/Worker。`Tool`、`Service`、`Client`、`Runtime Adapter`和`SubAgent`只能是Application组成部分，不形成平行应用分类。
-
-Application不得读取Kernel数据库或依赖主Agent Thread；它通过Node/Application Federation发布Offer、声明Requirement、获得收窄Handle，并上报Event、Checkpoint与Receipt。`disconnected_from_kernel`允许本地Authority继续受限工作，但所有依赖Kernel Credential、远程Node或主Agent资源的操作必须暂停。
-
-### 8.3 第三方 Application 三层 Adapter
-
-第三方开源应用不作为同进程 Contribution 直接加载。标准接入分为：
-
-1. infOS 官方通用 Integration Foundation，负责身份、协议、Capability、安全、任务和审计；
-2. 贡献者实现的 infOS 侧 Backend/Frontend Adapter，负责领域映射和 UI 集成；
-3. 贡献者在目标应用内实现的 Plugin、Extension、MCP Server 或 Sidecar，负责调用应用内部 API。
-
-第二、三层变化不得要求 Kernel 增加应用专用 Service。Adapter 内部使用 Application Protocol 和 Bound Port；只把允许 Agent 使用的 Operation 投影为 Tool。完整规范见 [A10_APPLICATION_INTEGRATION](./A10_APPLICATION_INTEGRATION.md)。
-
-### 8.4 任务移交与生命周期
-
-长任务必须使用 `submitTask` 语义：目标 Application 持久接收后立即返回 `taskId`，随后使用独立 Application Principal、Kernel Execution 和 Abort 域执行。调用工具的 AbortSignal 只约束提交过程，不得控制已接收任务。主 Agent Execution 的取消不能隐式停止 Application Task。
-
-若贡献者只把长任务包装为同步 Tool Promise、继承主 Agent `parentExecutionId`、复用主 Agent AbortSignal，或把 Realm dispose 注册到 Agent Scope，则不符合 Application 接入规范。
-
----
-
-## 9. 激活与释放的不变量
-
-Package 相关变更至少验证：
-
-- Manifest 重复 ID、无效 Entry 与越界路径
-- required Capability 缺失时拒绝激活，激活失败原子回滚。
-- 停用后 Tool、Provider、Skill、Event 与 Process 全部释放。
-- Consumer 只能获得 Bound Port；历史清单只在安装边界兼容。
-- 不恢复旧 ExtensionManager / ExtensionLoader / ServiceRunner 路径；用户安装和云同步目录统一为 `packages/`。
-
-## 10. 用户插件管理与发行目录
-
-```text
-@data/packages/.managed/index.json             安装记录、启用状态和审核摘要
-@data/packages/.managed/releases/<UUID>/       独立版本代码、锁文件、node_modules
-@data/package-cache/                          pnpm 下载缓存
-@data/package-data/<packageId 的 SHA-256 前缀>/ 插件持久数据，重载和更新不清除
-```
-
-Electron 标准版、便携版和 Docker 都通过 PathResolver 使用各自的数据根，插件不写入 ASAR、resources 或镜像内置源码。服务端上传接口接收文件字节，不接收客户端本地路径。安装目录可在插件卡片中查看；运行数据应写入工厂参数 `host.dataDirectory`，不要写入版本源码目录。
-
-上传 ZIP 须在根目录或唯一顶层目录包含 `manifest.json`。支持已编译的 ESM `.mjs` / 带 `type: module` 的 `.js`；不在服务端隐式构建 TypeScript。拒绝路径逃逸、Windows 特殊文件名、预装 node_modules、包管理配置注入，限制压缩大小、展开大小和文件数量。
-
-依赖来自插件自己的 `package.json.dependencies` / `optionalDependencies`，支持注册表版本如 `1.2.3`、`^1.2.3`、`~1.2.3`；拒绝 file、workspace、Git 与任意 URL 依赖。启用时用随发行版携带的 pnpm 准备依赖，默认 npm 官方 registry，不依赖用户安装 Node 或 pnpm。移除包管理器覆盖配置和生命周期脚本，使用 `--ignore-scripts`；需要安装脚本编译的原生依赖不会被偷偷执行，应由作者提供兼容的运行产物。
-
-更新导入后停用，留存上一版本，审核后再启用。回退也保持停用直到重新审核。重载复制到新的代际目录，同时刷新入口与全部相对 import；不会仅给入口 URL 加参数。读取本地修改同样创建新代际并撤销旧内容授权。每包独立的数据目录不参与源码摘要，不随代码重载删除。
-
-管理 API 均处于现有 API 鉴权边界：
-
-| 操作 | API |
+| 层次 | 含义 |
 | --- | --- |
-| 列表 / ZIP 上传 | `GET /api/packages` / `POST /api/packages/install` |
-| 内容授权 | `POST /api/packages/:id/authorize`，传 `digest`、`permissions` |
-| 启停 | `PUT /api/packages/:id/enabled` |
-| 重载 / 读取修改 / 回退 | `POST /api/packages/:id/reload|review|rollback` |
-| 卸载安装文件 | `DELETE /api/packages/:id`；独立运行数据保留 |
-| UI 插槽与动作 | `GET /api/packages/panels/:slot` / `POST /api/packages/panel-actions` |
-| 已激活静态资源 | `GET /api/packages/assets/:编码后的 packageId/contributionId?file=相对路径` |
+| `Package Permission` | 安装声明的静态权限意图 |
+| `Capability Requirement` | 运行时所需的抽象能力声明 |
+| `Capability Handle` | 实际获得的受限调用句柄 |
+| `Policy / Approval` | 当前执行现场的实时策略与审批裁决 |
 
-### 10.1 拓展 Tab 的统一管理投影
+审批产生的临时授权绑定 Principal、Execution、资源与操作，并支持撤销、到期与进一步收窄。
 
-工作台的「工具与扩展 → 已安装」通过 `GET /api/integrations/installed` 汇总当前业务服务端的插件、Skill、角色包、已登记桌宠模型、MCP 服务与拓展功能。`extensionInventory.ts` 只投影各管理器的数据，不持有安装记录、不新增资源生命周期，也不读取客户端的文件系统。
+---
 
-数据权威与管理去向：
+## 5. 资源原语与统一 Application 模型
 
-| 分类 | 权威来源 | 操作入口 |
+### 5.1 资源原语与扩展顺序
+
+通用资源原语（服务于 Browser、Social 附件、Cloud Sync、模型资源、MCP 与 Document Runtime；随需求渐进开放对应产品能力）包括：`Asset / File Handle`、`Transfer Object`、`Runtime Event Subscription`、`Scoped Credential`。扩展实现必须按固定次序推进：**Kernel Object 与 Execution 身份 → Envelope 与 Capability Handle/Bound Port → Runtime Adapter、Web/Document Runtime 与更强隔离**。
+
+### 5.2 统一 Application 与三层第三方接入
+
+- **单一 Application 模型**：所有内置与第三方应用统一为具备稳定 `Application Identity`、独立 Host 逻辑、按需独立 Store/Authority、故障边界及可选 Capability / Client / Tool ABI / SubAgent 的自治实体；`Tool`、`Service`、`Client`、`Runtime Adapter`、`SubAgent` 为应用内部构件。Application 不直接读取 Kernel 数据库或主 Agent Thread，而是通过联邦协议发布 Offer、声明 Requirement 并接收收窄 Handle；处于 `disconnected_from_kernel` 时本地受限运行并暂停依赖 Kernel 凭据、远程 Node 或主 Agent 资源的操作。
+- **三层第三方 Adapter**：不把外部开源应用作为同进程插件直接加载，而是解耦为：（1）infOS 官方通用 Integration Foundation；（2）infOS 侧 Backend / Frontend Adapter（使用 Bound Port 并仅将获准 Operation 投影为 Tool）；（3）目标应用内部 Plugin / Extension / MCP Server / Sidecar（第二、三层迭代不要求修改 Kernel 服务，详情见 [A10](./A10_APPLICATION_INTEGRATION.md)）。
+- **异步长任务移交（`submitTask`）**：耗时任务由目标 Application 持久化接收后立即返回 `taskId`，随后在独立 Application Principal、Kernel Execution 与 Abort 域内异步执行（调用 Tool 的 `AbortSignal` 仅覆盖提交阶段，主 Agent 取消不隐式取消外部 Task；长任务不应以同步 Tool Promise、复用主 `parentExecutionId` 或绑定 Agent Scope 销毁的方式实现）。
+
+### 5.3 激活与释放核心不变量
+
+- 校验并拒绝 Manifest 重复 ID、无效 Entry 与越界路径；
+- 缺失必需 Capability 时拒绝激活，激活失败执行逆序回滚；
+- 停用时全面释放 Tool、Provider、Skill、Event 与 Subprocess；
+- Consumer 仅持 Bound Port；目录与云同步统一落入 `packages/`（不再引入旧 `extensions` Loader/Runner 路径）。
+
+---
+
+## 6. 用户插件管理、扩展列表与设置面板
+
+### 6.1 发行目录与安装包规则
+
+```text
+@data/packages/.managed/index.json              安装记录、启用状态与审核摘要
+@data/packages/.managed/releases/<UUID>/        独立版本代码、锁文件与 node_modules
+@data/package-cache/                            pnpm 下载缓存
+@data/package-data/<packageId 的 SHA-256 前缀>/ 插件持久数据（重载/更新保留）
+```
+
+- Electron 标准版、便携版与 Docker 均通过 `PathResolver` 映射数据目录（不写入 ASAR 或源码包），上传接口直接接收字节流；插件数据写入工厂参数 `host.dataDirectory`。
+- **ZIP 包限制**：根目录或唯一顶层目录须含 `manifest.json`；支持已编译 ESM（`.mjs` / `type: module` `.js`，不在服务端编译 TypeScript）；拒绝路径逃逸、Windows 保留名、预装 `node_modules` 及包管理器配置注入，限制压缩包与展开大小及文件数（安装包 `≤ 20 MiB` ZIP / `≤ 64 MiB` 解包）。
+- **依赖安装**：依据包内 `package.json` 的 `dependencies / optionalDependencies` 声明（支持精确及 `^` / `~` 范围，拒绝 `file:`、`workspace:`、`git` 与 URL 依赖），启用时由随发行版自带的 `pnpm` 默认拉取 npm 官方源并使用 `--ignore-scripts`（不执行任意安装期生命周期脚本，原生依赖需自带适配产物）。
+- **更新与重载隔离**：更新导入后自动停用并留存上一版本待复审启用；回退同样停用待审；重载复制到新代际目录以完整刷新入口和所有相对 `import`（读取本地修改同建新代际并撤销旧授权）。独立运行数据目录不参与源码摘要校验。
+
+| 操作 | 接口 |
+| --- | --- |
+| 列表 / 上传安装 | `GET /api/packages` / `POST /api/packages/install` |
+| 内容授权 | `POST /api/packages/:id/authorize`（`digest`、`permissions`） |
+| 启停控制 | `PUT /api/packages/:id/enabled` |
+| 重载 / 审阅本地改 / 回退 | `POST /api/packages/:id/reload|review|rollback` |
+| 卸载代码 | `DELETE /api/packages/:id`（保留运行数据目录） |
+| 面板插槽与动作 | `GET /api/packages/panels/:slot` / `POST /api/packages/panel-actions` |
+| 静态资源访问 | `GET /api/packages/assets/:encodedPackageId/contributionId?file=相对路径` |
+
+### 6.2 「已安装」拓展 Tab 统一投影（`services/integrations/extensionInventory.ts`）
+
+`GET /api/integrations/installed` 汇总插件、Skill、角色包、桌宠模型、MCP 与集成功能（只做数据投影，不另存安装状态或读取客户端文件系统）：
+
+| 分类 | 权威来源 | 管理入口 |
 | --- | --- | --- |
-| 插件与内置扩展 | PackageRegistry、PackageManagementService、IntegrationService | 用户插件进入对应插件卡片；内置扩展进入对应配置卡片 |
-| Skill | SkillLoader 的有效清单、ToolRegistry 的实际工具集合 | 独立 Skill 进入技能管理；插件内 Skill 进入所属插件管理 |
-| 角色包 | AgentManager 的有效角色与其配置元数据 | 进入指定角色档案；插件内资源归所属插件管理 |
-| 桌宠模型 | AssetRegistry 的服务端元数据索引 | 展示资源信息；插件管理的资源进入所属插件。已发现不表示客户端已加载 |
-| MCP | MCP 配置与实时连接状态 | 展开指定服务的现有管理面板 |
-| 联网搜索、PDF 解析 | IntegrationService | 进入对应来源配置 |
+| 插件与内置扩展 | `PackageRegistry`、`PackageManagementService`、`IntegrationService` | 对应插件或集成配置卡片 |
+| Skill | `SkillLoader`、`ToolRegistry` | 独立技能进入技能页；包内技能进入所属插件卡片 |
+| 角色包 | `AgentManager` | 角色档案页；包内归属插件卡片 |
+| 桌宠模型 | `AssetRegistry` | 仅展示元数据索引（扫描 `@data/models`、`INFOS_RESOURCES_ROOT/assets/3d` 或 `public/assets/3d`；与客户端无关） |
+| MCP | MCP 配置与实时连接状态 | 对应 MCP 服务管理面板 |
+| 联网搜索、PDF 解析 | `IntegrationService` | 对应集成设置入口 |
 
-所有操作继续走原有启停、授权、导入、回退与卸载接口。统一列表不提供绕过领域约束的文件删除功能。插件所属关系按真实注册的包根目录与资源路径边界确定，不使用字符串前缀匹配；来源按宿主登记的路径与安装记录确定，不采信资源自行声明的 `source` 或信任等级。
+- **筛选与脱敏**：按真实登记根路径判定插件归属与来源（不依赖自报声明），仅展示已声明版本与环境要求（缺省版本不自动填 `1.0.0`），基于已加载集合判定 Skill 依赖；角色列表不返提示词/私密设置/社交绑定，MCP 列表不返启动命令/环境变量/凭据。
+- **独立失败降级**：各分类独立读取，单项异常时标为 `unavailable` 供前端显式报错而不致其余分类不可用或误显为空列表；普通进页读已登记状态，用户刷新调用 `POST /api/assets/rescan`（保留筛选条件，不查询市场更新）。
 
-列表提供分类、来源、状态筛选和名称、标识、作者搜索。仅展示明确声明的版本和环境要求，不为缺失版本补 `1.0.0`，不把声明要求当作已验证兼容性。Skill 的缺失依赖由已加载的技能和工具判断；不为列表额外扫描脚本或加载技能正文。角色仅投影必要元数据，不返回提示词、私密配置或社交账号绑定；MCP 不返回命令、环境变量或连接凭证。
+### 6.3 插件设置与本机页面
 
-各分类独立读取，一类失败通过 `unavailable` 返回，其余分类仍可使用；前端明确标识读取失败，避免把错误显示成空列表。用户刷新会调用已有 `POST /api/assets/rescan` 更新模型索引；普通进入页面只读取已登记状态。离开管理面板后重新读取列表，保留当前筛选条件。此入口不查询市场更新，也不执行工坊订阅。
+`presenter.panel.settings.kind` 支持 `tool-groups` 与 `local-page`（注册到 `integrations` 并在插件卡片呈现「工具管理」或「打开页面」入口）。`POST /api/packages/panel-actions` 接收 `{panelId, actionId, payload?}`（上限 `1 MiB`、限时 `10` 秒、异步回调前复核激活身份，重载/停用中旧响应返回失效）：
 
-AssetRegistry 补充扫描服务端 `@data/models`，打包模式读取 `INFOS_RESOURCES_ROOT/assets/3d`，源码模式读取项目 `public/assets/3d`。未部署在服务端的模型不会因为客户端存在同名文件而显示为已安装。
-
-### 10.2 插件设置与本机页面
-
-`presenter.panel.settings.kind` 声明 `tool-groups` 或 `local-page`。这两类面板注册到 `integrations`，宿主将入口放在所属插件卡片上。普通声明式卡片沿用原有插槽。插件管理页中的「工具管理」打开宿主绘制的设置弹窗，「打开页面」取得插件本机服务地址后交给链接处理入口。
-
-`POST /api/packages/panel-actions` 接收 `panelId`、`actionId` 和可选对象 `payload`，请求体上限为 1 MiB。宿主按当前激活贡献查找处理器，调用 `onAction(actionId, payload)`。载荷复制后交给插件，动作限时十秒。异步返回时复查注册身份，停用或重载期间产生的旧结果返回入口失效。插件自行维护写入事务和取消语义。
-
-| 入口类型 | 动作 | 合同 |
+| 入口类型 | 动作 | 协议约定 |
 | --- | --- | --- |
-| `tool-groups` | `settings.load` | 返回完整 `PackageToolSettingsSnapshot` |
-| `tool-groups` | `settings.save` | 接收 `revision`、`values`、`groups`、`ungroupedState`、`disabledTools`，返回提交后的完整快照 |
+| `tool-groups` | `settings.load` | 返回完整 `PackageToolSettingsSnapshot`（字段、工具描述与参数、分组、禁用清单、可选提示、新工具列表） |
+| `tool-groups` | `settings.save` | 接收 `revision`、`values`、`groups`（`pinned / ondemand / off`）、`ungroupedState`、`disabledTools`，返回新快照；`revision` 冲突抛 `PACKAGE_SETTINGS_CONFLICT`（HTTP 409 / `CONFLICT`） |
 | `tool-groups` | `settings.check` | 接收 `field`、`value`，返回 `{ ok: boolean }` |
-| `local-page` | `page.url` | 返回 `{ url: string }`，宿主校验为回环 HTTP(S) 地址 |
+| `local-page` | `page.url` | 返回 `{ url }`，仅校验通过 `localhost / 127.0.0.1 / [::1]` 无凭据 HTTP(S) 回环地址（否则返回 `PACKAGE_PAGE_INVALID`） |
 
-工具快照包含配置字段、工具描述及参数、分组、逐项禁用清单、可选提示与新工具清单。分组状态为 `pinned`、`ondemand`、`off`，实际工具装配与执行约束由插件落实。宿主支持搜索、组顺序调整、跨组移动、组状态和逐项开关，草稿在保存后提交。插件通过 revision 实现并发控制，冲突抛 `PACKAGE_SETTINGS_CONFLICT`，API 返回 HTTP 409 和 `CONFLICT`，用户重新读取后再编辑。
+宿主同时校验快照结构、工具/分组 ID 唯一性（暂不可用旧工具保留原分组引用）。桌面版通过现有窗口打开本机页面，浏览器版在点击时预留标签页（请求失败关闭空白页）。前端入口：`PackageCardExtraActions.vue`、`PackageToolSettingsDialog.vue`、`composables/packages/usePackageExtraPanels.ts`；后端入口：`packages/packageUiRegistry.ts`、`packageSettingsEntry.ts`、`routers/packages.router.ts`；i18n 命名空间为 `ui.package-tool-settings` 与 `server.packages`。
 
-宿主校验返回快照的字段形状、工具及分组身份、分组成员唯一性。旧工具暂时不可用时，其分组引用保留。设置入口只能调用对应种类的内置设置动作及面板显式声明的其他动作，原有两参数动作请求继续有效。
+---
 
-本机页面仅接受 `localhost`、`127.0.0.1`、`[::1]`，地址包含凭据或使用其他协议时返回 `PACKAGE_PAGE_INVALID`。本机指浏览器所在设备，远程服务的页面访问应按部署地址和网络可达性设计。桌面版沿用现有窗口链接处理，浏览器版在用户点击时预留标签页，并在请求失败时关闭空白页。
+## 7. 贡献开发示例与钩子契约
 
-前端入口位于 `components/integrations/PackageCardExtraActions.vue`、`PackageToolSettingsDialog.vue`，附加面板状态位于 `composables/packages/usePackageExtraPanels.ts`。运行时入口位于 `packages/packageUiRegistry.ts`、`packageSettingsEntry.ts` 与 `routers/packages.router.ts`。界面词条使用 `ui.package-tool-settings`，接口提示使用 `server.packages`。
-
-## 11. 编写贡献与扩展点
-
-最小工具包清单：
+最小工具包清单示例：
 
 ```json
 {
@@ -365,7 +217,7 @@ AssetRegistry 补充扫描服务端 `@data/models`，打包模式读取 `INFOS_R
 }
 ```
 
-`hello.mjs` 可以导出静态 `definition` / `execute`，也可以导出贡献工厂。工厂只收到公共作用域，不收到 AppContext；通过 `onDispose` 回收监听器、计时器、连接，通过 `signal` 响应停用。多个贡献可以共用模块，但各自有独立工厂调用与释放注册。
+模块可导出静态对象或 `createContribution(host)` 工厂（工厂仅获取受控公共作用域，通过 `host.onDispose` 回收监听器/定时器/连接并通过 `signal` 响应停用；多贡献共享模块时各自拥有独立工厂上下文）：
 
 ```js
 export function createContribution(host) {
@@ -384,36 +236,30 @@ export function createContribution(host) {
 }
 ```
 
-| Kind | 模块契约与调用位置 |
+| Kind | 模块契约与挂载位置 |
 | --- | --- |
-| `tool` | `definition`、`execute(args, toolContext)`；工具注册表与现有权限链，重名拒绝覆盖 |
-| `skill` | `entry` 指向技能目录；资源装卸不授予工具权限 |
-| `event-subscriber` | `hooks` 或 `onEvent`，接入现有 PackageHookBus / KernelEventBus |
-| `agent-flow` | `hooks`；Agent 开始、结束、模型请求前后及工具执行前后 |
-| `context-provider` | `provide(request)` 返回资料区块；宿主归一化为 `package:<packageId>/<contributionId>`、`conversation`、`external`、可选；选中正文以 user 本轮动态资料进入主 Agent 请求，统一预算、过期和去重 |
-| `presenter` | `panel`、可选 `onAction(actionId)`；声明式卡片、字段与按钮 |
-| `web-ui` | `webUi` 声明静态页面；可选 `entry` 导出本贡献的 `actions`，通过隔离页面桥交互 |
-| `asset` | `entry` 指向资源目录；只在激活期间开放白名单 MIME 与受限读取 |
-| `capability-provider` | `definition`、`offer`、`invoke`；复用现有 CapabilityDirectory |
-| `service` | `entry` 由既有进程 Supervisor 启动、停用和回收 |
+| `tool` | `definition`、`execute(args, toolContext)`；接入工具注册表与权限链（重名拒绝覆盖） |
+| `skill` | `entry` 指向技能目录；装卸知识正文而不授予工具权 |
+| `event-subscriber` | `hooks` 或 `onEvent`，接入 `PackageHookBus / KernelEventBus` |
+| `agent-flow` | `hooks`；响应 Agent 运行、模型请求与工具调用前后事件 |
+| `context-provider` | `provide(request)` 返回资料区块，宿主归一化为 `package:<packageId>/<contributionId>` 并作为本轮动态 user 资料入模 |
+| `presenter` | `panel` 及可选 `onAction(actionId)`；声明式卡片与操作 |
+| `web-ui` | `webUi` 声明静态页，可选 `entry` 导出 `actions` 供页面 SDK 调用 |
+| `asset` | `entry` 指向资源目录，仅激活期间开放白名单 MIME 读取 |
+| `capability-provider` | `definition`、`offer`、`invoke`；接入 `CapabilityDirectory` |
+| `service` | `entry` 由 `PackageProcessSupervisor` 启停与回收 |
 
-当前真正触发的流程事件：`agent:beforeRun`、`agent:afterRun`、`agent:beforeRequest`、`agent:afterRequest`、`chat:beforeSend`、`chat:afterReply`、`chat:beforeToolCall`、`chat:afterToolCall`。请求前钩子只能调整普通消息正文，不能修改系统消息、工具协议、主体身份或工具白名单；超出输入预算的变更回退原请求。工具参数变更发生在后续权限校验与审批之前。
+- **流程钩子实发点**：`agent:beforeRun`、`agent:afterRun`、`agent:beforeRequest`、`agent:afterRequest`、`chat:beforeSend`、`chat:afterReply`、`chat:beforeToolCall`、`chat:afterToolCall`。请求前钩子限修改普通消息正文（超预算时回退原请求），工具参数调整发生在权限校验与审批之前；`context.abort()` 仅终止当前钩子链传播，不影响外层 Execution 取消契约（异步钩子带超时与隔离，纯同步代码可靠性依赖 `runtime:execute` 授权）。
+- **`context-provider` 约束**：每次至多返回 `20` 项，单条 `content` 至多 `32,000` JS 字符、`priority` 上限 `50`、可带 `validUntil`，调用限时 `3` 秒（异常/超时返回空）；由 Selector 重新计费、过期过滤、去重与预算控制，仅入选的 `package:` conversation 正文进入请求（原生框架置于 `turn_context`，酒馆插入当前输入之前，详见 [A09 §8.1](./A09_AIOS_ARCHITECTURE.md#81-contextregion)；Social 使用独立编译器不读取此 Registry）。
+- **记忆观察点与声明式 UI**：支持 `memory:beforeCreate`、`memory:afterCreate`、`memory:beforeDelete`、`memory:afterRetrieve`（`agent:onSwitch / agent:onMoodChange` 仅留类型兼容）。声明式 UI 固定挂载于 `dashboard.overview`、`chat.header`、`chat.footer`、`integrations`（基于 `PCard / PButton` 渲染，停用后即时撤销动作并同步撤下视图）。
 
-`context-provider` 每次最多返回 20 项，每项 `content` 最多 32000 个 JS 字符，`priority` 上限为 50，可提供 `validUntil`；调用限时 3 秒，非法返回、异常或超时整体视为空。插件声明的 trust、delivery、required 和 ID 不覆盖宿主边界。Registry 收集后仍由 Selector 重新计费、检查过期、去重和预算；只有入选的 `package:` conversation 正文进入请求，不会放开其他自定义 conversation，也不重复发送内置 Thread 汇总或 manifest-only。普通原生框架将选中资料放入历史之后的 user `turn_context`，具体编排与缓存边界见 [A09 §8.1](./A09_AIOS_ARCHITECTURE.md#81-contextregion)。社交/QQ 使用独立的 SocialAppCompiler，不消费主 compiler 的 Region Registry。
+---
 
-记忆提供 `memory:beforeCreate`、`memory:afterCreate`、`memory:beforeDelete` 与 `memory:afterRetrieve` 观察点；不接受借钩子绕过事件时间、Agent 归属或持久化事务的修改。旧的 `agent:onSwitch` / `agent:onMoodChange` 事件名仅保留兼容类型，不表示新增了触发位置。
+## 8. 完整 WebUI 贡献与页面 SDK
 
-普通异步钩子和上下文扩展有超时与失败隔离；钩子 `context.abort()` 只停止本次钩子链传播，不代替取消 Agent Execution。纯同步死循环等任意原生代码行为不在这个逻辑超时边界内，必须通过插件代码信任授权处理。
+### 8.1 清单声明与前端构架
 
-声明式 UI 命名区域为 `dashboard.overview`、`chat.header`、`chat.footer`、`integrations`，由 PCard/PButton 渲染，不执行插件 HTML/CSS。完整页面使用下述 `web-ui` 贡献，在独立 iframe 中运行；插件自定义文字属于插件内容。停用立即撤销面板动作、页面会话、工具、Hook、Context Provider 与资源注册；前端在后续状态同步时撤下对应内容。
-
-当前贡献工厂不动态开放 `application`、内核 `policy` 或底层 `runtime-adapter`；这些能力遵循各自的 Realm、Principal 和 Capability 契约。
-
-## 12. 完整 WebUI
-
-### 声明与入口
-
-一个 Package 可以同时贡献多个工具、轻量面板与多个完整页面。入口位于“工具与扩展 → 插件”的相应插件卡片，只有激活状态可打开；页面在现有拓展 Tab 内显示，不增加全局导航。静态文件与后端模块都来自当前连接后端的同一个安装版本，适用于本机 Electron、远程 Electron 与 Docker/Web。
+单包可同时提供多个工具、面板与完整 WebUI（在插件卡片打开，激活态可用，加载于拓展 Tab 内部而不侵入全局导航；静态文件与模块均来自当前已连接后端，适配本机 Electron、远程 Electron 与 Docker/Web）：
 
 ```json
 {
@@ -438,11 +284,11 @@ export function createContribution(host) {
 }
 ```
 
-`webUi.root` 是包内静态根，`index` 默认 `index.html`，HTML 使用 UTF-8 且有显式 `<head>`。Vue、React 等由作者预先构建为静态资源，使用相对资源地址，例如 Vite `base: './'`；页面内路由使用 Hash 路由。纯静态界面可以省略 `entry` 和 `actions`。带后端入口的贡献沿用 `runtime:execute` 代码信任授权，安装与上传不执行模块；完整页面不开放 Application 的自治运行时入口。
+- 静态资源 `webUi.root` 下入口 `index` 默认 `index.html`（UTF-8 并包含显式 `<head>`），支持预先构建的 Vue/React 静态产物（配置相对资源路径如 Vite `base: './'` 与 Hash 路由）；纯静态页可省略 `entry` 与 `actions`，含服务端入口则复用 `runtime:execute` 授权。
 
-### 后端模块与页面 SDK
+### 8.2 后端动作与 `window.infosPlugin` SDK
 
-后端入口导出 `actions` 或 `createContribution(host)`；只接受清单列出的动作。它是本贡献的交互模块，不是任意 `serviceId + method` 路由。跨 Package 或 Application 协作仍使用原有 Capability/Bound Port 契约。模块可以通过 `host.dataDirectory` 保存插件数据，模块自身权限仍按 Node 代码信任约定处理。
+后端模块导出 `actions` 或 `createContribution(host)`，仅响应清单声明的动作；持久数据通过 `host.dataDirectory` 管理：
 
 ```js
 export function createContribution(host) {
@@ -456,7 +302,7 @@ export function createContribution(host) {
           throw new Error('输入内容无效')
         context.report({ stage: 'saving' })
         draft = { text: input.text }
-        // 本示例仅保存内存草稿；持久数据应写入 host.dataDirectory。
+        // 持久数据应写入 host.dataDirectory
         return draft
       }
     }
@@ -464,40 +310,33 @@ export function createContribution(host) {
 }
 ```
 
-宿主在入口 HTML 的 `<head>` 前部注入 `window.infosPlugin`，其类型为 `PackageWebUiClient`：
+宿主在入口 HTML `<head>` 头部注入 `window.infosPlugin`（类型 `PackageWebUiClient`）：
 
 ```js
 const unsubscribe = infosPlugin.onContext(({ theme, locale }) => {
-  // theme 为 light/dark；页面自行根据 locale 翻译自己的文案。
+  // theme 为 light / dark；页面依据 locale 翻译界面文本
 })
 const controller = new AbortController()
 const result = await infosPlugin.call('save', { text: '你好' }, {
   signal: controller.signal,
-  onProgress(value) { /* 更新页面进度。 */ }
+  onProgress(value) { /* 更新界面进度 */ }
 })
 unsubscribe()
 ```
 
-动作输入、进度和返回值使用 JSON。`call` 经宿主鉴权发送一次 POST，以 SSE 返回进度和最终结果；断流不重发写操作。动作持有备份写入计数直到结束，避免 SSE 响应头返回后快照与动作文件写入交错。`context.clientId` 来自已验证的客户端身份，`context.signal` 关联页面关闭、身份撤销、停用与截止时间；处理器需在耗时操作中响应取消。取消不能撤销已经完成的写入。原始调用异常留在服务端诊断，页面收到本地化错误；SDK 本地协议异常以稳定的 `PACKAGE_WEB_UI_*` 标识报告。
+- `call` 通过宿主鉴权发送一次 POST 并通过 SSE 接收进度与终态结果（断流不自动重放写动作，动作持有备份写入计数至结束防止与快照错位）。`context.clientId` 来自已验证客户端，`context.signal` 绑定页面关闭、身份撤销、停用与超时。服务端保留完整异常诊断，界面收到本地化信息；SDK 本地协议异常以 `PACKAGE_WEB_UI_*` 抛出。
 
-### 资源与生命周期
+### 8.3 会话 API、沙箱隔离与限额
 
 | 接口 | 职责 |
 | --- | --- |
-| `POST /api/packages/web-ui/open` | 以当前客户端身份打开指定 `packageId`、`contributionId` |
-| `GET /api/packages/web-ui/sessions/:id` | 核对同一身份与激活实例，延长宿主心跳 |
-| `DELETE /api/packages/web-ui/sessions/:id` | 关闭页面会话并取消交互 |
-| `POST /api/packages/web-ui/sessions/:id/call` | 调用声明动作，通过 SSE 返回进度、结果或错误 |
-| `GET /api/packages/web-ui/files/:ticket/*` | 按只读票据提供静态文件，不接受业务调用 |
+| `POST /api/packages/web-ui/open` | 以当前客户端身份打开指定 `packageId` 与 `contributionId` |
+| `GET /api/packages/web-ui/sessions/:id` | 核对身份与激活实例并续期宿主心跳 |
+| `DELETE /api/packages/web-ui/sessions/:id` | 关闭页面会话并取消在途动作 |
+| `POST /api/packages/web-ui/sessions/:id/call` | 触发清单声明动作并通过 SSE 流式返回 |
+| `GET /api/packages/web-ui/files/:ticket/*` | 按只读票据返回静态文件（不接受业务请求） |
 
-插件页面使用 SDK，以上会话 API 由 infOS 前端持有；会话 ID 不作为免鉴权业务凭据。
-
-- iframe 仅使用 `sandbox="allow-scripts"`，不开放同源权限、Electron API 或宿主凭据。宿主按窗口来源、opaque origin 与随机通道校验消息；页面只获得所属贡献的桥。
-- 静态票据只能读取激活时登记并核对摘要的文件。模块脚本和 CSS 正确返回 MIME 与 CORS 头；JSON 文件不被当作 REST 信封改写。资源路径同时校验词法边界、真实路径和文件摘要。
-- 页面 CSP 允许脚本、样式、图片、字体及读取当前票据目录内的资源，业务网络交互通过页面桥；不开放直接访问宿主业务 API、任意外网、子框架、表单提交或 Worker。iframe 存储为隔离来源，持久配置应由后端动作管理。
-- 资源票据与业务会话分离；业务调用还要求创建会话时的同一客户端身份与凭据。凭据不注入 HTML、SDK 或资源 URL。角色身份与 Agent 权限不会因打开页面自动授予。
-- 每页最多八个在途动作，动作限时 60 秒；输入及最终结果上限 256 KiB，每次动作最多 128 个进度事件、每个 8 KiB。静态单文件最大 16 MiB，资源扫描有文件数量、总大小和目录深度边界；安装包仍受既有 20 MiB ZIP / 64 MiB 解包限制。
-- 页面会话五分钟无宿主心跳失效；前端每十五秒确认状态。停用、重载、更新、回退、卸载或撤销身份会取消旧会话与在途动作。旧清理函数不撤销新激活实例；后端重启后页面需重新打开。
-- Docker 的 `/api/` 使用 `^~` 前缀路由，静态扩展名正则不截获页面资源。其他反向代理也应保留外部 Host，并让 `/api/packages/web-ui/` 透传资源与 SSE，不缓存票据响应。
-
-源码入口：后端 `packages/packageWebUi.ts`、`packageWebUiBootstrap.ts` 和 `routers/packageWebUi.router.ts`；前端 `integrations/PackageWebUiPane.vue` 与 `api/modules/packageWebUiApi.ts`。隔离语义参考 [HTML iframe 规范](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#attr-iframe-sandbox) 与 [CSP sandbox](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/sandbox)。
+- **沙箱与 CSP**：iframe 严格配置 `sandbox="allow-scripts"`（无同源权、Electron API 或宿主凭据），消息经窗口来源、`opaque origin` 与随机通道三重校验；静态票据按激活摘要与真实路径双校验（返回正确模块 JS/CSS MIME 与 CORS 头，不改写静态 JSON）。CSP 允许脚本/样式/图片/字体及读取当前票据资源，禁止直接访问宿主业务 API、任意外网、子框架、表单提交与 Worker。资源票据与业务会话分离（业务调用核验会话创建者身份与凭据；打开页面不自动赋予角色身份与 Agent 权）。
+- **并发与资源配额**：单页同时至多 `8` 个在途动作，单动作限时 `60` 秒，输入与输出上限 `256 KiB`，单次最多 `128` 条进度事件（每条 `≤ 8 KiB`）；静态单文件上限 `16 MiB`；页面会话无心跳 `5` 分钟超时（前端每 `15` 秒确认），停用/重载/更新/回退/卸载/撤销立即销毁旧会话与在途请求（后端重启需重新打开）。
+- **反向代理要求**：Docker Nginx `/api/` 须配 `^~` 前缀路由防止静态正则截获票据文件，其他反向代理需透传外部 `Host`、不缓存票据响应并完整透传 `/api/packages/web-ui/` 资源与 SSE 流。
+- **源码入口与参考**：后端 `packages/packageWebUi.ts`、`packageWebUiBootstrap.ts`、`routers/packageWebUi.router.ts`；前端 `packages/frontend/src/components/integrations/PackageWebUiPane.vue`、`api/modules/packageWebUiApi.ts`。隔离模型参照 [HTML iframe sandbox](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#attr-iframe-sandbox) 与 [MDN CSP sandbox](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/sandbox)。

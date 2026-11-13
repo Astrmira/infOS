@@ -14,7 +14,12 @@ import type { KnowledgeSearchInput, KnowledgeSearchResult, KnowledgeSearchHit } 
 import { fitKnowledgeText } from './knowledgeText'
 import { tokenCounter } from '../tokenizer/tokenCounter'
 
-type IndexedPart = { part: KnowledgePartRow; document: KnowledgeDocumentRow; hasVector?: boolean }
+type IndexedPart = {
+  part: Omit<KnowledgePartRow, 'embeddingJson'>
+  document: Pick<KnowledgeDocumentRow, 'id' | 'revision'>
+  embeddingHash: string
+  hasVector: boolean
+}
 type MatchMethod = KnowledgeSearchHit['matchedBy'][number]
 
 export function knowledgeEmbeddingKey(embedding: EmbeddingService): string {
@@ -59,23 +64,12 @@ export class KnowledgeIndex {
     this.available = false
     this.key = knowledgeEmbeddingKey(this.embedding)
     const store = this.stores.getSharedStore('knowledge')
-    const entries = this.repo.readyParts()
-    const keepIds = new Set(entries.map(({ part }) => part.id))
     let changed = false
-    for (const id of store.allNodeIds())
-      if (!keepIds.has(id)) {
-        store.delete(id)
-        changed = true
-      }
     mkdirSync(this.sourceRoot, { recursive: true })
-    const keep = new Set(entries.map(({ part }) => `${part.id}.txt`))
-    // 只清理由本服务生成的数字文件，禁止递归删除资料目录。
-    for (const name of readdirSync(this.sourceRoot))
-      if (/^\d+\.txt$/.test(name) && !keep.has(name)) unlinkSync(path.join(this.sourceRoot, name))
     const previous = this.entries
-    this.entries = new Map()
-    for (const entry of entries) {
-      const { part, document } = entry
+    const entries = new Map<number, IndexedPart>()
+    for (const { part, document } of this.repo.readyParts()) {
+      const embeddingHash = createHash('sha256').update(part.embeddingJson ?? '').digest('hex')
       let vector: unknown
       try {
         vector =
@@ -92,7 +86,7 @@ export class KnowledgeIndex {
         !old ||
         old.document.revision !== document.revision ||
         old.hasVector !== hasVector ||
-        old.part.embeddingJson !== part.embeddingJson ||
+        old.embeddingHash !== embeddingHash ||
         old.part.embeddingKey !== part.embeddingKey ||
         !store.contains(part.id)
       if (needsUpdate) {
@@ -112,12 +106,25 @@ export class KnowledgeIndex {
       const filename = path.join(this.sourceRoot, `${part.id}.txt`)
       if (!old || old.document.revision !== document.revision || !existsSync(filename))
         writeFileSync(filename, body, 'utf8')
-      this.entries.set(part.id, { ...entry, hasVector })
+      const { embeddingJson: _embeddingJson, ...metadata } = part
+      entries.set(part.id, {
+        part: metadata, document: { id: document.id, revision: document.revision }, embeddingHash, hasVector,
+      })
     }
+    for (const id of store.allNodeIds())
+      if (!entries.has(id)) {
+        store.delete(id)
+        changed = true
+      }
+    // 只清理由本服务生成的数字文件，禁止递归删除资料目录。
+    for (const name of readdirSync(this.sourceRoot))
+      if (/^\d+\.txt$/.test(name) && !entries.has(Number(name.slice(0, -4))))
+        unlinkSync(path.join(this.sourceRoot, name))
     if (changed || previous.size === 0) {
       store.buildTextIndex()
       store.flush()
     }
+    this.entries = entries
     this.available = true
   }
 
@@ -139,11 +146,6 @@ export class KnowledgeIndex {
     )
   }
 
-  private current(entry: IndexedPart): boolean {
-    const current = this.repo.version(entry.document.id)
-    return current?.status === 'ready' && current.revision === entry.document.revision
-  }
-
   async search(
     input: KnowledgeSearchInput,
     signal?: AbortSignal,
@@ -159,25 +161,26 @@ export class KnowledgeIndex {
     if (!keywords.length && !regex && !ids?.length) throw new Error('请提供关键词、正则或片段编号')
     if (input.offset !== undefined && (!input.expand || ids?.length !== 1))
       throw new Error('字符游标仅用于展开一个指定片段')
+    const initialVersions = this.repo.readyVersions()
     const entries = new Map(
       [...this.entries].filter(
         ([id, entry]) =>
           (!input.documentId || entry.document.id === input.documentId) &&
           (!ids?.length || ids.includes(id)) &&
-          this.current(entry),
+          initialVersions.get(entry.document.id) === entry.document.revision,
       ),
     )
     const warnings: string[] = []
     const candidates = new Map<
       number,
-      { score: number; methods: Set<MatchMethod>; position?: number }
+      { score: number; methods: Set<MatchMethod>; byteOffset?: number }
     >()
-    const add = (id: number, method: MatchMethod, rank: number, position?: number) => {
+    const add = (id: number, method: MatchMethod, rank: number, byteOffset?: number) => {
       if (!entries.has(id)) return
       const candidate = candidates.get(id) ?? { score: 0, methods: new Set<MatchMethod>() }
       candidate.score += 1 / (60 + rank)
       candidate.methods.add(method)
-      if (position !== undefined) candidate.position = position
+      if (byteOffset !== undefined) candidate.byteOffset = byteOffset
       candidates.set(id, candidate)
     }
     const store = this.stores.getSharedStore('knowledge')
@@ -229,18 +232,27 @@ export class KnowledgeIndex {
       }
     }
     signal?.throwIfAborted()
+    // 异步召回完成后重新核对版本，删除、替换和隐私清理立即生效。
+    const currentVersions = this.repo.readyVersions()
     const ranked = [...candidates]
-      .filter(([id]) => this.current(entries.get(id)!))
+      .filter(([id]) => {
+        const entry = entries.get(id)!
+        return currentVersions.get(entry.document.id) === entry.document.revision
+      })
       .sort((a, b) => b[1].score - a[1].score || a[0] - b[0])
     const items: KnowledgeSearchHit[] = []
     // 预算包含 JSON 转义后的正文、元数据与响应封装。
     let remaining = 23_000
+    const documents = new Map<string, KnowledgeDocumentRow | undefined>()
     for (const [id, candidate] of ranked.slice(0, limit)) {
-      const { part, document } = entries.get(id)!
+      const { part, document: indexedDocument } = entries.get(id)!
+      if (!documents.has(indexedDocument.id)) documents.set(indexedDocument.id, this.repo.get(indexedDocument.id))
+      const document = documents.get(indexedDocument.id)
+      if (!document || document.status !== 'ready' || document.revision !== indexedDocument.revision) continue
       const body = document.content.slice(part.startOffset, part.endOffset)
-      const position =
-        candidate.position ??
-        Math.max(
+      const position = candidate.byteOffset !== undefined
+        ? Buffer.from(body, 'utf8').subarray(0, candidate.byteOffset).toString('utf8').length
+        : Math.max(
           0,
           ...keywords
             .map((k) => body.toLocaleLowerCase().indexOf(k.toLocaleLowerCase()))
@@ -355,11 +367,7 @@ export class KnowledgeIndex {
             const entry = this.entries.get(id)
             if (!entry || matches.has(id)) continue
             const byteOffset = event.data.absolute_offset + (event.data.submatches?.[0]?.start ?? 0)
-            const body = entry.document.content.slice(entry.part.startOffset, entry.part.endOffset)
-            matches.set(
-              id,
-              Buffer.from(body, 'utf8').subarray(0, byteOffset).toString('utf8').length,
-            )
+            matches.set(id, byteOffset)
           } catch {
             /* ripgrep 的非匹配记录不参与召回。 */
           }
