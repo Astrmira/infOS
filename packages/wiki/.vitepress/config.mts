@@ -16,7 +16,7 @@ import { cjkFriendlyEmphasis } from './plugins/cjkFriendlyEmphasis'
 import { markdownMermaid } from './plugins/markdownMermaid'
 import { browserDependencyOptions, browserTargets } from '../../../scripts/vite-browser-compat'
 
-const REPO = 'https://github.com/YoKONCy/infOS'
+const REPO = 'https://github.com/Astrmira/infOS'
 
 export default defineConfig({
   vite: {

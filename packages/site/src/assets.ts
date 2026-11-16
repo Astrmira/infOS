@@ -15,6 +15,6 @@ export function preload(names: string[]): void {
 export const LINKS = {
   steam: 'https://store.steampowered.com/app/4457100',
   docs: 'https://wiki.perofamily.top',
-  github: 'https://github.com/YoKONCy/infOS',
+  github: 'https://github.com/Astrmira/infOS',
   mobile: 'https://github.com/YoKONCy/Peroperochat',
 }

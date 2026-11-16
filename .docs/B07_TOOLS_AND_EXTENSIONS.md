@@ -22,6 +22,10 @@ MinerU 只作为 PDF 解析来源；搜索服务商只作为联网搜索来源�
 - 保存和启用不会自动调用服务商的接口。网络调用只发生在用户上传 PDF 或 Agent 实际调用工具时。
 - 配置写入串行处理，重启保持启用状态。来源切换不改变已经开始的解析任务所使用的配置快照。
 
+## 模型侧参数 Schema
+
+内置、应用与 MCP 工具在 OpenAI Chat Completions、Responses 和 Gemini 的 Provider 出口通过 `services/llm/sanitize.ts` 收敛为兼容的 JSON Schema 子集。清洗按 Schema 节点进行，`properties` 保留参数名并逐项清洗字段定义，`items` 递归处理数组元素。参数可以使用 `items`、`type`、`properties`、`anyOf` 等名称，枚举和注解中的字面数据保持原值。多操作工具的对象分支合并可选字段，各操作的必填项由执行器继续校验。
+
 ## 扩展工具
 
 DeepWiki、Sciverse 使用 Manifest V2 的官方 Package 与 tool contribution，分别注册 `deepwiki_query`、`sciverse_search`。入口由宿主提供，不恢复旧 Extension Loader，也不将整个 AppContext 交给扩展。

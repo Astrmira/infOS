@@ -7,7 +7,7 @@ interface ReleaseAsset {
 }
 
 const repositories: Record<DownloadPlatform, string> = {
-  windows: 'YoKONCy/infOS',
+  windows: 'Astrmira/infOS',
   android: 'YoKONCy/Peroperochat',
 }
 

@@ -133,7 +133,7 @@ afterPack: scripts/electron-after-pack.cjs
 # GitHub Releases 发布目标
 publish:
   - provider: github
-    owner: YoKONCy
+    owner: Astrmira
     repo: infOS
 
 # Windows 通用配置

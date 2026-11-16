@@ -2,7 +2,7 @@
   <a
     v-if="stars !== null"
     class="github-stars"
-    href="https://github.com/YoKONCy/infOS"
+    href="https://github.com/Astrmira/infOS"
     target="_blank"
     rel="noopener noreferrer"
     :aria-label="`GitHub Stars: ${formattedStars}`"
@@ -41,7 +41,7 @@ onMounted(async () => {
 
   request = new AbortController()
   try {
-    const response = await fetch('https://api.github.com/repos/YoKONCy/infOS', {
+    const response = await fetch('https://api.github.com/repos/Astrmira/infOS', {
       credentials: 'omit',
       signal: request.signal,
     })

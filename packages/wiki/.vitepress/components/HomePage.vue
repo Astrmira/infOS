@@ -19,13 +19,13 @@
           <a class="wk-btn" href="https://store.steampowered.com/app/4457100" target="_blank" rel="noopener noreferrer">
             在 Steam 查看
           </a>
-          <a class="wk-btn ghost" href="https://github.com/YoKONCy/infOS/releases/latest" target="_blank" rel="noopener noreferrer">
+          <a class="wk-btn ghost" href="https://github.com/Astrmira/infOS/releases/latest" target="_blank" rel="noopener noreferrer">
             下载 Windows 版
           </a>
         </div>
         <p class="hero-meta">
           由开源项目
-          <a href="https://github.com/YoKONCy/infOS" target="_blank" rel="noopener noreferrer">infOS</a>
+          <a href="https://github.com/Astrmira/infOS" target="_blank" rel="noopener noreferrer">infOS</a>
           驱动 · Apache-2.0
         </p>
       </div>
@@ -145,7 +145,7 @@
         </span>
         <p>
           文档哪里没看懂，或者发现写错了，都可以到
-          <a href="https://github.com/YoKONCy/infOS/issues" target="_blank" rel="noopener noreferrer">GitHub Issues</a>
+          <a href="https://github.com/Astrmira/infOS/issues" target="_blank" rel="noopener noreferrer">GitHub Issues</a>
           告诉我们。Pero 会把它记在小本本上的！
         </p>
       </div>

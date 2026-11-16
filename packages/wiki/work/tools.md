@@ -165,8 +165,8 @@ return merge(results)
 
 ## 源码入口
 
-- [工具注册与定义](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/agent/toolRegistry.ts)、[工具执行器](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/agent/toolExecutor.ts)、[交互模式](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/tools/interactionMode.ts)
-- [角色与场景门禁](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/capabilities/capabilityGate.ts)、[操作策略](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/execution/policyEngine.ts)、[审批服务](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/execution/approvalService.ts)
-- [能力目录](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/kernel/capabilityDirectory.ts)、[能力连接](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/capabilities/capabilityBridge.ts)
-- [NIT 解释器](https://github.com/YoKONCy/infOS/tree/main/packages/backend/src/nit)、[run_script](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/tools/runScript/index.ts)
-- [角色工具设置](https://github.com/YoKONCy/infOS/blob/main/packages/frontend/src/components/dashboard/tabs/AgentConfigTab.vue)、[会话工具入口](https://github.com/YoKONCy/infOS/blob/main/packages/frontend/src/components/chat/InputBar.vue)
+- [工具注册与定义](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/agent/toolRegistry.ts)、[工具执行器](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/agent/toolExecutor.ts)、[交互模式](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/tools/interactionMode.ts)
+- [角色与场景门禁](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/capabilities/capabilityGate.ts)、[操作策略](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/execution/policyEngine.ts)、[审批服务](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/execution/approvalService.ts)
+- [能力目录](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/kernel/capabilityDirectory.ts)、[能力连接](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/capabilities/capabilityBridge.ts)
+- [NIT 解释器](https://github.com/Astrmira/infOS/tree/main/packages/backend/src/nit)、[run_script](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/tools/runScript/index.ts)
+- [角色工具设置](https://github.com/Astrmira/infOS/blob/main/packages/frontend/src/components/dashboard/tabs/AgentConfigTab.vue)、[会话工具入口](https://github.com/Astrmira/infOS/blob/main/packages/frontend/src/components/chat/InputBar.vue)

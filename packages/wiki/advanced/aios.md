@@ -111,7 +111,7 @@ Execution 可以关联主体、会话或任务，并携带截止时间和资源�
 
 想继续阅读实现，可以从以下入口开始：
 
-- [内核协议与对象引用](https://github.com/YoKONCy/infOS/blob/main/packages/shared/src/types/kernel.types.ts)、[节点协议](https://github.com/YoKONCy/infOS/blob/main/packages/shared/src/types/node.types.ts)
-- [对象注册表](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/kernel/kernelObjectRegistry.ts)、[执行运行时](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/kernel/executionRuntime.ts)、[能力目录](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/kernel/capabilityDirectory.ts)
-- [上下文编译器](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/context/contextCompiler.ts)、[工具执行器](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/agent/toolExecutor.ts)
-- [Electron 能力提供者](https://github.com/YoKONCy/infOS/blob/main/electron/main/services/capabilityProvider.ts)、[能力连接](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/capabilities/capabilityBridge.ts)
+- [内核协议与对象引用](https://github.com/Astrmira/infOS/blob/main/packages/shared/src/types/kernel.types.ts)、[节点协议](https://github.com/Astrmira/infOS/blob/main/packages/shared/src/types/node.types.ts)
+- [对象注册表](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/kernel/kernelObjectRegistry.ts)、[执行运行时](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/kernel/executionRuntime.ts)、[能力目录](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/kernel/capabilityDirectory.ts)
+- [上下文编译器](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/context/contextCompiler.ts)、[工具执行器](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/agent/toolExecutor.ts)
+- [Electron 能力提供者](https://github.com/Astrmira/infOS/blob/main/electron/main/services/capabilityProvider.ts)、[能力连接](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/capabilities/capabilityBridge.ts)

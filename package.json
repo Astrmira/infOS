@@ -9,7 +9,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YoKONCy/infOS.git"
+    "url": "https://github.com/Astrmira/infOS.git"
   },
   "engines": {
     "node": "^22.23.4 || ^24.22.1 || ^26.12.1",

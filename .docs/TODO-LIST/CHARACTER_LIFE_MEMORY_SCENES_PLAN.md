@@ -517,4 +517,4 @@ Agent 主动记录简洁的非事件要点时使用记事本，已确认且适�
 | 当前记忆工具入口 | [事件工具](../../packages/backend/src/tools/eventMemory/index.ts)、[事实工具](../../packages/backend/src/tools/facts/index.ts)、[事实存储](../../packages/backend/src/repositories/facts.repo.ts)、[文件工具](../../packages/backend/src/tools/fileOps/index.ts) |
 | 社交与应用 | [社交编译器](../../packages/apps/social/runtime/compiler.ts)、[社交能力参考](../B21_SOCIAL_CAPABILITIES.md)、[应用接入](../A10_APPLICATION_INTEGRATION.md) |
 
-旧《据点双模式与 AIOS 多 Agent 协作规划》原稿保留于 [Git 历史](https://github.com/YoKONCy/infOS/blob/b72b43bae711ce3b271861640eedc7a661bd0769/.docs/TODO-LIST/STRONGHOLD_COLLABORATION.md)。后续实施以本文的 MainThread 归属、模式切换和阶段安排为依据，完成的职责持续维护到相应技术参考。
+旧《据点双模式与 AIOS 多 Agent 协作规划》原稿保留于 [Git 历史](https://github.com/Astrmira/infOS/blob/b72b43bae711ce3b271861640eedc7a661bd0769/.docs/TODO-LIST/STRONGHOLD_COLLABORATION.md)。后续实施以本文的 MainThread 归属、模式切换和阶段安排为依据，完成的职责持续维护到相应技术参考。

@@ -99,6 +99,7 @@ describe('心流内置工具注册', () => {
       'contains',
     ])
     const inspect = (value: unknown, path: string): void => {
+      expect(value === true || value === false || (value !== null && typeof value === 'object'), path).toBe(true)
       if (Array.isArray(value)) {
         value.forEach((item, index) => inspect(item, `${path}[${index}]`))
         return
@@ -109,13 +110,67 @@ describe('心流内置工具注册', () => {
       if ('properties' in node) expect(node.type, `${path}.type`).toBe('object')
       for (const [key, child] of Object.entries(node)) {
         expect(unsupported.has(key), `${path}.${key}`).toBe(false)
-        inspect(child, `${path}.${key}`)
+        if (key === 'properties') {
+          for (const [name, schema] of Object.entries(child as Record<string, unknown>))
+            inspect(schema, `${path}.properties.${name}`)
+        } else if (key === 'items') inspect(child, `${path}.items`)
       }
     }
 
     for (const tool of getBuiltinToolDefinitions()) {
       inspect(sanitizeToolParameters(tool.parameters), tool.name)
     }
+  })
+
+  it('主线交流的等待事项保留数组结构，参数字典中每一项都是 Schema', () => {
+    const tool = getBuiltinToolDefinitions().find((definition) => definition.name === 'conversation')!
+    const parameters = sanitizeToolParameters(tool.parameters)
+    expect(new Set(Object.keys(parameters.properties as object))).toEqual(new Set([
+      'action', 'id', 'content', 'spoken_reply', 'responds_to', 'ids', 'items',
+    ]))
+    expect((parameters.properties as Record<string, unknown>).items).toMatchObject({
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          question: { type: 'string' },
+          continuation: { type: 'string' },
+          message_ids: { type: 'array', items: { type: 'integer' } },
+          expires_at: { type: 'string' },
+        },
+        required: ['id', 'question', 'continuation', 'message_ids'],
+      },
+    })
+  })
+
+  it('动态工具允许使用 Schema 关键字作为参数名，并保留枚举中的字面对象', () => {
+    const literal = { items: '原始值', oneOf: ['原始值'], properties: { const: 1 } }
+    expect(sanitizeToolParameters({
+      type: 'object',
+      properties: {
+        type: { type: 'string' },
+        items: { type: 'array', items: { type: 'string' } },
+        properties: {
+          type: 'object',
+          properties: { anyOf: { type: 'string' }, additionalProperties: { type: 'boolean' } },
+        },
+        enum: { enum: [literal] },
+        anyOf: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+      },
+    })).toEqual({
+      type: 'object',
+      properties: {
+        type: { type: 'string' },
+        items: { type: 'array', items: { type: 'string' } },
+        properties: {
+          type: 'object',
+          properties: { anyOf: { type: 'string' }, additionalProperties: { type: 'boolean' } },
+        },
+        enum: { enum: [literal] },
+        anyOf: { type: 'array', items: { type: 'string' } },
+      },
+    })
   })
 
   it('必须为动态工具组合Schema选择明确类型并移除不兼容关键字', () => {

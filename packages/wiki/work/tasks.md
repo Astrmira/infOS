@@ -85,7 +85,7 @@ flowchart LR
 
 ## 源码入口
 
-- [工作区服务](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/workspace/workspaceService.ts)、[工作区文件运行时](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/execution/virtualWorkspace.ts)、[文件恢复记录](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/workspace/workspaceCheckpointService.ts)
-- [后台任务调度](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/task/backgroundTaskService.ts)、[任务生命周期](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/task/taskLifecycle.ts)、[结果投递](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/task/taskDeliveryService.ts)
-- [行动计划](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/task/taskPlanService.ts)、[定时调度](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/scheduler/schedulerService.ts)
-- [工作区界面](https://github.com/YoKONCy/infOS/blob/main/packages/frontend/src/components/main/tabs/WorkspaceTab.vue)、[任务中心](https://github.com/YoKONCy/infOS/blob/main/packages/frontend/src/components/dashboard/tabs/TasksTab.vue)
+- [工作区服务](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/workspace/workspaceService.ts)、[工作区文件运行时](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/execution/virtualWorkspace.ts)、[文件恢复记录](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/workspace/workspaceCheckpointService.ts)
+- [后台任务调度](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/task/backgroundTaskService.ts)、[任务生命周期](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/task/taskLifecycle.ts)、[结果投递](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/task/taskDeliveryService.ts)
+- [行动计划](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/task/taskPlanService.ts)、[定时调度](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/scheduler/schedulerService.ts)
+- [工作区界面](https://github.com/Astrmira/infOS/blob/main/packages/frontend/src/components/main/tabs/WorkspaceTab.vue)、[任务中心](https://github.com/Astrmira/infOS/blob/main/packages/frontend/src/components/dashboard/tabs/TasksTab.vue)

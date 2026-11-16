@@ -40,7 +40,7 @@ const body = [
   '',
   '---',
   '',
-  '由 GitHub Actions 自动构建发布。源代码与使用文档见[项目仓库](https://github.com/YoKONCy/infOS)。',
+  '由 GitHub Actions 自动构建发布。源代码与使用文档见[项目仓库](https://github.com/Astrmira/infOS)。',
   '',
 ].join('\n')
 fs.writeFileSync(path.resolve(output), body)

@@ -7,7 +7,7 @@
 | 版本 | 获取方式 | 适合 |
 | --- | --- | --- |
 | **Steam 版** | 通过 Steam 客户端分发和更新，详见 [Steam 商店页](https://store.steampowered.com/app/4457100)。 | 想用 Steam 管理更新和创意工坊模型。 |
-| **Windows 安装版** | 从 [GitHub Releases](https://github.com/YoKONCy/infOS/releases/latest) 下载 `*-Setup-*.exe`。用户数据保存在系统用户目录。 | 日常在一台电脑上使用。 |
+| **Windows 安装版** | 从 [GitHub Releases](https://github.com/Astrmira/infOS/releases/latest) 下载 `*-Setup-*.exe`。用户数据保存在系统用户目录。 | 日常在一台电脑上使用。 |
 | **Windows 便携版** | 从同一页面下载 `*-Portable*.zip`，解压后运行。数据保存在程序目录。 | 放在 U 盘或固定文件夹里随身使用。 |
 | **Docker 版** | 在服务器或电脑上部署服务端，用浏览器访问，见 [Docker 部署](/deployment/docker)。 | 让伙伴常驻在线，多台设备共用。 |
 

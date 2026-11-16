@@ -159,7 +159,17 @@ export function sanitizeToolParameters(input: Record<string, unknown>): Record<s
 
     for (const [key, child] of Object.entries(merged)) {
       if (UNSUPPORTED_TOOL_SCHEMA_KEYS.has(key)) continue
-      result[key] = sanitizeNode(child)
+      // properties 是参数名到 Schema 的字典，参数名可以与 items、type 等关键字同名。
+      // 只清洗字典内的 Schema，枚举值和其他注解数据保持原样。
+      if (key === 'properties' && child && typeof child === 'object' && !Array.isArray(child)) {
+        result[key] = Object.fromEntries(
+          Object.entries(child).map(([name, schema]) => [name, sanitizeNode(schema)]),
+        )
+      } else if (key === 'items' || key === 'additionalItems' || key === 'contentSchema') {
+        result[key] = sanitizeNode(child)
+      } else {
+        result[key] = child
+      }
     }
 
     if (result.items && !result.type) result.type = 'array'

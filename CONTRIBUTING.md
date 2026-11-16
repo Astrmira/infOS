@@ -37,9 +37,9 @@ Welcome! Bug reports, documentation, UX improvements and code contributions all 
 
 ## 反馈问题或建议 / Opening an issue
 
-请使用仓库的 [Issue 表单](https://github.com/YoKONCy/infOS/issues/new/choose)，先搜索一下是否已有相同反馈。
+请使用仓库的 [Issue 表单](https://github.com/Astrmira/infOS/issues/new/choose)，先搜索一下是否已有相同反馈。
 
-Please use the [issue forms](https://github.com/YoKONCy/infOS/issues/new/choose) and check for an existing report first.
+Please use the [issue forms](https://github.com/Astrmira/infOS/issues/new/choose) and check for an existing report first.
 
 - **问题反馈 / Bug report**：填写版本、安装与连接方式、环境、复现步骤、预期和实际结果，并提供相关日志或截图。源码版可以填写 commit；不了解的环境字段可以写“不确定”。
   Include the version, distribution, backend connection, environment, reproduction steps, expected/actual behavior and relevant logs or screenshots. Source installations may use a commit ID; “not sure” is fine for environment details you do not know.
@@ -55,7 +55,7 @@ Node.js 推荐使用 [`.node-version`](.node-version) 指定版本，其他可�
 Use the Node.js version in [`.node-version`](.node-version), or an alternative allowed by the root [`package.json`](package.json) `engines`. Use its `packageManager` pnpm version. See [B27](.docs/B27_RUNTIME_SECURITY.md) for runtime security requirements.
 
 ```bash
-git clone https://github.com/YoKONCy/infOS.git
+git clone https://github.com/Astrmira/infOS.git
 cd infOS
 pnpm install --frozen-lockfile
 pnpm start

@@ -6,6 +6,7 @@ import { ExecutionRuntime, KernelOutboxRepository, KernelScheduler } from '@info
 import { ThreadRepository } from '@infos/backend/repositories/thread.repo'
 import { ThreadService } from '@infos/backend/services/thread/threadService'
 import { ConversationTurnService } from '@infos/backend/services/conversation/conversationTurnService'
+import { ConversationProjectionService } from '@infos/backend/projections/conversationProjectionService'
 import type { CompiledRunParams } from '@infos/backend/services/agent/agentService'
 
 const connections: ReturnType<typeof createDrizzleConnection>[] = []
@@ -52,6 +53,30 @@ async function fixture(maxRunning = 3, maxQueued = 8) {
 }
 
 describe('普通会话统一调度', () => {
+  it.each(['stream', 'non_stream'] as const)('主线 %s 模型失败保留唯一输入及提交身份，重复请求不再落盘', async (mode) => {
+    const { service, scheduler, threadService, main, agent } = await fixture(1)
+    const error = new Error('HTTP_400_INVALID_TOOL_SCHEMA')
+    agent.chatWithCompiledMessages.mockRejectedValue(error)
+    agent.chatStreamWithCompiledMessages.mockImplementation(async function* () { throw error })
+    const run = async () => {
+      const params = { threadId: main.id, content: '你好呀', queueMessageId: 'submission' }
+      if (mode === 'non_stream') return service.executeTurn(params)
+      for await (const _chunk of service.streamTurn(params)) { /* 等待执行结算。 */ }
+    }
+    await expect(run()).rejects.toThrow('HTTP_400_INVALID_TOOL_SCHEMA')
+    await expect(run()).rejects.toThrow()
+    const messages = await threadService.getActiveMessages(main.id)
+    expect(messages.map((message) => [message.role, message.content, message.pairId, message.publicationId]))
+      .toEqual([['user', '你好呀', null, `conversation:${main.id}:1:submission:input`]])
+    const projection = new ConversationProjectionService(threadService, { listForMessages: async () => new Map() } as never)
+    const snapshot = await projection.getSnapshot(main.id)
+    expect(snapshot.messages.map((message) => [message.role, message.messageId]))
+      .toEqual([['user', String(messages[0]!.id)], ['assistant', `execution:conversation:${main.id}:1:submission`]])
+    expect(snapshot.messages[1]!.failureMessage).toBe('HTTP_400_INVALID_TOOL_SCHEMA')
+    expect(snapshot.messages[0]!.publicationId).toBe(`conversation:${main.id}:1:submission:input`)
+    expect(scheduler.getDiagnostics()).toMatchObject({ running: 0, queued: 0 })
+  })
+
   it('主侧会话共享全局及交互并发，排队输入在准入后保存', async () => {
     const { service, scheduler, threadService, main, sideA, sideB, agent, onUserActivity } = await fixture()
     const background = gate()

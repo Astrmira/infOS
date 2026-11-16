@@ -5,6 +5,7 @@ import { OpenAiResponsesProvider } from '@infos/backend/services/llm/providers/o
 import { GeminiProvider } from '@infos/backend/services/llm/providers/geminiProvider'
 import { AnthropicProvider } from '@infos/backend/services/llm/providers/anthropicProvider'
 import type { ChatMessage, ChatOptions, ProviderConfig } from '@infos/backend/services/llm/types'
+import { getBuiltinToolDefinitions } from '@infos/backend/tools'
 
 const baseConfig: ProviderConfig = {
   apiKey: 'test-key',
@@ -71,6 +72,32 @@ async function collect<T>(iterable: AsyncIterable<T>) {
   for await (const item of iterable) result.push(item)
   return result
 }
+
+describe('主线交流工具的模型请求契约', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  it.each(['chat', 'responses', 'gemini'] as const)('%s 请求保留合法的等待事项参数 Schema', async (protocol) => {
+    const conversation = getBuiltinToolDefinitions().find((tool) => tool.name === 'conversation')!
+    const fetch = vi.fn().mockResolvedValue(jsonResponse(
+      protocol === 'gemini'
+        ? { candidates: [{ content: { parts: [{ text: '你好' }] }, finishReason: 'STOP' }] }
+        : protocol === 'responses'
+          ? { output: [] }
+          : { choices: [{ message: { content: '你好' }, finish_reason: 'stop' }] },
+    ))
+    vi.stubGlobal('fetch', fetch)
+    const provider = protocol === 'gemini' ? new GeminiProvider(baseConfig)
+      : protocol === 'responses' ? new OpenAiResponsesProvider(baseConfig) : new OpenAiProvider(baseConfig)
+    await provider.chat([{ role: 'user', content: '你好' }], {
+      tools: [{ type: 'function', function: conversation }],
+    })
+    const body = JSON.parse(fetch.mock.calls[0]![1].body)
+    const parameters = protocol === 'gemini' ? body.tools[0].functionDeclarations[0].parameters
+      : protocol === 'responses' ? body.tools[0].parameters : body.tools[0].function.parameters
+    expect(parameters).toEqual(conversation.parameters)
+    expect(parameters.properties).not.toHaveProperty('type')
+    expect(parameters.properties.items.items.properties.message_ids.items).toEqual({ type: 'integer' })
+  })
+})
 
 describe('缓存写入用量回归', () => {
   afterEach(() => vi.unstubAllGlobals())

@@ -10,7 +10,7 @@ Docker 版把 infOS 服务端运行在容器中，通过浏览器访问主界面
 
 先安装 Docker 和 Docker Compose，确保设备可以拉取 GitHub Container Registry（GHCR）的镜像。
 
-1. 从 [GitHub Releases](https://github.com/YoKONCy/infOS/releases) 选择要安装的版本，下载该版本附件中的 `docker-compose.yml`，放到单独的部署目录。
+1. 从 [GitHub Releases](https://github.com/Astrmira/infOS/releases) 选择要安装的版本，下载该版本附件中的 `docker-compose.yml`，放到单独的部署目录。
 2. 在该目录打开终端，执行：
 
    ```bash

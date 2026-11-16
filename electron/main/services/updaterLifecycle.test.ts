@@ -40,7 +40,7 @@ const rawRelease = {
       name: 'PeroperoChat.-Setup-0.9.9.exe',
       size: payload.length,
       digest: `sha256:${createHash('sha256').update(payload).digest('hex')}`,
-      browser_download_url: 'https://github.com/YoKONCy/infOS/releases/download/v0.9.9/setup.exe',
+      browser_download_url: 'https://github.com/Astrmira/infOS/releases/download/v0.9.9/setup.exe',
     },
   ],
 }

@@ -93,7 +93,7 @@ flowchart LR
 
 ## 源码入口
 
-- [上下文编译器](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/context/contextCompiler.ts)与[区域选择](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/context/contextRegionRuntime.ts)
-- [对话准备与预算估算](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/conversation/conversationTurnService.ts)、[运行中的窗口整理](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/context/promptWindow.ts)
-- [记忆召回](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/memory/eventMemoryService.ts)、[知识与事实召回](https://github.com/YoKONCy/infOS/blob/main/packages/backend/src/services/knowledge/knowledgeRecallService.ts)
-- [社交应用的独立编译流程](https://github.com/YoKONCy/infOS/blob/main/packages/apps/social/runtime/compiler.ts)
+- [上下文编译器](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/context/contextCompiler.ts)与[区域选择](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/context/contextRegionRuntime.ts)
+- [对话准备与预算估算](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/conversation/conversationTurnService.ts)、[运行中的窗口整理](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/context/promptWindow.ts)
+- [记忆召回](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/memory/eventMemoryService.ts)、[知识与事实召回](https://github.com/Astrmira/infOS/blob/main/packages/backend/src/services/knowledge/knowledgeRecallService.ts)
+- [社交应用的独立编译流程](https://github.com/Astrmira/infOS/blob/main/packages/apps/social/runtime/compiler.ts)

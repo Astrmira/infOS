@@ -204,7 +204,7 @@ async function showActionFailure(error: unknown): Promise<void> {
 async function openUpdateLocation(target: 'logs' | 'release'): Promise<void> {
   try {
     if (target === 'logs') await invoke('open-client-path', 'logs')
-    else await invoke('open-external-url', 'https://github.com/YoKONCy/infOS/releases')
+    else await invoke('open-external-url', 'https://github.com/Astrmira/infOS/releases')
   } catch (error) {
     await showActionFailure(error)
   }

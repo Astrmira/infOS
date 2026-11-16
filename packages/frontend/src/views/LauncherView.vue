@@ -997,7 +997,7 @@ onUnmounted(() => {
           <strong class="mono">v{{ clientInfo?.version ?? appVersion }}</strong>
         </div>
         <div class="about-grid">
-          <button @click="invoke('open-external-url', { url: 'https://github.com/YoKONCy/infOS' })">
+          <button @click="invoke('open-external-url', { url: 'https://github.com/Astrmira/infOS' })">
             <PixelIcon name="code" size="sm" />
             <span>
               <strong>{{ __t('ui.navigation', '项目主页') }}</strong>
@@ -1005,7 +1005,7 @@ onUnmounted(() => {
             </span>
           </button>
           <button
-            @click="invoke('open-external-url', { url: 'https://github.com/YoKONCy/infOS/issues' })"
+            @click="invoke('open-external-url', { url: 'https://github.com/Astrmira/infOS/issues' })"
           >
             <PixelIcon name="chat" size="sm" />
             <span>

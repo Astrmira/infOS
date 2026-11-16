@@ -6,7 +6,7 @@
 
 **萌动链接：PeroperoChat！** 是一款桌面 AI 伙伴应用。她可以作为 3D 桌宠待在你的桌面上，陪你聊天，记住你们一起经历的事，也可以在你允许的范围内帮你处理文件和任务。
 
-驱动这一切的是开源项目 **infOS**：它负责管理角色、对话、记忆、工作区和工具。代码以 Apache-2.0 许可在 [GitHub](https://github.com/YoKONCy/infOS) 开源。
+驱动这一切的是开源项目 **infOS**：它负责管理角色、对话、记忆、工作区和工具。代码以 Apache-2.0 许可在 [GitHub](https://github.com/Astrmira/infOS) 开源。
 
 <CompanionNote who="pero">
 

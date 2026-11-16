@@ -11,13 +11,13 @@
   <h3>让 AI 成为真正有温度的伙伴</h3>
   <p>一个容纳人格、记忆与行动的数字空间。陪你聊天，也陪你把想法做出来。</p>
   <p>
-    <a href="https://github.com/YoKONCy/infOS/releases/latest"><img src="https://img.shields.io/github/v/release/YoKONCy/infOS?style=flat-square&amp;label=Release&amp;labelColor=252737&amp;color=9b87cf" alt="最新发布版本" /></a>
-    <a href="https://github.com/YoKONCy/infOS/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/YoKONCy/infOS/ci.yml?branch=main&amp;style=flat-square&amp;logo=githubactions&amp;logoColor=white&amp;label=CI&amp;labelColor=252737" alt="CI 工作流状态" /></a>
-    <a href="./LICENSE"><img src="https://img.shields.io/github/license/YoKONCy/infOS?style=flat-square&amp;label=License&amp;labelColor=252737&amp;color=789cce" alt="Apache-2.0 开源许可证" /></a>
-    <a href="https://github.com/YoKONCy/infOS/releases"><img src="https://img.shields.io/github/downloads/YoKONCy/infOS/total?style=flat-square&amp;label=Downloads&amp;labelColor=252737&amp;color=c78faf" alt="Release 累计下载量" /></a>
-    <a href="https://github.com/YoKONCy/infOS/stargazers"><img src="https://img.shields.io/github/stars/YoKONCy/infOS?style=flat-square&amp;logo=github&amp;labelColor=252737&amp;color=b5a0da" alt="GitHub Stars" /></a>
+    <a href="https://github.com/Astrmira/infOS/releases/latest"><img src="https://img.shields.io/github/v/release/Astrmira/infOS?style=flat-square&amp;label=Release&amp;labelColor=252737&amp;color=9b87cf" alt="最新发布版本" /></a>
+    <a href="https://github.com/Astrmira/infOS/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Astrmira/infOS/ci.yml?branch=main&amp;style=flat-square&amp;logo=githubactions&amp;logoColor=white&amp;label=CI&amp;labelColor=252737" alt="CI 工作流状态" /></a>
+    <a href="./LICENSE"><img src="https://img.shields.io/github/license/Astrmira/infOS?style=flat-square&amp;label=License&amp;labelColor=252737&amp;color=789cce" alt="Apache-2.0 开源许可证" /></a>
+    <a href="https://github.com/Astrmira/infOS/releases"><img src="https://img.shields.io/github/downloads/Astrmira/infOS/total?style=flat-square&amp;label=Downloads&amp;labelColor=252737&amp;color=c78faf" alt="Release 累计下载量" /></a>
+    <a href="https://github.com/Astrmira/infOS/stargazers"><img src="https://img.shields.io/github/stars/Astrmira/infOS?style=flat-square&amp;logo=github&amp;labelColor=252737&amp;color=b5a0da" alt="GitHub Stars" /></a>
   </p>
-  <p><a href="#quick-start"><b>下载安装</b></a>　 /　 <a href="https://wiki.perofamily.top"><b>阅读文档</b></a>　 /　 <a href="#sub-apps"><b>探索子应用</b></a>　 /　 <a href="https://github.com/YoKONCy/infOS/issues"><b>交流与反馈</b></a></p>
+  <p><a href="#quick-start"><b>下载安装</b></a>　 /　 <a href="https://wiki.perofamily.top"><b>阅读文档</b></a>　 /　 <a href="#sub-apps"><b>探索子应用</b></a>　 /　 <a href="https://github.com/Astrmira/infOS/issues"><b>交流与反馈</b></a></p>
 </div>
 
 <br />
@@ -571,7 +571,7 @@ infOS 提供由 GHCR 预构建镜像驱动的 Docker Compose 一键部署。无�
 
 ```bash
 # 下载最新 Release 中的一键部署文件
-curl -LO https://github.com/YoKONCy/infOS/releases/latest/download/docker-compose.yml
+curl -LO https://github.com/Astrmira/infOS/releases/latest/download/docker-compose.yml
 
 # 拉取 Backend + Frontend 固定版本镜像并启动
 docker compose up -d
@@ -589,8 +589,8 @@ docker compose up -d
 
 | 容器 | 镜像 | 默认端口 |
 | :--- | :--- | :--- |
-| `backend` | `ghcr.io/yokoncy/infos-backend:<版本>` | `:9120`（API）、`:9121`（能力通道） |
-| `frontend` | `ghcr.io/yokoncy/infos-frontend:<版本>` | `:3000`（Web） |
+| `backend` | `ghcr.io/astrmira/infos-backend:<版本>` | `:9120`（API）、`:9121`（能力通道） |
+| `frontend` | `ghcr.io/astrmira/infos-frontend:<版本>` | `:3000`（Web） |
 
 数据持久化至 Docker Volume `infos-data` 与 `infos-workspaces`。可在启动前设置 `INFOS_WEB_PORT`、`INFOS_PORT`、`INFOS_CAPABILITY_PORT`、`INFOS_LOG_LEVEL` 和 `INFOS_API_TOKEN`。仓库根目录的 `docker-compose.yml` 仍用于开发者从源码构建本地镜像。
 
@@ -608,11 +608,11 @@ docker compose up -d
       <sub>08 / HELLO, COMPANION</sub>
       <h3>选一位伙伴，开始相处</h3>
       <ol>
-        <li>下载最新 <a href="https://github.com/YoKONCy/infOS/releases/latest">Windows Release</a>。</li>
+        <li>下载最新 <a href="https://github.com/Astrmira/infOS/releases/latest">Windows Release</a>。</li>
         <li>安装到非中文路径。</li>
         <li>运行 <b>萌动链接：PeroperoChat！.exe</b>，在启动器中选择伙伴和启动方式。</li>
       </ol>
-      <p><a href="https://github.com/YoKONCy/infOS/releases/latest"><b>前往下载 →</b></a></p>
+      <p><a href="https://github.com/Astrmira/infOS/releases/latest"><b>前往下载 →</b></a></p>
     </td>
     <td width="66%" valign="top"><a href=".github/assets/showcase-launcher.png"><img src=".github/assets/showcase-launcher.png" width="100%" alt="浅色 infOS 启动器中的伙伴选择和服务检查" /></a></td>
   </tr>
@@ -653,7 +653,7 @@ docker compose up -d
 #### Step 1：克隆仓库
 
 ```bash
-git clone https://github.com/YoKONCy/infOS.git
+git clone https://github.com/Astrmira/infOS.git
 cd infOS
 ```
 
@@ -722,7 +722,7 @@ pnpm electron:build:portable
 
 ## 11 · 爱与社区
 
-<p><a href="./LICENSE"><img src="https://img.shields.io/badge/Open_Source-Apache_2.0-9b87cf?style=flat-square&amp;labelColor=252737" alt="Apache-2.0 开源项目" /></a>　<a href="https://github.com/YoKONCy/infOS/pulls">贡献代码</a> · <a href="https://github.com/YoKONCy/infOS/issues">提出建议</a> · <a href="https://wiki.perofamily.top">一起完善文档</a></p>
+<p><a href="./LICENSE"><img src="https://img.shields.io/badge/Open_Source-Apache_2.0-9b87cf?style=flat-square&amp;labelColor=252737" alt="Apache-2.0 开源项目" /></a>　<a href="https://github.com/Astrmira/infOS/pulls">贡献代码</a> · <a href="https://github.com/Astrmira/infOS/issues">提出建议</a> · <a href="https://wiki.perofamily.top">一起完善文档</a></p>
 
 **infOS 与 PeroperoChat 是完全非盈利的开源项目。**
 
@@ -743,8 +743,8 @@ pnpm electron:build:portable
 
 一个人的想法可以成为起点，一群人的参与才能让它走得更远。无论你擅长开发、设计、创作，还是愿意分享使用体验，都欢迎参与 infOS，一起决定桌面伙伴未来的模样。
 
-<a href="https://github.com/YoKONCy/infOS/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=YoKONCy/infOS" alt="infOS 的 GitHub 贡献者，随贡献记录自动更新" />
+<a href="https://github.com/Astrmira/infOS/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Astrmira/infOS" alt="infOS 的 GitHub 贡献者，随贡献记录自动更新" />
 </a>
 
 <sub>贡献者展示随 GitHub 贡献记录自动更新，点击头像区域可查看完整名单。也感谢通过建议、测试、文档与创作参与共建的每一位伙伴，期待在这里看到更多新面孔。</sub>
@@ -763,16 +763,16 @@ pnpm electron:build:portable
 
 ### 一起见证它的成长
 
-<a href="https://star-history.com/#YoKONCy/infOS&amp;Date">
+<a href="https://star-history.com/#Astrmira/infOS&amp;Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=YoKONCy/infOS&amp;type=Date&amp;theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=YoKONCy/infOS&amp;type=Date" />
-    <img src="https://api.star-history.com/svg?repos=YoKONCy/infOS&amp;type=Date" width="100%" alt="infOS 的 GitHub Star 历史曲线" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Astrmira/infOS&amp;type=Date&amp;theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Astrmira/infOS&amp;type=Date" />
+    <img src="https://api.star-history.com/svg?repos=Astrmira/infOS&amp;type=Date" width="100%" alt="infOS 的 GitHub Star 历史曲线" />
   </picture>
 </a>
 
 <p align="center"><b>用扎实的基础设施，承载有温度的信息体。</b><br /><sub>Infrastructure · Infomorph · Infinity</sub></p>
-<p align="center"><a href="#top">回到顶部 ↑</a> · <a href="https://github.com/YoKONCy/infOS/releases/latest">下载 infOS</a> · <a href="https://store.steampowered.com/app/4457100">在 Steam 认识萌动链接</a></p>
+<p align="center"><a href="#top">回到顶部 ↑</a> · <a href="https://github.com/Astrmira/infOS/releases/latest">下载 infOS</a> · <a href="https://store.steampowered.com/app/4457100">在 Steam 认识萌动链接</a></p>
 
 <!--
   🐾 "Meow! If you found this, you're officially a friend of Pero."

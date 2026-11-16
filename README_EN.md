@@ -11,13 +11,13 @@
   <h3>Let AI become a truly warm companion</h3>
   <p>A digital home for personality, memory, and action. A companion to talk with — and bring your ideas to life.</p>
   <p>
-    <a href="https://github.com/YoKONCy/infOS/releases/latest"><img src="https://img.shields.io/github/v/release/YoKONCy/infOS?style=flat-square&amp;label=Release&amp;labelColor=252737&amp;color=9b87cf" alt="Latest release" /></a>
-    <a href="https://github.com/YoKONCy/infOS/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/YoKONCy/infOS/ci.yml?branch=main&amp;style=flat-square&amp;logo=githubactions&amp;logoColor=white&amp;label=CI&amp;labelColor=252737" alt="CI workflow status" /></a>
-    <a href="./LICENSE"><img src="https://img.shields.io/github/license/YoKONCy/infOS?style=flat-square&amp;label=License&amp;labelColor=252737&amp;color=789cce" alt="Apache-2.0 license" /></a>
-    <a href="https://github.com/YoKONCy/infOS/releases"><img src="https://img.shields.io/github/downloads/YoKONCy/infOS/total?style=flat-square&amp;label=Downloads&amp;labelColor=252737&amp;color=c78faf" alt="Total release downloads" /></a>
-    <a href="https://github.com/YoKONCy/infOS/stargazers"><img src="https://img.shields.io/github/stars/YoKONCy/infOS?style=flat-square&amp;logo=github&amp;labelColor=252737&amp;color=b5a0da" alt="GitHub Stars" /></a>
+    <a href="https://github.com/Astrmira/infOS/releases/latest"><img src="https://img.shields.io/github/v/release/Astrmira/infOS?style=flat-square&amp;label=Release&amp;labelColor=252737&amp;color=9b87cf" alt="Latest release" /></a>
+    <a href="https://github.com/Astrmira/infOS/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Astrmira/infOS/ci.yml?branch=main&amp;style=flat-square&amp;logo=githubactions&amp;logoColor=white&amp;label=CI&amp;labelColor=252737" alt="CI workflow status" /></a>
+    <a href="./LICENSE"><img src="https://img.shields.io/github/license/Astrmira/infOS?style=flat-square&amp;label=License&amp;labelColor=252737&amp;color=789cce" alt="Apache-2.0 license" /></a>
+    <a href="https://github.com/Astrmira/infOS/releases"><img src="https://img.shields.io/github/downloads/Astrmira/infOS/total?style=flat-square&amp;label=Downloads&amp;labelColor=252737&amp;color=c78faf" alt="Total release downloads" /></a>
+    <a href="https://github.com/Astrmira/infOS/stargazers"><img src="https://img.shields.io/github/stars/Astrmira/infOS?style=flat-square&amp;logo=github&amp;labelColor=252737&amp;color=b5a0da" alt="GitHub Stars" /></a>
   </p>
-  <p><a href="#quick-start"><b>Download</b></a>　 /　 <a href="https://wiki.perofamily.top"><b>Documentation</b></a>　 /　 <a href="#sub-apps"><b>Explore sub-apps</b></a>　 /　 <a href="https://github.com/YoKONCy/infOS/issues"><b>Feedback</b></a></p>
+  <p><a href="#quick-start"><b>Download</b></a>　 /　 <a href="https://wiki.perofamily.top"><b>Documentation</b></a>　 /　 <a href="#sub-apps"><b>Explore sub-apps</b></a>　 /　 <a href="https://github.com/Astrmira/infOS/issues"><b>Feedback</b></a></p>
 </div>
 
 <br />
@@ -571,7 +571,7 @@ infOS provides a one-command Docker Compose deployment backed by prebuilt GHCR i
 
 ```bash
 # Download the deployment file from the latest Release
-curl -LO https://github.com/YoKONCy/infOS/releases/latest/download/docker-compose.yml
+curl -LO https://github.com/Astrmira/infOS/releases/latest/download/docker-compose.yml
 
 # Pull and start the pinned Backend + Frontend images
 docker compose up -d
@@ -589,8 +589,8 @@ docker compose up -d
 
 | Container | Image | Default ports |
 | :--- | :--- | :--- |
-| `backend` | `ghcr.io/yokoncy/infos-backend:<version>` | `:9120` (API), `:9121` (capability channel) |
-| `frontend` | `ghcr.io/yokoncy/infos-frontend:<version>` | `:3000` (Web) |
+| `backend` | `ghcr.io/astrmira/infos-backend:<version>` | `:9120` (API), `:9121` (capability channel) |
+| `frontend` | `ghcr.io/astrmira/infos-frontend:<version>` | `:3000` (Web) |
 
 Data is persisted in the `infos-data` and `infos-workspaces` Docker volumes. You may set `INFOS_WEB_PORT`, `INFOS_PORT`, `INFOS_CAPABILITY_PORT`, `INFOS_LOG_LEVEL`, and `INFOS_API_TOKEN` before startup. The repository-root `docker-compose.yml` remains available for developers who want to build local images from source.
 
@@ -606,11 +606,11 @@ Data is persisted in the `infos-data` and `infos-workspaces` Docker volumes. You
       <sub>08 / HELLO, COMPANION</sub>
       <h3>Choose a companion. Start your story.</h3>
       <ol>
-        <li>Download the latest <a href="https://github.com/YoKONCy/infOS/releases/latest">Windows release</a>.</li>
+        <li>Download the latest <a href="https://github.com/Astrmira/infOS/releases/latest">Windows release</a>.</li>
         <li>Install to a path without CJK characters.</li>
         <li>Run <b>萌动链接：PeroperoChat！.exe</b>, then choose a companion and launch mode in the launcher.</li>
       </ol>
-      <p><a href="https://github.com/YoKONCy/infOS/releases/latest"><b>Get the latest release →</b></a></p>
+      <p><a href="https://github.com/Astrmira/infOS/releases/latest"><b>Get the latest release →</b></a></p>
     </td>
     <td width="66%" valign="top"><a href=".github/assets/showcase-launcher.png"><img src=".github/assets/showcase-launcher.png" width="100%" alt="Light infOS launcher showing companion selection and service checks" /></a></td>
   </tr>
@@ -628,7 +628,7 @@ Data is persisted in the `infos-data` and `infos-workspaces` Docker volumes. You
 #### Step 1: Clone the repository
 
 ```bash
-git clone https://github.com/YoKONCy/infOS.git
+git clone https://github.com/Astrmira/infOS.git
 cd infOS
 ```
 
@@ -697,7 +697,7 @@ Create an empty `.portable` file in the same directory as the `.exe`. The app wi
 
 ## 11 · Love & Community
 
-<p><a href="./LICENSE"><img src="https://img.shields.io/badge/Open_Source-Apache_2.0-9b87cf?style=flat-square&amp;labelColor=252737" alt="Apache-2.0 open source project" /></a>　<a href="https://github.com/YoKONCy/infOS/pulls">Contribute code</a> · <a href="https://github.com/YoKONCy/infOS/issues">Share ideas</a> · <a href="https://wiki.perofamily.top">Improve the docs</a></p>
+<p><a href="./LICENSE"><img src="https://img.shields.io/badge/Open_Source-Apache_2.0-9b87cf?style=flat-square&amp;labelColor=252737" alt="Apache-2.0 open source project" /></a>　<a href="https://github.com/Astrmira/infOS/pulls">Contribute code</a> · <a href="https://github.com/Astrmira/infOS/issues">Share ideas</a> · <a href="https://wiki.perofamily.top">Improve the docs</a></p>
 
 **infOS and PeroperoChat are completely non-profit open source projects.**
 
@@ -718,8 +718,8 @@ We are a group of developers who love AI, anime culture, and technology. We buil
 
 One person's idea can be a starting point; a community's participation carries it further. Whether you develop, design, create, or simply want to share your experience, you are welcome to help shape the future of infOS and its desktop companions.
 
-<a href="https://github.com/YoKONCy/infOS/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=YoKONCy/infOS" alt="infOS GitHub contributors, updated automatically from contribution records" />
+<a href="https://github.com/Astrmira/infOS/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Astrmira/infOS" alt="infOS GitHub contributors, updated automatically from contribution records" />
 </a>
 
 <sub>This display updates automatically from GitHub contribution records. Click the avatars to see the full list. We also thank everyone contributing ideas, testing, documentation, and creative work, and look forward to welcoming more contributors.</sub>
@@ -738,16 +738,16 @@ Thank you to the following model creators for giving virtual companions expressi
 
 ### Watch it grow with us
 
-<a href="https://star-history.com/#YoKONCy/infOS&amp;Date">
+<a href="https://star-history.com/#Astrmira/infOS&amp;Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=YoKONCy/infOS&amp;type=Date&amp;theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=YoKONCy/infOS&amp;type=Date" />
-    <img src="https://api.star-history.com/svg?repos=YoKONCy/infOS&amp;type=Date" width="100%" alt="infOS GitHub star history" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Astrmira/infOS&amp;type=Date&amp;theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Astrmira/infOS&amp;type=Date" />
+    <img src="https://api.star-history.com/svg?repos=Astrmira/infOS&amp;type=Date" width="100%" alt="infOS GitHub star history" />
   </picture>
 </a>
 
 <p align="center"><b>Solid infrastructure. A warm digital life.</b><br /><sub>Infrastructure · Infomorph · Infinity</sub></p>
-<p align="center"><a href="#top">Back to top ↑</a> · <a href="https://github.com/YoKONCy/infOS/releases/latest">Download infOS</a> · <a href="https://store.steampowered.com/app/4457100">Meet PeroperoChat on Steam</a></p>
+<p align="center"><a href="#top">Back to top ↑</a> · <a href="https://github.com/Astrmira/infOS/releases/latest">Download infOS</a> · <a href="https://store.steampowered.com/app/4457100">Meet PeroperoChat on Steam</a></p>
 
 <!--
   🐾 "Meow! If you found this, you're officially a friend of Pero."

@@ -23,8 +23,8 @@ import {
   type UpdateInstallReceipt,
 } from './updateInstaller'
 
-const RELEASES_URL = 'https://api.github.com/repos/YoKONCy/infOS/releases?per_page=20'
-const RELEASES_PAGE = 'https://github.com/YoKONCy/infOS/releases'
+const RELEASES_URL = 'https://api.github.com/repos/Astrmira/infOS/releases?per_page=20'
+const RELEASES_PAGE = 'https://github.com/Astrmira/infOS/releases'
 const CACHE_FILE = 'client-release-list.json'
 const INSTALL_RECEIPT = 'client-update-install.json'
 const VALID_VERSION =
