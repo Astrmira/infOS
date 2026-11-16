@@ -75,7 +75,7 @@ describe('MemoryStoreRegistry维度联动', () => {
       registry.setDimension(8)
       expect(registry.countExistingNodes(['pero', 'nana', 'missing'])).toBe(3)
       expect(registry.getStoreStats()).toEqual([])
-      expect(existsSync(registry.resolveAgentStorePath('missing'))).toBe(false)
+      expect(existsSync(registry.resolveAgentStorePath('missing', 'main'))).toBe(false)
     } finally {
       registry.closeAll()
     }

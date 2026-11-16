@@ -362,7 +362,13 @@ describe('据点角色可见回合状态机', () => {
     const chat = new GroupChatService(db, () => true)
     try {
       db.insert(agentLocations).values({ agentId: 'pero', roomId: 'room' }).run()
-      for (const [pairId, content] of [['a', '话题甲开头'], ['b', '话题乙'], ['a', '话题甲后续'], ['c', '话题丙']])
+      const messages = [
+        ['a', '话题甲开头'],
+        ['b', '话题乙'],
+        ['a', '话题甲后续'],
+        ['c', '话题丙'],
+      ] as const
+      for (const [pairId, content] of messages)
         chat.commitMessage({ roomId: 'room', senderId: 'user', role: 'user', content, pairId })
       expect((await chat.getVisibleHistoryPairs('pero', 2)).map((item) => item.content)).toEqual(['话题甲开头', '话题甲后续', '话题丙'])
     } finally {
