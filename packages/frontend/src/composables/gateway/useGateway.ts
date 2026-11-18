@@ -15,6 +15,11 @@ import { createClientUuid } from '../../lib/clientPlatform'
 
 import { ref, computed, onUnmounted } from 'vue'
 import {
+  THREAD_SURFACE_SYNC,
+  expandProjection,
+  projectionBaseline,
+  type DeltaFrame,
+  type ProjectionBaseline,
   validateSurfaceFrame,
   validateVersionedMessage,
   type GatewayEnvelope as SharedGatewayEnvelope,
@@ -71,6 +76,7 @@ export interface GatewayEvents {
   onNotification?: (data: GatewayNotification) => void
   onTaskProgress?: (data: TaskProgress) => void
   onSurface?: (frame: SurfaceFrame) => void
+  onQueueChanged?: (threadId: string, restoreHistory?: boolean) => void
   onStateUpdate?: (data: Record<string, unknown>) => void
   onAudioChunk?: (data: ArrayBuffer) => void
   onVoiceState?: (data: { sessionId: string; state: string }) => void
@@ -140,6 +146,7 @@ export function createGatewayClient() {
     onNotification: (data) => eventSubscribers.forEach((item) => item.onNotification?.(data)),
     onTaskProgress: (data) => eventSubscribers.forEach((item) => item.onTaskProgress?.(data)),
     onSurface: (frame) => eventSubscribers.forEach((item) => item.onSurface?.(frame)),
+    onQueueChanged: (threadId, restoreHistory) => eventSubscribers.forEach((item) => item.onQueueChanged?.(threadId, restoreHistory)),
     onStateUpdate: (data) => eventSubscribers.forEach((item) => item.onStateUpdate?.(data)),
     onAudioChunk: (data) => eventSubscribers.forEach((item) => item.onAudioChunk?.(data)),
     onVoiceState: (data) => eventSubscribers.forEach((item) => item.onVoiceState?.(data)),
@@ -155,6 +162,8 @@ export function createGatewayClient() {
   const inputSeat = ref<KernelInputSeat | null>(null)
   let principalId = 'pero'
   const subscriptions = new Map<string, number>()
+  const watchedThreads = new Map<string, { users: number; ready: boolean; base?: ProjectionBaseline }>()
+  let scopedSurfaces = false
   const seenMessageIds = new Set<string>()
 
   let ws: WebSocket | null = null
@@ -311,7 +320,7 @@ export function createGatewayClient() {
             runtime: isElectronClient() ? 'electron' : 'browser',
           },
           supportedVersions: [1],
-          features: ['surface-v1', 'audience-v1', 'cursor-v1', 'input-seat-v1', 'audio-output-v1'],
+          features: ['surface-v1', 'audience-v1', 'cursor-v1', 'input-seat-v1', 'audio-output-v1', THREAD_SURFACE_SYNC],
         }),
       )
       if (!sent) restartConnection('发送连接握手失败')
@@ -380,6 +389,13 @@ export function createGatewayClient() {
     stopSeatRenewal()
     inputSeat.value = null
     sessionId.value = null
+    scopedSurfaces = false
+    for (const [threadId, watch] of watchedThreads) {
+      const wasReady = watch.ready
+      watch.ready = false
+      watch.base = undefined
+      if (wasReady) events.onQueueChanged?.(threadId)
+    }
     rejectSessionWaiters()
 
     // 清理等待中的 RPC 请求
@@ -467,6 +483,46 @@ export function createGatewayClient() {
         restartConnection('发送请求失败，正在重新连接')
       }
     })
+  }
+
+  async function syncThreadWatch(threadId: string, recover = false): Promise<void> {
+    if (!scopedSurfaces) return
+    const session = sessionId.value
+    const watch = watchedThreads.get(threadId)
+    try {
+      await request('gateway.watch_thread', { threadId, watching: !!watch })
+      if (!watch || session !== sessionId.value || watchedThreads.get(threadId) !== watch) return
+      watch.ready = true
+      if (recover) window.dispatchEvent(new CustomEvent('infos:gateway-snapshot-required', {
+        detail: { streamId: 'thread:' + threadId },
+      }))
+      events.onQueueChanged?.(threadId, recover)
+    } catch (error) {
+      if (session === sessionId.value && watchedThreads.get(threadId) === watch &&
+          !(error as { code?: string }).code) {
+        // 会话已建立但订阅未确认，重新握手并恢复当前仍有观察者的 Thread。
+        void reconnect()
+      }
+    }
+  }
+
+  function watchThread(threadId: string): () => void {
+    const existing = watchedThreads.get(threadId)
+    if (existing) existing.users++
+    else {
+      watchedThreads.set(threadId, { users: 1, ready: false })
+      void syncThreadWatch(threadId)
+    }
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const watch = watchedThreads.get(threadId)
+      if (watch && --watch.users === 0) {
+        watchedThreads.delete(threadId)
+        void syncThreadWatch(threadId)
+      }
+    }
   }
 
   async function subscribe(streamId: string): Promise<void> {
@@ -827,6 +883,8 @@ export function createGatewayClient() {
         connectionDeadline = null
         sessionId.value = msg.payload.sessionId
         sessionGeneration.value = Number(msg.payload.generation ?? 0)
+        scopedSurfaces = Array.isArray(msg.payload.features) && msg.payload.features.includes(THREAD_SURFACE_SYNC)
+        for (const threadId of watchedThreads.keys()) void syncThreadWatch(threadId)
         state.value = 'connected'
         retryCount.value = 0
         lastError.value = null
@@ -897,6 +955,29 @@ export function createGatewayClient() {
         }
       }
 
+      if (action === 'surface') {
+        const delta = msg.payload.delta as DeltaFrame | undefined
+        const full = msg.payload.frame as SurfaceFrame | undefined
+        const threadId = delta?.threadId ?? full?.threadId ??
+          (full?.operation.type === 'surface.open' ? full.operation.threadId : undefined)
+        const watch = threadId ? watchedThreads.get(threadId) : undefined
+        if (scopedSurfaces && threadId && !watch?.ready) return
+        try {
+          const frame = delta ? expandProjection(delta, watch?.base) : full
+          if (!frame) return
+          validateSurfaceFrame(frame)
+          const base = watch && projectionBaseline(frame)
+          if (watch && base) watch.base = base
+          if (delta) msg.payload = { action, frame }
+        } catch {
+          if (watch?.ready && threadId && scopedSurfaces) {
+            watch.ready = false
+            watch.base = undefined
+            void syncThreadWatch(threadId, true)
+          }
+          return
+        }
+      }
       dispatchPush(action ?? msg.type, msg.payload)
 
       // ── 推送事件分发 ──
@@ -909,12 +990,13 @@ export function createGatewayClient() {
           break
         case 'surface': {
           const frame = msg.payload.frame as SurfaceFrame | undefined
-          if (frame) {
-            validateSurfaceFrame(frame)
-            events.onSurface?.(frame)
-          }
+          if (frame) events.onSurface?.(frame)
           break
         }
+        case 'conversation_queue_changed':
+          if (typeof msg.payload.threadId === 'string' && watchedThreads.get(msg.payload.threadId)?.ready)
+            events.onQueueChanged?.(msg.payload.threadId)
+          break
         case 'thread_reset':
           window.dispatchEvent(new CustomEvent('infos:thread-reset', { detail: msg.payload }))
           break
@@ -1067,6 +1149,8 @@ export function createGatewayClient() {
     request,
     /** 订阅 Durable Stream 并从 Cursor 恢复 */
     subscribe,
+    watchThread,
+    isWatchingThread: (threadId: string) => watchedThreads.get(threadId)?.ready === true,
     selectPrincipal,
     /** 当前稳定 Client Node ID */
     stableNodeId,

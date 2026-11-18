@@ -366,6 +366,10 @@ export type ConversationContentBlock =
     }
 
 export interface ConversationMessageProjection {
+  /** 补话恰逢原执行结束时，后续独立执行沿用的气泡组。 */
+  timelineGroupId?: string
+  /** 主会话已发表、所属执行仍未结算；客户端在执行结束后集中展示。 */
+  executionPending?: boolean
   executionRecord?: boolean
   sourceMessages?: import('../conversation').ConversationSource[]
   publicationId?: string | null

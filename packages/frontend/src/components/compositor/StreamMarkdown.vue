@@ -32,6 +32,7 @@ const blocks = computed(() => {
     :stable="block.stable"
     :cache="block.stable"
     :active="active"
+    :measure-layout="committed && block.stable"
     :web-preview="false"
   />
 </template>

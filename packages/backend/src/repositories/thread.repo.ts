@@ -657,6 +657,10 @@ export class ThreadRepository {
 
   /** 追加一条消息，并在 Execution 存在时同事务追加 Durable Event。 */
   async appendMessage(data: CreateThreadMessageInput): Promise<ThreadMessageRow> {
+    return this.appendMessageSync(data)
+  }
+
+  appendMessageSync(data: CreateThreadMessageInput): ThreadMessageRow {
     return this.db.transaction((tx) => {
       const thread = tx.select().from(threads).where(eq(threads.id, data.threadId)).get()
       if (!thread || thread.status !== 'active' ||

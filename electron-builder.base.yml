@@ -101,7 +101,7 @@ extraResources:
     to: node_modules
     filter:
       - '**/*'
-  # 当前构建平台/架构的内置 ripgrep，由依赖收集脚本生成。
+  # 收集当前平台的内置 ripgrep 与 TriviumDB 迁移器。
   - from: dist-daemon/bin
     to: bin
     filter:

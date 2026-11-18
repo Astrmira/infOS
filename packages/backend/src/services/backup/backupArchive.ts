@@ -1,3 +1,4 @@
+import { isTriviumUpgradePath } from '../../repositories/triviumFiles'
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { chmod, mkdir, open, stat, writeFile } from 'node:fs/promises'
@@ -79,6 +80,7 @@ export function safeBackupPath(value: string): string {
   if (
     !value ||
     value.length > 1024 ||
+    isTriviumUpgradePath(value) ||
     /[\\:]/.test(value) ||
     [...value].some((char) => char.charCodeAt(0) < 32) ||
     value.startsWith('/')

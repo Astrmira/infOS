@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createGatewayClient } from '@infos/frontend/composables/gateway/useGateway'
+import { THREAD_SURFACE_SYNC } from '@infos/shared'
 
 vi.mock('@infos/frontend/api/transport', () => ({
   getGatewayWsUrl: () => 'ws://infos.local/ws/gateway',
@@ -70,6 +71,54 @@ describe('手机 Gateway 连接恢复', () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('共享同一会话订阅，基线丢失仅恢复受影响的会话，重连按当前观察者重建', async () => {
+    const releaseA = client.watchThread('t')
+    const releaseB = client.watchThread('t')
+    const received = vi.fn()
+    const resync = vi.fn()
+    client.subscribeEvents({ onSurface: received, onQueueChanged: resync })
+    await client.connect()
+    const socket = Socket.instances[0]!
+    socket.open()
+    const handshake = { agreedVersion: 1, sessionId: 's', generation: 1, features: [THREAD_SURFACE_SYNC] }
+    socket.receive('hello_ack', handshake)
+    const watches = () => socket.sent().filter(msg => msg.payload.action === 'gateway.watch_thread')
+    expect(watches().map(m => m.payload.watching)).toEqual([true])
+    const confirm = async () => {
+      socket.receive('response', { threadId: 't', watching: true }, { id: watches().at(-1)!.id })
+      await Promise.resolve()
+    }
+    await confirm()
+    releaseA()
+    expect(client.isWatchingThread('t')).toBe(true)
+    const snapshot = { protocolVersion: 1, threadId: 't', principalId: 'pero',
+      revision: 0, generatedAt: '2026-11-18', messages: [], surfaces: [] }
+    const frame = { protocolVersion: 1, threadId: 't', surfaceId: 'live', generation: 'g',
+      operationId: 'new', revision: 1, sequence: 2, operation: { type: 'surface.settled', snapshot } }
+    const dropped = { action: 'surface', delta: { ...frame, baseOperationId: 'missed' } }
+    socket.receive('push', dropped)
+    socket.receive('push', dropped)
+    expect(received).not.toHaveBeenCalled()
+    expect(client.isWatchingThread('t')).toBe(false)
+    expect(watches().map(m => m.payload.watching)).toEqual([true, true])
+    await confirm()
+    expect(resync).toHaveBeenCalledWith('t', true)
+    socket.receive('push', { action: 'surface', frame })
+    socket.receive('push', { action: 'surface', delta: { ...frame, operationId: 'next', baseOperationId: 'new' } })
+    expect(received.mock.calls.map(([f]) => [f.operationId, f.operation.snapshot])).toEqual([
+      ['new', snapshot], ['next', snapshot],
+    ])
+    client.watchThread('other')
+    releaseB()
+    expect(watches().at(-1)!.payload).toMatchObject({ threadId: 't', watching: false })
+    socket.serverClose()
+    await client.reconnect()
+    const next = Socket.instances.at(-1)!
+    next.open()
+    next.receive('hello_ack', { ...handshake, sessionId: 's2' })
+    expect(next.sent().filter(m => m.payload.action === 'gateway.watch_thread').map(m => m.payload.threadId)).toEqual(['other'])
   })
 
   it('只在握手完成后在线，握手悬挂时自动更换连接', async () => {

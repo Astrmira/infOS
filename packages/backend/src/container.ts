@@ -176,6 +176,7 @@ import { AchievementService } from './services/system/achievementService'
 import { ConversationQueueService } from './services/conversation/conversationQueueService'
 import { ConversationQueueRepository } from './repositories/conversationQueue.repo'
 import { ConversationProjectionService } from './projections/conversationProjectionService'
+import { MainConversationInbox } from './services/conversation/mainConversationInbox'
 import { BackgroundTaskProjectionService } from './projections/backgroundTaskProjectionService'
 import { StrongholdProjectionService } from './projections/strongholdProjectionService'
 import { AttachmentService } from './services/attachment/attachmentService'
@@ -1933,7 +1934,12 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
     localNodeId,
   )
   kernelLifecycle.defer(() => completionAlertService.stop())
+  const conversationQueueRepo = new ConversationQueueRepository(db)
   const conversationTurnService = new ConversationTurnService({
+    mainInbox: new MainConversationInbox(conversationQueueRepo, threadRepo, attachmentRepo, (threadId) => {
+      conversationProjection.invalidate(threadId)
+      void gatewayHub.pushQueueChanged(threadId)
+    }),
     kernelScheduler,
     isHandoffRequested: (threadId) => runtimeStateService.isHandoffRequested(threadId),
     onUserActivity: (agentId, threadId) =>
@@ -2388,7 +2394,7 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
   )
   const logQueryService = new LogQueryService()
   const conversationQueue = new ConversationQueueService(
-    new ConversationQueueRepository(db),
+    conversationQueueRepo,
     runtimeStateService,
     threadService,
     attachmentRepo,
@@ -2402,6 +2408,7 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
             !['completed', 'failed', 'cancelled', 'timed_out'].includes(item.state),
         ),
     (agentId, threadId) => companionSchedulerService.notifyActivity(agentId, threadId),
+    (threadId) => { void gatewayHub.pushQueueChanged(threadId) },
   )
   kernelLifecycle.defer(() => conversationQueue.stop())
   kernelLifecycle.defer(deliverHomeCards(home, conversationQueue))

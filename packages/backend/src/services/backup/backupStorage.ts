@@ -1,3 +1,4 @@
+import { isTriviumUpgradePath } from '../../repositories/triviumFiles'
 import { existsSync } from 'node:fs'
 import { cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -72,6 +73,7 @@ export function excludedBackupPath(relative: string): boolean {
   return (
     isSnapshotProgramPath(relative) ||
     isSnapshotTransientPath(relative) ||
+    isTriviumUpgradePath(relative) ||
     isLocalFilePath(relative) ||
     TRANSIENT_ROOTS.has(parts[0]!) ||
     parts.some((part) => part.startsWith('.resource-') || part.startsWith('.startup-check-')) ||

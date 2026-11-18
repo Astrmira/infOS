@@ -30,6 +30,28 @@ afterEach(() => {
 })
 
 describe('消息队列持久派发与恢复', () => {
+  it('准备补话期间的编辑、暂停和取消优先，落盘异常回滚，侧线保持排队', () => {
+    const initial = { ...input('整理'), expectedGeneration: 1 }
+    repo.enqueue('start', initial, true)
+    repo.claim('t')
+    const run = 'conversation:t:1:start'
+    const extra = repo.enqueue('extra', { ...initial, content: '今天' }, true)
+    repo.mutate('t', extra.id, extra.revision, { content: '明天' })
+    const current = repo.get(extra.id)!
+    const save = () => { throw new Error('写入中断') }
+    expect(repo.acceptSupplement('t', run, extra, save)).toBe(false)
+    repo.pause('t', true)
+    expect(repo.acceptSupplement('t', run, current, save)).toBe(false)
+    repo.pause('t', false)
+    expect(() => repo.acceptSupplement('t', run, current, save)).toThrow('写入中断')
+    expect(repo.get(extra.id)?.state).toBe('queued')
+    repo.mutate('t', current.id, current.revision, { cancel: true })
+    expect(repo.acceptSupplement('t', run, current, save)).toBe(false)
+    repo.enqueue('side', { ...initial, content: '独立运行' })
+    expect(repo.supplements('t', run)).toEqual([])
+    repo.settle('start', 'completed')
+    expect(repo.claim('t')?.input.content).toBe('独立运行')
+  })
   it('任务结果按稳定编号只入队一次，不能编辑成用户消息', () => {
     const event = {
       ...input('后台结果'),

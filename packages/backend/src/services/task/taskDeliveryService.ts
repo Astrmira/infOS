@@ -203,10 +203,22 @@ export class TaskDeliveryService {
           continue
         }
         const metadata = JSON.parse(task.metadataJson ?? '{}') as { targetThreadGeneration?: number }
+        let main = false
         if (task.targetThreadId) {
           const target = this.db.select().from(threads).where(eq(threads.id, task.targetThreadId)).get()
           if (!target || target.status !== 'active' || (metadata.targetThreadGeneration !== undefined && target.generation !== metadata.targetThreadGeneration)) {
             this.set(row.id, { status: 'superseded' })
+            continue
+          }
+          main = target.threadKind === 'main'
+        }
+        if (main && row.channel === 'resume') {
+          const chatId = row.id.slice(0, -':resume'.length) + ':chat'
+          const chat = this.db.select({ status: taskDeliveries.status }).from(taskDeliveries)
+            .where(eq(taskDeliveries.id, chatId)).get()
+          if (chat?.status !== 'sent') {
+            if (!chat || ['failed', 'superseded'].includes(chat.status)) this.set(row.id, { status: 'superseded' })
+            else this.set(row.id, { nextAttemptAt: new Date(Date.now() + 1000).toISOString() })
             continue
           }
         }

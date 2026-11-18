@@ -1,6 +1,6 @@
 {
   "name": "@infos/frontend",
-  "version": "0.9.13",
+  "version": "0.9.14",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,10 +11,14 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@chenglou/pretext": "1.0.0",
+    "@floating-ui/vue": "2.0.1",
     "@infos/arca": "workspace:*",
     "@infos/avatar-assets": "workspace:*",
     "@infos/shared": "workspace:*",
     "@noble/hashes": "1.8.0",
+    "@pierre/diffs": "1.6.4",
+    "@tanstack/vue-virtual": "3.13.52",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "dompurify": "^3.4.0",

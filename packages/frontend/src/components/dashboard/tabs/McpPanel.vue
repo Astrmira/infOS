@@ -7,7 +7,7 @@ import { t as __t } from '../../../i18n/index'
  * 接收 useMcpConfig 提供的数据，渲染 MCP 服务列表、操作按钮。
  * 由 McpTab 组件编排使用。
  */
-import { PixelIcon, PButton, PCard, PEmpty } from '../../pixel'
+import { PixelIcon, PBadge, PButton, PCard, PEmpty } from '../../pixel'
 import MotionList from '../../motion/MotionList.vue'
 import MotionSkeleton from '../../motion/MotionSkeleton.vue'
 import type { McpServerView } from '../../../composables/dashboard/useMcpConfig'
@@ -21,11 +21,10 @@ function toolLabel(name: string): string {
     .join(' ')
 }
 
-const props = defineProps<{
+defineProps<{
   servers: McpServerView[]
   isLoading: boolean
   expandedId: number | null
-  statusMeta: Record<string, { label: string; dotClass: string; badgeClass: string }>
 }>()
 
 const emit = defineEmits<{
@@ -35,16 +34,15 @@ const emit = defineEmits<{
   (e: 'remove', id: number): void
 }>()
 
-/** 安全获取状态 meta */
-const STATUS_FALLBACK = {
-  get label() {
-    return __t('ui.settings', '未知')
-  },
-  dotClass: 'bg-slate-400',
-  badgeClass: 'text-slate-400 border-slate-300 bg-slate-50',
-}
-function getStatusMeta(status: string) {
-  return props.statusMeta[status] ?? STATUS_FALLBACK
+const statusBadges = {
+  connected: { label: '已连接', variant: 'success', dot: 'bg-[var(--ui-success)]' },
+  disconnected: { label: '未连接', variant: 'default', dot: 'bg-[var(--ui-text-disabled)]' },
+  error: { label: '错误', variant: 'danger', dot: 'bg-[var(--ui-danger)]' },
+  unknown: { label: '未知', variant: 'default', dot: 'bg-[var(--ui-text-disabled)]' },
+} as const satisfies Record<McpServerView['status'], unknown>
+
+function statusBadge(status: McpServerView['status']) {
+  return statusBadges[status] ?? statusBadges.unknown
 }
 </script>
 
@@ -75,37 +73,25 @@ function getStatusMeta(status: string) {
       @click="emit('toggle-expand', srv.id)"
     >
       <div class="flex items-center gap-3">
-        <div :class="['w-2 h-2 flex-shrink-0 rounded-full', getStatusMeta(srv.status).dotClass]" />
+        <div :class="['w-2 h-2 flex-shrink-0 rounded-full', statusBadge(srv.status).dot]" />
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <h4 class="text-sm font-black text-[var(--ui-text-primary)]">{{ srv.name }}</h4>
-            <span
-              :class="[
-                'text-[9px] font-bold px-1.5 py-0.5 border',
-                getStatusMeta(srv.status).badgeClass,
-              ]"
-            >
-              {{ getStatusMeta(srv.status).label }}
-            </span>
-            <span
-              class="text-[9px] font-bold text-slate-400 px-1.5 py-0.5 bg-slate-50 border border-slate-200"
-            >
-              {{ (srv.type ?? 'stdio').toUpperCase() }}
-            </span>
-            <span
-              v-if="!srv.enabled"
-              class="text-[9px] font-bold text-[var(--ui-warning)] px-1.5 py-0.5 bg-[var(--ui-warning-soft)] border border-[color:var(--ui-warning)]"
-            >
+            <PBadge size="sm" :variant="statusBadge(srv.status).variant">
+              {{ __t('ui.settings', statusBadge(srv.status).label) }}
+            </PBadge>
+            <PBadge size="sm">{{ (srv.type ?? 'stdio').toUpperCase() }}</PBadge>
+            <PBadge v-if="!srv.enabled" size="sm" variant="warning">
               {{ __t('ui.settings', '已禁用') }}
-            </span>
+            </PBadge>
           </div>
-          <p class="text-[11px] text-slate-400 font-mono mt-1 truncate">
+          <p class="text-[11px] text-[var(--ui-text-tertiary)] font-mono mt-1 truncate">
             {{ srv.type === 'stdio' ? srv.command : srv.url }}
-            <span v-if="srv.args && srv.args.length > 0" class="ml-1 text-slate-300">
+            <span v-if="srv.args && srv.args.length > 0" class="ml-1 text-[var(--ui-text-tertiary)]">
               {{ srv.args.join(' ') }}
             </span>
           </p>
-          <p v-if="srv.error" class="text-[11px] text-red-400 font-mono mt-1 truncate">
+          <p v-if="srv.error" class="text-[11px] text-[var(--ui-danger)] font-mono mt-1 truncate">
             ⚠ {{ srv.error }}
           </p>
         </div>
@@ -143,25 +129,25 @@ function getStatusMeta(status: string) {
         v-if="expandedId === srv.id && srv.tools.length > 0"
         class="mt-3 pt-3 border-t border-[var(--ui-border-subtle)]"
       >
-        <h5 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 font-pixel">
+        <h5 class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] mb-2 font-pixel">
           {{ __t('ui.settings', '可用工具 (') }}{{ srv.tools.length }})
         </h5>
         <div
           v-for="tool in srv.tools"
           :key="tool.name"
-          class="flex justify-between items-center px-2 py-1.5 border border-slate-200 mb-1"
+          class="flex justify-between items-center px-2 py-1.5 border border-[color:var(--ui-border-default)] mb-1"
         >
-          <span class="text-xs font-bold text-sky-600">{{ toolLabel(tool.name) }}</span>
-          <span class="text-[11px] text-slate-400 truncate ml-3">{{ tool.description }}</span>
+          <span class="text-xs font-bold text-[var(--ui-accent-sky)]">{{ toolLabel(tool.name) }}</span>
+          <span class="text-[11px] text-[var(--ui-text-tertiary)] truncate ml-3">{{ tool.description }}</span>
         </div>
       </div>
 
       <!-- 无工具提示 -->
       <div
         v-if="expandedId === srv.id && srv.tools.length === 0 && srv.status === 'connected'"
-        class="mt-3 pt-3 border-t border-slate-100"
+        class="mt-3 pt-3 border-t border-[color:var(--ui-border-subtle)]"
       >
-        <p class="text-[11px] text-slate-400 italic">
+        <p class="text-[11px] text-[var(--ui-text-tertiary)] italic">
           {{ __t('ui.settings', '该服务未暴露任何工具') }}
         </p>
       </div>

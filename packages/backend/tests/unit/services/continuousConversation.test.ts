@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { createDrizzleConnection, closeDrizzleConnection } from '../../../src/database'
-import { conversationMessageSources } from '../../../src/database/schema'
+import { backgroundTasks, conversationMessageSources } from '../../../src/database/schema'
 import { ThreadRepository } from '../../../src/repositories/thread.repo'
+import { ConversationQueueRepository } from '../../../src/repositories/conversationQueue.repo'
+import { AttachmentRepository } from '../../../src/repositories/attachment.repo'
+import { MainConversationInbox } from '../../../src/services/conversation/mainConversationInbox'
 import { ThreadService } from '../../../src/services/thread/threadService'
 import { ConversationTurnService } from '../../../src/services/conversation/conversationTurnService'
 import type { CompiledRunParams } from '../../../src/services/agent/agentService'
@@ -24,8 +27,9 @@ beforeEach(async () => {
 })
 afterEach(() => closeDrizzleConnection(db))
 
-function createTurns(run: (params: CompiledRunParams) => Promise<string>) {
+function createTurns(run: (params: CompiledRunParams) => Promise<string>, mainInbox?: MainConversationInbox) {
   return new ConversationTurnService({
+    mainInbox,
     threadService: threads,
     attachmentService: { validateForBinding: async () => [], bindOutgoing: async () => {} } as never,
     imageUnderstandingService: {} as never,
@@ -53,6 +57,67 @@ function createTurns(run: (params: CompiledRunParams) => Promise<string>) {
 }
 
 describe('主线连续交流的持久合同', () => {
+  it('续聊只提供本主线本代次的未结束交办', () => {
+    const task = { agentId: 'pero', threadId: 'worker', targetThreadId: mainId, title: '整理清单',
+      status: 'running', instruction: '整理资料', metadataJson: JSON.stringify({ originThreadId: mainId, targetThreadGeneration: 1 }) }
+    db.insert(backgroundTasks).values([
+      { ...task, id: 'current' }, { ...task, id: 'done', status: 'completed' },
+      { ...task, id: 'other-role', agentId: 'nana' }, { ...task, id: 'side', targetThreadId: 'side' },
+      { ...task, id: 'reset', metadataJson: JSON.stringify({ originThreadId: mainId, targetThreadGeneration: 2 }) },
+    ]).run()
+    expect(repo.conversations.outstandingTasks(mainId, 'pero', 1)).toEqual([
+      { id: 'current', revision: 1, title: '整理清单', status: 'running' },
+    ])
+  })
+  it('错过执行结算的补话另起执行，投影沿用原组，显式独立输入另开一组', async () => {
+    const initial = await threads.appendUserMessage(mainId, '整理活动')
+    const run = 'previous'
+    repo.conversations.begin({ id: run, threadId: mainId, agentId: 'pero', generation: 1,
+      sources: [{ messageId: initial.id, revision: 1 }] })
+    repo.conversations.settle(run, 'completed', {})
+    const turns = createTurns(async () => '好')
+    const target = { threadId: mainId, agentId: 'pero' }
+    await turns.executeTurn({ ...target, content: '加上周末', queueMessageId: 'late', supplementTo: run })
+    await turns.executeTurn({ ...target, content: '另一件事', queueMessageId: 'separate' })
+    const projection = new ConversationProjectionService(threads, { listForMessages: async () => new Map() } as never)
+    const snapshot = await projection.getSnapshot(mainId)
+    expect(snapshot.messages.filter((m) => m.timelineGroupId === run).map((m) => [m.role, m.content]))
+      .toEqual([['user', '加上周末'], ['assistant', '好']])
+    expect(snapshot.messages.find((m) => m.content === '另一件事')?.timelineGroupId).toBeUndefined()
+  })
+  it('一次执行接收补话和准确的任务交付来源，晚发的独立输入保持排队', async () => {
+    const queue = new ConversationQueueRepository(db)
+    const inbox = new MainConversationInbox(queue, repo, new AttachmentRepository(db), () => {})
+    const input = { threadId: mainId, agentId: 'pero', expectedGeneration: 1 }
+    const first = await repo.appendMessage({ threadId: mainId, role: 'system', content: '清单已完成',
+      metadataJson: JSON.stringify({ kind: 'background_task_result', taskId: 't', deliveryId: 'v1:chat' }) })
+    await repo.appendMessage({ threadId: mainId, role: 'system', content: '另一份结果',
+      metadataJson: JSON.stringify({ kind: 'background_task_result', taskId: 't', deliveryId: 'v2:chat' }) })
+    const turns = createTurns(async (params) => {
+      await params.conversation!.publish({ id: 'receipt', content: '我来看看。' })
+      queue.enqueue('extra', { ...input, content: '只看今天的' }, true)
+      queue.enqueue('report', { ...input, content: '清单已完成',
+        taskResultEvent: { taskId: 't', deliveryId: 'v1:resume' } }, true)
+      queue.enqueue('later', { ...input, content: '明天的单独说', delivery: 'next_turn' }, true)
+      expect((await params.readSupplements!()).map((message) => message.content)).toEqual(['只看今天的', '清单已完成'])
+      expect(await params.readSupplements!()).toEqual([])
+      await params.conversation!.publish({ id: 'answer', content: '今天的清单在这里。' })
+      return ''
+    }, inbox)
+    await turns.executeTurn({ ...input, content: '整理一下', queueMessageId: 'opening' })
+    expect(queue.get('extra')?.state).toBe('completed')
+    expect(queue.get('report')?.state).toBe('completed')
+    expect(queue.get('later')?.state).toBe('queued')
+    const history = await threads.getConversationHistory(mainId, 8192)
+    const users = history.filter((message) => message.role === 'user')
+    expect(users.map((message) => message.content)).toEqual(['整理一下', '只看今天的'])
+    const publications = repo.conversations.publications(`conversation:${mainId}:1:opening`)
+    const sourcesOf = (id: number) => db.select().from(conversationMessageSources)
+      .where(eq(conversationMessageSources.messageId, id)).all().map((row) => row.sourceMessageId)
+    expect(sourcesOf(publications[0]!.id)).toEqual([users[0]!.id])
+    expect(sourcesOf(publications[1]!.id).sort((a, b) => a - b)).toEqual([first.id, ...users.map((user) => user.id)])
+    expect(repo.conversations.dependentPublications(users[1]!.id)).toEqual([publications[1]!.id])
+  })
   it('独立失败执行的快照版本可序列化，消息总数来自正式消息', async () => {
     const input = await threads.appendUserMessage(mainId, '请继续处理')
     repo.conversations.begin({ id: 'failed-run', threadId: mainId, agentId: 'pero', generation: 1,
@@ -64,6 +129,74 @@ describe('主线连续交流的持久合同', () => {
     expect(snapshot.messages.map((message) => message.messageId)).toEqual([String(input.id), 'execution:failed-run'])
     expect(Number.isSafeInteger(snapshot.revision)).toBe(true)
     expect(JSON.parse(JSON.stringify(snapshot)).revision).toBe(snapshot.revision)
+  })
+
+  it('撤下独立失败记录可重试，仅影响本会话本代次的历史投影', async () => {
+    const input = await threads.appendUserMessage(mainId, '继续')
+    repo.conversations.begin({ id: 'retry', threadId: mainId, agentId: 'pero', generation: 1,
+      sources: [{ messageId: input.id, revision: 1 }] })
+    expect(repo.conversations.hideHistoryRecord(mainId, 1, 'retry')).toBe(false)
+    repo.conversations.settle('retry', 'failed', { failureMessage: 'MODEL_UNAVAILABLE' })
+    expect(repo.conversations.hideHistoryRecord('elsewhere', 1, 'retry')).toBe(false)
+    expect(repo.conversations.hideHistoryRecord(mainId, 2, 'retry')).toBe(false)
+    expect(repo.conversations.hideHistoryRecord(mainId, 1, 'retry')).toBe(true)
+    expect(repo.conversations.hideHistoryRecord(mainId, 1, 'retry')).toBe(true)
+    const projection = new ConversationProjectionService(threads, { listForMessages: async () => new Map() } as never)
+    expect((await projection.getSnapshot(mainId)).messages.map(message => message.messageId)).toEqual([String(input.id)])
+    expect(JSON.parse(repo.conversations.get('retry')!.metadataJson).failureMessage).toBe('MODEL_UNAVAILABLE')
+  })
+
+  it('删除前在途的快照不能重新填充删除后的首页缓存', async () => {
+    const message = await threads.appendUserMessage(mainId, '准备撤回')
+    let start!: () => void
+    let resume!: () => void
+    const started = new Promise<void>(resolve => { start = resolve })
+    const blocked = new Promise<void>(resolve => { resume = resolve })
+    let first = true
+    const projection = new ConversationProjectionService(threads, {
+      async listForMessages() {
+        if (first) {
+          first = false
+          start()
+          await blocked
+        }
+        return new Map()
+      },
+    } as never)
+    const earlier = projection.getSnapshot(mainId)
+    await started
+    await threads.rewindMessage(mainId, message.id)
+    projection.invalidate(mainId)
+    const current = await projection.getSnapshot(mainId)
+    projection.recordQueueTerminal(current, 'after', 'after-delete')
+    resume()
+    await earlier
+    expect((await projection.getSnapshot(mainId)).messages).toEqual([])
+    expect(projection.currentQueueTerminal((await threads.getThread(mainId))!)).toBe('after-delete')
+  })
+
+  it('主线连续发表保持独立身份，结算解除待交付标记，逐条撤回后仅保留输入', async () => {
+    const projection = new ConversationProjectionService(threads, { listForMessages: async () => new Map() } as never)
+    const read = () => projection.getSnapshot(mainId, { pageSize: 20 })
+    const input = await threads.appendUserMessage(mainId, '今天如何？')
+    repo.conversations.begin({ id: 'today', threadId: mainId, agentId: 'pero', generation: 1,
+      sources: [{ messageId: input.id, revision: 1 }] })
+    const publication = { threadId: mainId, role: 'assistant' as const, executionId: 'today' }
+    const a = await repo.appendMessage({ ...publication, publicationId: 'a', content: '天气很好' })
+    const b = await repo.appendMessage({ ...publication, publicationId: 'b', content: '一起出去走走？' })
+    const pending = await read()
+    expect(pending.messages.map(message => [message.content, Boolean(message.executionPending)]))
+      .toEqual([['今天如何？', false], ['天气很好', true], ['一起出去走走？', true]])
+    repo.conversations.settle('today', 'completed', { contentBlocks: [
+      { kind: 'narration', blockId: 'progress', sequence: 1, turn: 1, phase: 'progress', content: '中间过程' },
+    ] })
+    const done = await read()
+    expect(done.messages.map(message => message.messageId)).toEqual([String(input.id), String(a.id), String(b.id)])
+    expect(done.messages.some(message => message.executionPending)).toBe(false)
+    await threads.rewindMessage(mainId, a.id)
+    expect((await read()).messages.map(message => message.messageId)).toEqual([String(input.id), String(b.id)])
+    await threads.rewindMessage(mainId, b.id)
+    expect((await read()).messages.map(message => message.messageId)).toEqual([String(input.id)])
   })
 
   it('没有正式发言的执行保留完整工具协议组供后续工作接续', async () => {

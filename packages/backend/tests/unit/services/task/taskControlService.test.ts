@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { TaskControlService } from '@infos/backend/services/task/taskControlService'
 import { readTaskLifecycle } from '@infos/backend/services/task/taskLifecycle'
+import { manageTaskTool } from '@infos/backend/tools/taskControl'
+import { setTaskToolRuntime } from '@infos/backend/tools/taskControl/runtime'
 
 function setup() {
   const task = {
@@ -31,6 +33,28 @@ function setup() {
 }
 
 describe('统一任务控制入口', () => {
+  it('主线交办成功即可发表受理回执；侧线只返回任务资料，派发失败不发表', async () => {
+    const { service, tasks, task } = setup()
+    task.status = 'queued'
+    const publish = vi.fn(async () => ({ messageId: 12 }))
+    const context = { agentId: 'pero', sessionId: 'origin', threadId: 'origin', source: 'desktop', channel: 'desktop' }
+    const main = { ...context, conversation: { publish, assertCurrent() {}, wait: async () => [], resolve: async () => {} } }
+    const input = { action: 'create', instruction: '整理资料', message: '我去整理，等会儿把清单给你。' }
+    setTaskToolRuntime({ control: (agent, args, thread, ctx) =>
+      service.execute(agent, args, undefined, false, thread, ctx),
+      submitSegment: async () => {}, beforeTool: async () => {}, afterTool: async () => {} })
+    try {
+      expect(await manageTaskTool.execute(input, main)).toMatchObject({
+        ok: true, shouldTerminate: true, metadata: { conversationMessage: { messageId: 12, content: input.message } },
+      })
+      expect(JSON.parse(String(await manageTaskTool.execute(input, context)))).toMatchObject({ id: 'task' })
+      tasks.dispatch.mockRejectedValueOnce(new Error('派发失败'))
+      await expect(manageTaskTool.execute(input, main)).rejects.toThrow('派发失败')
+      expect(publish).toHaveBeenCalledExactlyOnceWith({ id: 'dispatch-task', content: input.message })
+    } finally {
+      setTaskToolRuntime(undefined)
+    }
+  })
   it('桌面派发绑定原会话并开启结果回填，重试使用稳定工具调用身份', async () => {
     const { tasks, service } = setup()
     await service.execute(

@@ -53,7 +53,7 @@ function fixture(
       getActiveMessages: activeMessages,
       getConversationTimeAnchors: timeAnchors,
       listExperiences: experiences,
-      conversations: { open: vi.fn(() => []) },
+      conversations: { open: vi.fn(() => []), outstandingTasks: vi.fn(() => []) },
     } as never,
     { getAgent: vi.fn().mockReturnValue(undefined) } as never,
     { get: vi.fn().mockResolvedValue(null) } as never,

@@ -32,6 +32,7 @@ export class ConversationQueueService {
     private readonly attachments: AttachmentRepository,
     private readonly isOtherWorkBusy: (threadId: string) => boolean | Promise<boolean>,
     private readonly onUserInput?: (agentId: string, threadId: string) => Promise<void>,
+    private readonly onQueueChange?: (threadId: string) => void,
   ) {}
 
   setRunner(runner: NonNullable<ConversationQueueService['runner']>): void {
@@ -66,6 +67,7 @@ export class ConversationQueueService {
   historyChanged(threadId: string, deleted = false, discardPending = false): void {
     this.repo.historyChanged(threadId, deleted, discardPending)
     if (discardPending || deleted) this.running.delete(threadId)
+    this.onQueueChange?.(threadId)
   }
   setLive(threadId: string, surface?: ConversationSurfaceSession): void {
     if (surface) this.live.set(threadId, surface)
@@ -80,6 +82,7 @@ export class ConversationQueueService {
     this.assertQueueMutable(threadId)
     this.repo.pause(threadId, true)
     this.historyChanging.add(threadId)
+    this.onQueueChange?.(threadId)
     return () => {
       this.historyChanging.delete(threadId)
     }
@@ -115,7 +118,8 @@ export class ConversationQueueService {
     this.assertQueueMutable(input.threadId)
     if (input.expectedGeneration !== undefined && input.expectedGeneration !== thread.generation)
       throw new AppError('CONFLICT', { message: '会话已重置，本次执行已过期' })
-    this.repo.enqueue(id, { ...input, agentId: thread.agentId, expectedGeneration: thread.generation })
+    this.repo.enqueue(id, { ...input, agentId: thread.agentId, expectedGeneration: thread.generation }, thread.threadKind === 'main')
+    if (!existing) this.onQueueChange?.(thread.id)
     if (!existing && !input.taskResultEvent && this.onUserInput) {
       void this.onUserInput(thread.agentId, thread.id).catch((error) =>
         logger.warn(__t('logs.companion', '保存主动行为活动时间失败'), { error }))
@@ -150,6 +154,7 @@ export class ConversationQueueService {
         logger.warn(__t('logs.companion', '保存主动行为活动时间失败'), { error }))
     }
     this.runtime.requestHandoff(threadId)
+    this.onQueueChange?.(threadId)
     this.kick(threadId)
     return this.snapshot(threadId)
   }
@@ -169,6 +174,7 @@ export class ConversationQueueService {
       this.repo.pause(threadId, false)
       this.runtime.requestHandoff(threadId)
     }
+    this.onQueueChange?.(threadId)
     this.kick(threadId)
     return this.snapshot(threadId)
   }
@@ -179,12 +185,14 @@ export class ConversationQueueService {
   ): ConversationQueueSnapshot {
     this.assertQueueMutable(threadId)
     this.repo.reorder(threadId, order)
+    this.onQueueChange?.(threadId)
     return this.snapshot(threadId)
   }
 
   pause(threadId: string, paused: boolean): ConversationQueueSnapshot {
     if (!paused) this.assertQueueMutable(threadId)
     this.repo.pause(threadId, paused, paused ? '队列已暂停' : undefined)
+    this.onQueueChange?.(threadId)
     if (!paused) this.kick(threadId)
     return this.snapshot(threadId)
   }
@@ -202,6 +210,7 @@ export class ConversationQueueService {
         outcome.error ? '执行失败，队列已暂停' : '任务已停止，队列已暂停',
       )
     }
+    this.onQueueChange?.(threadId)
   }
 
   private kick(threadId: string): void {
@@ -224,6 +233,7 @@ export class ConversationQueueService {
         })
         try {
           this.repo.pause(threadId, true, '发送失败，队列已暂停')
+          this.onQueueChange?.(threadId)
         } catch (writeError) {
           logger.error(
             __t('logs.conversation', '队列暂停状态写入失败，停止自动派发以避免重复执行'),
@@ -242,6 +252,7 @@ export class ConversationQueueService {
     const thread = await this.threads.getThread(threadId)
     if (!thread || thread.status !== 'active') {
       this.repo.historyChanged(threadId, true)
+      this.onQueueChange?.(threadId)
       return
     }
     // 异步查询后重新检查并同步注册，避免多客户端或普通发送插队到同一 Thread。
@@ -250,9 +261,11 @@ export class ConversationQueueService {
     if (!entry) return
     if (entry.input.expectedGeneration !== undefined && entry.input.expectedGeneration !== thread.generation) {
       this.repo.settle(entry.id, 'cancelled')
+      this.onQueueChange?.(threadId)
       return
     }
     this.runtime.registerTask(threadId, entry.input.agentId)
+    this.onQueueChange?.(threadId)
     const ownedSignal = this.runtime.getAbortSignal(threadId)
     logger.info(__t('logs.conversation', '开始派发队列消息'), {
       threadId,
@@ -273,6 +286,7 @@ export class ConversationQueueService {
       // Runner 正常负责注销；启动前失败也必须释放本次占用。
       if (this.runtime.getAbortSignal(threadId) === ownedSignal)
         this.runtime.unregisterTask(threadId, ownedSignal)
+      this.onQueueChange?.(threadId)
     }
   }
 }

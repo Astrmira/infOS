@@ -20,6 +20,7 @@ import { app } from 'electron'
 import {
   DAEMON_ALREADY_RUNNING_EXIT_CODE,
   DAEMON_SHUTDOWN_MESSAGE,
+  DAEMON_STORE_UPGRADE,
   electronProcessEnvironment,
 } from '@infos/shared'
 import { isDev, paths } from '../utils/env'
@@ -41,6 +42,7 @@ const DAEMON_BUNDLE_RELPATH = path.join('daemon', 'daemon.mjs')
 
 /** 由本模块拉起的 Daemon 子进程（用于退出时回收） */
 let daemonChild: ChildProcess | null = null
+const upgrading = new WeakSet<ChildProcess>()
 let startupPromise: Promise<boolean> | null = null
 let shuttingDown = false
 let logStartOffset = 0
@@ -113,8 +115,9 @@ export async function probeBusinessHealth(): Promise<boolean> {
 
 /** 轮询等待业务端口就绪 */
 async function waitForBusinessReady(timeoutMs: number, child?: ChildProcess): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
+  let deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline || (child && upgrading.has(child))) {
+    if (child && upgrading.has(child)) deadline = Date.now() + timeoutMs
     if (
       shuttingDown ||
       (child && (daemonChild !== child || child.exitCode !== null || child.signalCode !== null))
@@ -357,6 +360,11 @@ async function startPortableDaemon(): Promise<boolean> {
   const capture = (chunk: Buffer) => {
     logFallback = (logFallback + chunk.toString('utf8')).slice(-8000)
   }
+  child.on('message', (message) => {
+    if (typeof message !== 'object' || !message || !('type' in message) || message.type !== DAEMON_STORE_UPGRADE) return
+    if ('active' in message && message.active === true) upgrading.add(child)
+    else upgrading.delete(child)
+  })
   child.stdout?.on('data', capture)
   child.stderr?.on('data', capture)
   child.on('error', (err) => {

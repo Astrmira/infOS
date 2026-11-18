@@ -12,6 +12,7 @@ import { t as __t } from '../../lib/i18n'
  *   任务槽              config key                     职责
  * ──────────────────────────────────────────────────────────────
  *   main（主模型）      model.main                     角色未单独指派时的默认模型
+ *   background_task    model.task.background_task     执行后台任务，未指派时跟随执行角色
  *   scorer             model.task.scorer              从对话中整理值得长期记住的内容
  *   reflection         model.task.reflection          整理记忆关系、修订和去重
  *   expression_learning model.task.expression_learning 从批注和纠正里学说话习惯，写进手册
@@ -154,6 +155,13 @@ export class ModelRoleResolver {
     }
     const config = await this.resolve('main')
     return config ? { ...config, usageAgentId: normalizedAgentId || undefined } : null
+  }
+
+  /** 后台任务可统一指派模型，清空指派后按执行角色选择。 */
+  async resolveBackgroundTask(agentId: string): Promise<ModelConfig | null> {
+    const assigned = await this.loadFromDb('model.task.background_task')
+    if (!assigned) return this.resolveAgent(agentId)
+    return { ...assigned, usageAgentId: agentId.trim().toLowerCase() }
   }
 
   /** 创建绑定到指定角色的模型 getter。 */

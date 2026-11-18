@@ -127,8 +127,8 @@ describe('DistributedSyncService 完整快照', () => {
     expect(paths.some((file) => file.startsWith('.store-upgrades/'))).toBe(false)
     expect(bundle.manifest).toMatchObject({
       bundleVersion: 3,
-      triviumVersion: '0.9.0',
-      triviumFormat: 10,
+      triviumVersion: '0.9.2',
+      triviumFormat: 15,
     })
   })
 
@@ -286,7 +286,7 @@ describe('DistributedSyncService 完整快照', () => {
       snapshotId: randomUUID(),
       sourceServerId: 'server-source',
       appVersion: 'test',
-      triviumFormat: 11,
+      triviumFormat: 16,
       createdAt: new Date().toISOString(),
       files: [],
       totalBytes: 0,
@@ -298,7 +298,7 @@ describe('DistributedSyncService 完整快照', () => {
         'server-source',
       ),
     ).rejects.toThrow('请先升级应用')
-    for (const triviumFormat of [9, 10]) {
+    for (const triviumFormat of [9, 10, 15]) {
       const compatibleService = new DistributedSyncService(
         path.join(root(), 'data'),
         {} as never,

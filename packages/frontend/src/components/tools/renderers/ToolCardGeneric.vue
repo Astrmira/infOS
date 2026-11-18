@@ -1,27 +1,76 @@
 <script setup lang="ts">
-/** ToolCardGeneric — 通用工具数据面板，采用清晰的中文化分区与等宽轨道。 */
+import { computed } from 'vue'
 import { t as __t } from '../../../i18n/index'
+import type { ToolCardRendererProps } from '../toolRenderers'
 
-defineProps<{ args: string; result?: string; isError?: boolean }>()
+const props = defineProps<ToolCardRendererProps>()
+
+// 长日志与大集合直接展示原文，避免流式更新反复解析或挂载大量字段。
+function fieldsOf(raw?: string) {
+  if (!raw || raw.length > 64 * 1024 || !/^\s*[\[{]/.test(raw)) return
+  try {
+    const value = JSON.parse(raw, (_key, item: unknown) => {
+      if (typeof item !== 'number') return item
+      if (!Number.isFinite(item) || (Number.isInteger(item) && !Number.isSafeInteger(item))) {
+        throw new RangeError()
+      }
+      return item
+    })
+    const entries = Object.entries(value)
+    if (!entries.length || entries.length > 64) return
+    return entries.map(([key, item]) => ({
+      key: Array.isArray(value) ? `[${key}]` : key,
+      value: typeof item === 'string' && item.length ? item : JSON.stringify(item),
+    }))
+  } catch {
+    // 流式片段、非标准 JSON 和无法精确表示的数值保留原文。
+    return
+  }
+}
+
+const argumentFields = computed(() => fieldsOf(props.args))
+const resultFields = computed(() => fieldsOf(props.result))
+const sections = computed(() => [
+  {
+    id: 'IN',
+    label: __t('ui.tools', '调用参数'),
+    raw: props.args || undefined,
+    fields: argumentFields.value,
+  },
+  {
+    id: 'OUT',
+    label: props.isError ? __t('ui.tools', '异常输出') : __t('ui.tools', '返回结果'),
+    raw: props.result,
+    fields: resultFields.value,
+    error: props.isError,
+  },
+])
 </script>
+
 <template>
-  <section class="generic-inspector" :class="{ 'is-error': isError }">
-    <div v-if="args" class="generic-section">
-      <header>
-        <b>IN</b>
-        <span>{{ __t('ui.tools', '调用参数') }}</span>
-      </header>
-      <pre>{{ args }}</pre>
-    </div>
-    <div v-if="result" class="generic-section">
-      <header>
-        <b>OUT</b>
-        <span>{{ isError ? __t('ui.tools', '异常输出') : __t('ui.tools', '返回结果') }}</span>
-      </header>
-      <pre>{{ result }}</pre>
-    </div>
+  <section class="generic-inspector">
+    <template v-for="section in sections" :key="section.id">
+      <div
+        v-if="section.raw !== undefined"
+        class="generic-section"
+        :class="{ 'is-error': section.error }"
+      >
+        <header>
+          <b aria-hidden="true">{{ section.id }}</b>
+          <span>{{ section.label }}</span>
+        </header>
+        <dl v-if="section.fields" class="generic-fields">
+          <div v-for="field in section.fields" :key="field.key">
+            <dt>{{ field.key || '""' }}</dt>
+            <dd>{{ field.value }}</dd>
+          </div>
+        </dl>
+        <pre v-else>{{ section.raw }}</pre>
+      </div>
+    </template>
   </section>
 </template>
+
 <style scoped>
 .generic-inspector {
   display: grid;
@@ -65,14 +114,40 @@ defineProps<{ args: string; result?: string; isError?: boolean }>()
   white-space: pre-wrap;
   word-break: break-all;
 }
-.generic-inspector.is-error {
+.generic-fields {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  font: 11px/1.6 var(--ui-font-mono);
+}
+.generic-fields > div {
+  display: grid;
+  grid-template-columns: minmax(0, 30%) minmax(0, 1fr);
+  border-bottom: 1px solid var(--ui-border-subtle);
+}
+.generic-fields dt,
+.generic-fields dd {
+  margin: 0;
+  padding: 4px 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.generic-fields dt {
+  background: var(--ui-bg-surface-soft);
+  color: var(--ui-text-secondary);
+}
+.generic-fields dd {
+  color: var(--ui-text-primary);
+}
+.generic-section.is-error {
   border-top: 2px solid var(--ui-danger);
 }
-.generic-inspector.is-error .generic-section:last-child header b,
-.generic-inspector.is-error .generic-section:last-child pre {
+.generic-section.is-error header b,
+.generic-section.is-error dd,
+.generic-section.is-error pre {
   color: var(--ui-danger);
 }
-.generic-inspector.is-error .generic-section:last-child pre {
+.generic-section.is-error pre {
   background-color: var(--ui-danger-soft);
 }
 </style>

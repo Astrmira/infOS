@@ -1,6 +1,22 @@
 # 第三方许可声明
 
+## TriviumDB
+
+后端与 Social 使用 TriviumDB 0.9.2。桌面版与 Docker 另随附同一版本的 `triviumdb-migrate` 原生迁移器。项目采用 Apache-2.0，许可证随 `triviumdb` 包分发。[上游源码与许可证](https://github.com/YoKONCy/TriviumDB/blob/v0.9.2/LICENSE)
+
 本仓库的部分源码移植或改编自以下开源项目。各文件头注明了具体来源；原许可证全文如下。
+
+## Pretext（MIT 及上游许可）
+
+前端依赖 `@chenglou/pretext@1.0.0` 用于已完成聊天文本的字宽、换行与高度缓存，来源为 <https://github.com/chenglou/pretext>。包内完整 MIT 许可证及 Chromium、WebKit、Unicode 等上游声明收录于 `public/licenses/pretext.txt`，随 Web 与 Electron 前端静态资源分发。
+
+## 前端列表、浮层与差异渲染
+
+- `@tanstack/vue-virtual@3.13.52` 与 `@tanstack/virtual-core@3.19.11` 用于会话消息虚拟列表，采用 MIT 许可，来源为 <https://github.com/TanStack/virtual>。
+- `@floating-ui/vue@2.0.1` 及 Floating UI 核心依赖用于输入栏浮层定位，采用 MIT 许可，来源为 <https://github.com/floating-ui/floating-ui>。
+- `@pierre/diffs@1.6.4` 用于文件变更详情的差异渲染，采用 Apache-2.0 许可，来源为 <https://github.com/pierrecomputer/pierre>，并使用 Shiki 等语法高亮依赖。
+
+上述组件及其运行时依赖的许可证原文按包名与版本收录于 `public/licenses/frontend-rendering.txt`，随前端静态资源分发。
 
 ## Roo Code（Apache-2.0）与 SafeVault（MIT）参考
 

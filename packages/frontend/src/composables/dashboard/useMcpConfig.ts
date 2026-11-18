@@ -91,37 +91,6 @@ export function useMcpConfig() {
     },
   ]
 
-  const statusMeta: Record<string, { label: string; dotClass: string; badgeClass: string }> = {
-    connected: {
-      get label() {
-        return __t('ui.settings', '已连接')
-      },
-      dotClass: 'bg-emerald-500',
-      badgeClass: 'text-emerald-600 border-emerald-300 bg-emerald-50',
-    },
-    disconnected: {
-      get label() {
-        return __t('ui.settings', '未连接')
-      },
-      dotClass: 'bg-slate-400',
-      badgeClass: 'text-slate-400 border-slate-300 bg-slate-50',
-    },
-    error: {
-      get label() {
-        return __t('ui.settings', '错误')
-      },
-      dotClass: 'bg-red-500',
-      badgeClass: 'text-red-500 border-red-300 bg-red-50',
-    },
-    unknown: {
-      get label() {
-        return __t('ui.settings', '未知')
-      },
-      dotClass: 'bg-slate-400',
-      badgeClass: 'text-slate-400 border-slate-300 bg-slate-50',
-    },
-  }
-
   const totalTools = computed(() => servers.value.reduce((sum, s) => sum + s.tools.length, 0))
   const connectedCount = computed(
     () => servers.value.filter((s) => s.status === 'connected').length,
@@ -456,7 +425,6 @@ export function useMcpConfig() {
     expandedId,
     addForm,
     typeOptions,
-    statusMeta,
     totalTools,
     connectedCount,
     toggleExpand,

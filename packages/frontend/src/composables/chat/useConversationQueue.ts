@@ -38,25 +38,45 @@ export function useConversationQueue() {
   let refreshController: AbortController | undefined
   let queuedRunObserved = false
   let lastRunId = ''
+  let recoveredTerminal: string | undefined
   let needsHistorySync = false
   let lastFrameAt = 0
   let lastWarningAt = 0
   let waitingForAuthentication = false
   let nextAuthenticationCheck = 0
   const optimistic = useOptimisticTurn(snapshot)
-  useGateway({ onSurface: applyFrame })
+  let idleRounds = 0
+  let pollVersion = 0
+  let refreshAgain = false
+  const gateway = useGateway({
+    onSurface: applyFrame,
+    onQueueChanged(threadId, restoreHistory) {
+      if (threadId !== threads.threadId || disposed) return
+      if (restoreHistory) {
+        queuedRunObserved = true
+        needsHistorySync = true
+        lastFrameAt = 0
+      }
+      if (refreshController) refreshAgain = true
+      else wakePoll()
+    },
+  })
+  watch(() => threads.threadId, (id, _old, onCleanup) => {
+    if (id) onCleanup(gateway.watchThread(id))
+  }, { immediate: true, flush: 'sync' })
 
   function applyFrame(frame: SurfaceFrame) {
     const operation = frame.operation
     if (operation.type === 'surface.open') {
       if (operation.threadId !== threads.threadId || operation.principalId !== threads.agentId)
         return
+      cancelRefresh()
       liveSurfaces.add(frame.surfaceId)
       queuedRunObserved = true
       needsHistorySync = true
       const id = `queue-live:${frame.surfaceId}`
       // 发送时已显示「正在思考」占位：由 applySurfaceFrame 把实时画面挂到它身上
-      const adopted = optimistic.adopt()
+      const adopted = optimistic.adopt(frame.surfaceId)
       if (!adopted && !threads.messages.some((message) => message.id === id)) {
         threads.addMessage({
           id,
@@ -70,7 +90,7 @@ export function useConversationQueue() {
       }
       if (!adopted) threads.streamingMessageId = id
       threads.generationState = 'thinking'
-      void refresh()
+      pollNow()
     }
     if (!liveSurfaces.has(frame.surfaceId)) {
       if (operation.type === 'surface.settled' && !threads.isGenerating &&
@@ -79,13 +99,16 @@ export function useConversationQueue() {
       return
     }
     lastFrameAt = Date.now()
+    const terminal = operation.type === 'surface.commit' || operation.type === 'surface.settled'
+    // 终态自带持久化快照，先撤销此前的队列读取，防止迟到的历史首页覆盖终态。
+    if (terminal) cancelRefresh()
     threads.applySurfaceFrame(frame)
     if (operation.type === 'surface.commit')
       publishWorkspaceChanges(operation.message, threads.agentId, threads.threadId)
     if (operation.type === 'surface.commit' || operation.type === 'surface.fail' || operation.type === 'surface.settled') {
       liveSurfaces.delete(frame.surfaceId)
       threads.finishStreaming()
-      void refresh()
+      pollNow()
     } else if (operation.type === 'surface.upsert-node' && operation.node.kind === 'status') {
       const state = (operation.node.props as { state?: string }).state
       threads.generationState =
@@ -126,6 +149,7 @@ export function useConversationQueue() {
       const response = await chatApi.queue(threadId, controller.signal)
       if (
         disposed ||
+        controller.signal.aborted ||
         epoch !== revision ||
         mutation !== mutationVersion ||
         threads.navigationTarget ||
@@ -145,18 +169,22 @@ export function useConversationQueue() {
         needsHistorySync = true
       }
       const running = next.items.find((entry) => entry.state === 'running')
+      const historyConfirmed = next.terminalOperationId !== undefined &&
+        threads.hasAppliedTerminal(next.terminalOperationId) &&
+        !threads.isLoadingHistory && !threads.historyError && !next.paused
       if (running) {
         queuedRunObserved = true
+        if (historyConfirmed) return
         if (lastRunId !== running.id || needsHistorySync) {
           lastRunId = running.id
           needsHistorySync = false
           // 正式用户消息已经由服务端写入；快照读取保留本地正在流式展示的 Shell。
           await threads.loadThreadMessages(threadId, agentId, controller.signal)
-          if (epoch !== revision || disposed) return
+          if (controller.signal.aborted || epoch !== revision || disposed) return
         }
         if (!liveSurfaces.size || Date.now() - lastFrameAt > 8_000) {
           const live = (await chatApi.queueLive(threadId, controller.signal)).data
-          if (epoch !== revision || disposed || threads.threadId !== threadId) return
+          if (controller.signal.aborted || epoch !== revision || disposed || threads.threadId !== threadId) return
           if (live && live.state === 'open') {
             compositor.flush()
             const current = compositor.get(live.surfaceId)
@@ -190,17 +218,26 @@ export function useConversationQueue() {
         }
         if (!threads.isGenerating) threads.generationState = 'thinking'
       } else if (queuedRunObserved && !next.active && !optimistic.inFlight(threadId, next)) {
+        if (!historyConfirmed) {
+          threads.finishStreaming()
+          const result = await threads.loadThreadMessages(threadId, agentId, controller.signal)
+          if (controller.signal.aborted || epoch !== revision || disposed || result.status !== 'loaded') return
+          recoveredTerminal = next.terminalOperationId
+        }
         queuedRunObserved = false
-        const turn = optimistic.take(threadId)
-        threads.finishStreaming()
-        await threads.loadThreadMessages(threadId, agentId, controller.signal)
-        if (epoch === revision && !disposed) optimistic.warnIfUnsent(turn, next)
-        if (epoch === revision && !disposed)
-          window.dispatchEvent(
-            new CustomEvent('infos:conversation-completed', {
-              detail: { threadId, agentId: threads.agentId },
-            }),
-          )
+        lastRunId = ''
+        optimistic.warnIfUnsent(optimistic.take(threadId), next)
+        window.dispatchEvent(new CustomEvent('infos:conversation-completed', {
+          detail: { threadId, agentId: threads.agentId },
+        }))
+      } else if (!queuedRunObserved && !threads.isGenerating && !next.active &&
+          gateway.isWatchingThread(threadId) && next.terminalOperationId &&
+          !threads.isLoadingHistory && !threads.hasAppliedTerminal(next.terminalOperationId) &&
+          recoveredTerminal !== next.terminalOperationId) {
+        // 其他设备可能在本机两次读取之间完成整轮执行，终态标识能发现错过的回复。
+        const result = await threads.loadThreadMessages(threadId, agentId, controller.signal)
+        if (!controller.signal.aborted && epoch === revision && result.status === 'loaded')
+          recoveredTerminal = next.terminalOperationId
       }
     } catch (error) {
       if (controller.signal.aborted || disposed || epoch !== revision ||
@@ -225,13 +262,20 @@ export function useConversationQueue() {
         )
       }
     } finally {
-      if (refreshController === controller) refreshController = undefined
+      if (refreshController === controller) {
+        refreshController = undefined
+        if (refreshAgain) {
+          refreshAgain = false
+          wakePoll()
+        }
+      }
     }
   }
 
   function cancelRefresh(): void {
     const controller = refreshController
     refreshController = undefined
+    refreshAgain = false
     controller?.abort()
   }
 
@@ -259,7 +303,7 @@ export function useConversationQueue() {
         turn = optimistic.demoteIfQueuedBehind(turn, id, response.data)
       }
       accept()
-      void refresh()
+      pollNow()
       return true
     } catch (error) {
       // 请求可能已经提交成功，只是确认响应丢失；使用同一身份核对，绝不换 ID 重发。
@@ -311,7 +355,7 @@ export function useConversationQueue() {
         submittedIds.add(id)
       }
       accept()
-      void refresh()
+      pollNow()
       return true
     } catch (error) {
       try {
@@ -403,24 +447,49 @@ export function useConversationQueue() {
       unavailable.value = false
       optimistic.reset()
       lastRunId = ''
+      recoveredTerminal = undefined
       snapshot.value = { threadId: threads.threadId, paused: false, items: [] }
       lastFrameAt = 0
+      idleRounds = 0
       clearTimeout(timer)
       void poll()
     },
   )
+  function wakePoll() {
+    if (disposed) return
+    idleRounds = 0
+    pollVersion++
+    clearTimeout(timer)
+    // 入队、领取和打开画面常成组到达，只读取一次最新的服务端状态。
+    timer = setTimeout(poll, 50)
+  }
+  function pollNow() {
+    if (disposed) return
+    idleRounds = 0
+    if (refreshController) refreshAgain = true
+    else {
+      clearTimeout(timer)
+      void poll()
+    }
+  }
   async function poll() {
+    const tick = ++pollVersion
     const epoch = revision
     await refresh()
-    if (!disposed && epoch === revision)
-      timer = setTimeout(poll, document.hidden ? 8_000 : 2_000)
+    if (disposed || epoch !== revision || tick !== pollVersion) return
+    const idle = gateway.isWatchingThread(threads.threadId) && snapshot.value.threadId === threads.threadId &&
+      !snapshot.value.active && !snapshot.value.items.length && !queuedRunObserved &&
+      !refreshController && !unavailable.value && !changing.value
+    idleRounds = idle ? Math.min(idleRounds + 1, 5) : 0
+    const base = document.hidden ? 8_000 : 2_000
+    timer = setTimeout(poll, Math.min(base * 2 ** idleRounds, document.hidden ? 60_000 : 30_000))
   }
   const wake = () => {
-    if (!document.hidden) void refresh()
+    if (!document.hidden) pollNow()
   }
   const authorized = () => {
     nextAuthenticationCheck = 0
-    void refresh()
+    pollNow()
   }
   const historyChanged = (event: Event) => {
     const detail = (event as CustomEvent<{ threadId: string; discardPending: boolean }>).detail
@@ -447,6 +516,7 @@ export function useConversationQueue() {
   onMounted(() => {
     void poll()
     window.addEventListener('online', wake)
+    window.addEventListener('infos:gateway-ready', wake)
     window.addEventListener('infos:authorized', authorized)
     document.addEventListener('visibilitychange', wake)
     window.addEventListener('infos:conversation-history-changed', historyChanged)
@@ -457,6 +527,7 @@ export function useConversationQueue() {
     cancelRefresh()
     clearTimeout(timer)
     window.removeEventListener('online', wake)
+    window.removeEventListener('infos:gateway-ready', wake)
     window.removeEventListener('infos:authorized', authorized)
     document.removeEventListener('visibilitychange', wake)
     window.removeEventListener('infos:conversation-history-changed', historyChanged)

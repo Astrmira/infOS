@@ -1095,9 +1095,15 @@ export class ContextCompiler {
       }
       const pending = this.threadService.conversations.open(threadId, thread.generation).filter((item) =>
         !(JSON.parse(item.sourceMessagesJson) as import('@infos/shared').ConversationSource[]).some((source) => excluded.has(source.messageId)))
+      const canDelegate = enabledTools.has('manage_task') && (!options.capabilityScope || options.capabilityScope === 'default')
+      const tasks = canDelegate ? this.threadService.conversations.outstandingTasks(threadId, agentId, thread.generation) : []
       const context: LlmMessage = {
         role: 'user',
         content: '【主线交流现场】\n每条正式消息独立保存。可使用 conversation 连续发表多条消息。提问后使用 wait 保存接续现场并释放当前执行，后续输入由新执行接续。根据实际回答使用 resolve 结束已解决事项，一条输入可以回应多个事项。\n' +
+          '执行期间可能收到用户补话或后台任务回报。结合最新补充和已经完成的步骤继续，避免重复操作。\n' +
+          (canDelegate
+            ? '耗时且能独立完成的工作，可用 manage_task 的 create 交办，写清任务与完成条件。单独调用 create 时用 message 写一句给用户的受理回执，创建成功即交付，后台完成后会送回结果。补话明确指向已有任务时，核对任务和修订再用 update 调整。收到回报后说明实际结果或需要用户决定的事项，避免重复交办、轮询或复述已报告的结果。\n' : '') +
+          (tasks.length ? `本线尚在处理的交办：${JSON.stringify(tasks)}\n` : '') +
           JSON.stringify(pending.map((item) => ({ id: item.id, question: item.question,
             continuation: item.continuation, sources: JSON.parse(item.sourceMessagesJson), expiresAt: item.expiresAt }))),
         cacheControl: { kind: 'snapshot', key: 'conversation-pending', dynamicContext: true },

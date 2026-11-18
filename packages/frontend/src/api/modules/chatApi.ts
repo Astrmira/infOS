@@ -168,6 +168,11 @@ export const chatApi = {
       false,
     ),
 
+  deleteExecutionRecord: (threadId: string, executionId: string) =>
+    historyRequest(threadId, apiClient.delete<ConversationProjectionSnapshot>(
+      `/chat/threads/${encodeURIComponent(threadId)}/execution-records/${encodeURIComponent(executionId)}`,
+    ), false),
+
   deleteMessage: (threadId: string, msgId: string) =>
     historyRequest(
       threadId,

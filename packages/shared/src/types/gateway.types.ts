@@ -41,6 +41,11 @@ export const GATEWAY_ACTION_CATALOG = {
     audience: 'thread_subscribers',
     recovery: 'conversation-projection',
   },
+  conversation_queue_changed: {
+    durability: 'ephemeral',
+    audience: 'thread_subscribers',
+    recovery: 'conversation-queue',
+  },
   task_progress: {
     durability: 'ephemeral',
     audience: 'execution_subscribers',
@@ -154,6 +159,9 @@ export interface GatewayEnvelope<T = GatewayPayload> {
 export type GatewayPayload =
   | DeviceNotificationRequest
   | NotificationAvailablePayload
+  | { action: 'surface'; frame: import('./surface.types').SurfaceFrame; delta?: never }
+  | { action: 'surface'; delta: import('../threadSurfaceSync').DeltaFrame; frame?: never }
+  | { action: 'conversation_queue_changed'; threadId: string }
   | StateUpdatePayload
   | TaskProgressPayload
   | NotificationPayload
@@ -219,6 +227,7 @@ export interface SystemErrorPayload {
 /** Hello 握手请求 */
 export interface HelloPayload {
   profile?: 'full' | 'notifications'
+  features?: string[]
   action?: undefined
   token?: string
   deviceName?: string

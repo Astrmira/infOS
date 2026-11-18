@@ -58,7 +58,7 @@ export class ConversationQueueRepository {
     }
   }
 
-  enqueue(id: string, input: QueuedConversationInput): ConversationQueueItem {
+  enqueue(id: string, input: QueuedConversationInput, main = false): ConversationQueueItem {
     return durableQueueWrite(this.db, () => {
       const existing = this.get(id)
       if (existing) {
@@ -67,6 +67,20 @@ export class ConversationQueueRepository {
         return existing
       }
       const snapshot = this.snapshot(input.threadId)
+      let supplementTo: string | undefined
+      if (main && !snapshot.paused && !input.delivery && !input.regeneration) {
+        const running = snapshot.items.find((entry) => entry.state === 'running')
+        if (running && !running.input.regeneration && running.input.expectedGeneration === input.expectedGeneration)
+          supplementTo = `conversation:${input.threadId}:${input.expectedGeneration ?? 1}:${running.id}`
+        else if (!running)
+          supplementTo = this.db.select({ id: conversationExecutions.id }).from(conversationExecutions)
+            .where(and(eq(conversationExecutions.threadId, input.threadId),
+              eq(conversationExecutions.generation, input.expectedGeneration ?? 1),
+              eq(conversationExecutions.status, 'running'),
+              sql`json_extract(${conversationExecutions.metadataJson}, '$.acceptsSupplements') = 1`)).get()?.id
+        if (snapshot.items.some((entry) => entry.state === 'queued' &&
+            (entry.immediate || entry.input.supplementTo !== supplementTo))) supplementTo = undefined
+      }
       if (snapshot.items.length >= 100)
         throw new AppError('CONFLICT', { message: '待发消息最多 100 条' })
       if (
@@ -90,7 +104,7 @@ export class ConversationQueueRepository {
         .values({
           id,
           threadId: input.threadId,
-          inputJson: JSON.stringify(input),
+          inputJson: JSON.stringify({ ...input, supplementTo }),
           position,
           createdAt: Date.now(),
         })
@@ -185,6 +199,7 @@ export class ConversationQueueRepository {
         .set({
           inputJson: JSON.stringify({
             ...entry.input,
+            ...(change.immediate ? { supplementTo: undefined } : {}),
             ...(change.content !== undefined ? { content: change.content } : {}),
           }),
           state: change.cancel ? 'cancelled' : change.draft ? 'draft' : entry.state,
@@ -275,6 +290,38 @@ export class ConversationQueueRepository {
         })
         .run()
     })
+  }
+
+  /** 只接收队首连续属于本次执行的消息；下一轮、暂停、人工交接都是明确的顺序边界。 */
+  supplements(threadId: string, executionId: string, limit = 100): ConversationQueueItem[] {
+    const batch: ConversationQueueItem[] = []
+    if (this.db.select({ paused: threads.paused }).from(threads).where(eq(threads.threadId, threadId)).get()?.paused)
+      return batch
+    const rows = this.db.select().from(items).where(and(eq(items.threadId, threadId), eq(items.state, 'queued')))
+      .orderBy(asc(items.position), asc(items.createdAt)).limit(limit).all()
+    for (const row of rows) {
+      const item = this.dto(row)
+      if (item.immediate || item.input.supplementTo !== executionId) break
+      batch.push(item)
+    }
+    return batch
+  }
+
+  acceptSupplement(threadId: string, executionId: string, item: ConversationQueueItem, save: () => void): boolean {
+    return this.db.transaction(() => {
+      const next = this.supplements(threadId, executionId, 1)[0]
+      if (next?.id !== item.id || next.revision !== item.revision) return false
+      save()
+      this.settle(item.id, 'completed')
+      return true
+    })
+  }
+
+  deferSupplement(item: ConversationQueueItem): void {
+    this.db.update(items).set({
+      inputJson: JSON.stringify({ ...item.input, supplementTo: undefined }),
+      revision: item.revision + 1,
+    }).where(and(eq(items.id, item.id), eq(items.revision, item.revision), eq(items.state, 'queued'))).run()
   }
 
   claim(threadId: string): ConversationQueueItem | undefined {

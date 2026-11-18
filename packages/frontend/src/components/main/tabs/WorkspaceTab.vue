@@ -237,7 +237,7 @@ const pendingApprovals = computed(() => approvalStore.forAgent(currentAgent.valu
 // 已投影的当前会话审批交给交互 Surface；其余请求及投影恢复前的请求由队列兜底。
 const queuedApprovals = computed(() => {
   const projected = new Set(
-    [...compositor.surfaces.values()]
+    compositor.interactionSurfaces()
       .filter(
         (surface) =>
           surface.scopeId === `conversation:${threadId.value}` &&

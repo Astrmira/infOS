@@ -647,7 +647,8 @@ describe('EventMemoryService真实双库存储', () => {
     expect(detailed.notes.map((note) => note.id)).toEqual([first.id, second.id])
     const path = detailed.paths.find((item) => item.targetId === second.id)?.edges
     expect(path).toHaveLength(1)
-    expect(path?.[0]).toMatchObject({ relation: 'same_topic', weight: 0.9 })
+    expect(path?.[0]?.relation).toBe('same_topic')
+    expect(path?.[0]?.weight).toBeCloseTo(0.9, 7)
     expect(new Set([path?.[0]?.fromEventId, path?.[0]?.toEventId])).toEqual(
       new Set([first.id, second.id]),
     )

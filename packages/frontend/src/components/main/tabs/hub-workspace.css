@@ -139,7 +139,7 @@
   overflow: hidden;
 }
 
-.hub-stage--full > * {
+.hub-stage--full > :deep(*) {
   flex: 1;
   min-height: 0;
 }

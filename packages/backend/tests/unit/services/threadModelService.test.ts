@@ -135,6 +135,36 @@ describe('会话模型和思考强度', () => {
     })
   })
 
+  it('后台指派仅用于后台执行，明确委派优先，取消或删除指派后跟随角色', async () => {
+    const taskModel = await models.create({
+      name: '后台用',
+      provider: 'openai',
+      modelId: 'task-model',
+      apiKey: '',
+    })
+    await threads.createThread({
+      id: 'task',
+      agentId: 'pero',
+      channel: 'desktop',
+      purpose: 'background_task',
+    })
+    await config.set('model.task.background_task', String(taskModel.id))
+    expect(await service.resolve('task', 'pero')).toMatchObject({
+      configId: taskModel.id,
+      usageAgentId: 'pero',
+    })
+    expect(await service.resolve('task', 'pero', mainId)).toMatchObject({ configId: mainId })
+    expect(await service.resolve('a', 'pero')).toMatchObject({ configId: mainId })
+
+    await config.set('model.task.background_task', '')
+    expect(await service.resolve('task', 'pero')).toMatchObject({ configId: otherId })
+    await config.set('model.task.background_task', String(taskModel.id))
+    await models.deleteById(taskModel.id)
+    expect(await service.resolve('task', 'pero')).toMatchObject({ configId: otherId })
+    await config.set('model.agent.pero', '')
+    expect(await service.resolve('task', 'pero')).toMatchObject({ configId: mainId })
+  })
+
   it('会话强度覆盖回退模型，但按各模型能力校正且不改写卡片', async () => {
     await config.set(`model.fallbacks.${mainId}`, JSON.stringify([otherId]))
     await service.update('a', { modelConfigId: mainId, reasoningEffort: 'max' })

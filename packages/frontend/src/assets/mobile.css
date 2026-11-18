@@ -174,7 +174,7 @@ html[data-mobile] .sh-mobile-backdrop {
   border: 0;
 }
 html[data-mobile] .chat-messages {
-  padding: 14px 8px;
+  padding: 0 8px;
   scroll-padding-bottom: 12px;
 }
 html[data-mobile] .chat-input-area {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -40,6 +40,9 @@ describe('TriviumDB 文件组与升级副本', () => {
       '.publish.7',
       '.publish.8',
       '.publish.8.tmp',
+      '.publish.9',
+      '.idx',
+      '.qssd',
     ])
       expect(isTriviumFile(`memory.tdb${suffix}`, 'memory.tdb')).toBe(true)
     for (const suffix of [
@@ -48,7 +51,7 @@ describe('TriviumDB 文件组与升级副本', () => {
       '.pld.bad',
       '.pld.123.zip',
       '.pidx.backup',
-      '.publish.9',
+      '.publish.10',
       '.publish.notes',
     ])
       expect(isTriviumFile(`memory.tdb${suffix}`, 'memory.tdb')).toBe(false)
@@ -74,14 +77,14 @@ describe('TriviumDB 文件组与升级副本', () => {
     expect(databaseFormat(source)).toBe(format)
     expect(databaseFormat(`${source}-missing`)).toBeNull()
     const backup = backupLegacyStore(root, source, format)
-    const expectedRoot = path.join(root, '.store-upgrades', '0.9.0', 'agent_pero', 'memory.tdb')
+    const expectedRoot = path.join(root, '.store-upgrades', '0.9.2', 'agent_pero', 'memory.tdb')
     expect(backup.startsWith(`${expectedRoot}${path.sep}`)).toBe(true)
     expect(readFileSync(path.join(backup, 'memory.tdb'))).toEqual(header)
     expect(readFileSync(path.join(backup, 'memory.tdb.vec'), 'utf8')).toBe('向量制品')
     expect(readFileSync(path.join(backup, 'memory.tdb.publish.8'), 'utf8')).toBe('图索引恢复副本')
-    expect(existsSync(path.join(backup, 'memory.tdb.vec.tmp'))).toBe(false)
+    expect(readFileSync(path.join(backup, 'memory.tdb.vec.tmp'), 'utf8')).toBe('未提交制品')
     expect(JSON.parse(readFileSync(path.join(backup, 'backup.json'), 'utf8'))).toMatchObject({
-      targetVersion: '0.9.0',
+      targetVersion: '0.9.2',
       format,
       source: path.join('agent_pero', 'memory.tdb'),
     })

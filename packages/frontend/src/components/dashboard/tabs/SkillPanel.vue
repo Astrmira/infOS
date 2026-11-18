@@ -7,7 +7,7 @@ import { t as __t } from '../../../i18n/index'
  * 接收 useMcpConfig 提供的数据，渲染 Skill 列表、导入/删除操作。
  * 由 McpTab 组件编排使用。
  */
-import { PixelIcon, PButton, PCard, PEmpty } from '../../pixel'
+import { PixelIcon, PBadge, PButton, PCard, PEmpty } from '../../pixel'
 import type { SkillManifestItem } from '../../../api/modules/mcpApi'
 
 defineProps<{
@@ -31,7 +31,7 @@ function formatParam(key: string | number): string {
 <template>
   <!-- 加载状态 -->
   <div v-if="isSkillLoading && skills.length === 0" class="flex-1 flex items-center justify-center">
-    <div class="flex flex-col items-center gap-3 text-slate-400">
+    <div class="flex flex-col items-center gap-3 text-[var(--ui-text-tertiary)]">
       <PixelIcon name="loader" size="lg" />
       <span class="text-sm font-bold">{{ __t('ui.settings', '正在扫描技能目录...') }}</span>
     </div>
@@ -62,38 +62,27 @@ function formatParam(key: string | number): string {
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <h4 class="text-sm font-black text-[var(--ui-text-primary)]">{{ skill.name }}</h4>
-            <span
-              class="text-[9px] font-bold text-violet-500 px-1.5 py-0.5 bg-violet-50 border border-violet-200"
-            >
+            <PBadge size="sm" variant="purple">
               {{ skill.id }}
-            </span>
-            <span
-              class="text-[9px] font-bold text-amber-600 px-1.5 py-0.5 bg-amber-50 border border-amber-200"
-            >
+            </PBadge>
+            <PBadge size="sm" variant="warning">
               {{ skill.category }}
-            </span>
+            </PBadge>
           </div>
-          <p class="text-[11px] text-slate-400 mt-1 truncate">
+          <p class="text-[11px] text-[var(--ui-text-tertiary)] mt-1 truncate">
             {{ skill.description || __t('ui.settings', '(无描述)') }}
           </p>
           <div v-if="skill.tags.length > 0" class="flex flex-wrap gap-1 mt-1">
-            <span
-              v-for="tag in skill.tags"
-              :key="tag"
-              class="text-[9px] font-bold text-slate-500 px-1.5 py-0.5 bg-slate-50 border border-slate-200"
-            >
+            <PBadge v-for="tag in skill.tags" :key="tag" size="sm">
               #{{ tag }}
-            </span>
+            </PBadge>
           </div>
         </div>
         <!-- requiredTools 计数 + 删除按钮 -->
         <div class="flex gap-1 items-center flex-shrink-0">
-          <span
-            v-if="skill.requiredTools.length > 0"
-            class="text-[10px] font-bold text-sky-500 px-2 py-0.5 border border-sky-200 bg-sky-50"
-          >
+          <PBadge v-if="skill.requiredTools.length > 0" size="sm" variant="primary">
             {{ skill.requiredTools.length }} {{ __t('ui.settings', '个依赖工具') }}
-          </span>
+          </PBadge>
           <PButton
             variant="ghost"
             size="sm"
@@ -116,62 +105,54 @@ function formatParam(key: string | number): string {
       >
         <!-- 可接收参数 -->
         <div v-if="Object.keys(skill.parameters).length > 0" class="mb-3">
-          <h5 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 font-pixel">
+          <h5 class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] mb-2 font-pixel">
             {{ __t('ui.settings', '可接收参数') }}
           </h5>
           <div class="flex flex-col gap-1">
             <div
               v-for="(desc, key) in skill.parameters"
               :key="key"
-              class="flex items-center gap-2 px-2 py-1 border border-teal-200 bg-teal-50"
+              class="flex items-center gap-2 px-2 py-1 border border-[color:var(--ui-success)] bg-[var(--ui-success-soft)]"
             >
-              <span class="text-[11px] font-mono font-bold text-teal-700">
+              <span class="text-[11px] font-mono font-bold text-[var(--ui-success)]">
                 {{ formatParam(key) }}
               </span>
-              <span class="text-[11px] text-slate-400">{{ desc }}</span>
+              <span class="text-[11px] text-[var(--ui-text-tertiary)]">{{ desc }}</span>
             </div>
           </div>
         </div>
 
         <!-- 依赖子 Skill -->
         <div v-if="skill.dependsOnSkills.length > 0" class="mb-3">
-          <h5 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 font-pixel">
+          <h5 class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] mb-2 font-pixel">
             {{ __t('ui.settings', '依赖子技能') }}
           </h5>
           <div class="flex flex-wrap gap-1">
-            <span
-              v-for="dep in skill.dependsOnSkills"
-              :key="dep"
-              class="text-[11px] font-mono font-bold text-[var(--ui-accent-purple)] px-2 py-0.5 bg-[var(--ui-accent-purple-soft)] border border-[color:var(--ui-accent-purple)]"
-            >
+            <PBadge v-for="dep in skill.dependsOnSkills" :key="dep" size="sm" variant="purple">
               {{ dep }}
-            </span>
+            </PBadge>
           </div>
         </div>
 
         <!-- 依赖工具列表 -->
         <div v-if="skill.requiredTools.length > 0" class="mb-3">
-          <h5 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 font-pixel">
+          <h5 class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] mb-2 font-pixel">
             {{ __t('ui.settings', '依赖工具') }}
           </h5>
           <div class="flex flex-wrap gap-1">
-            <span
-              v-for="tool in skill.requiredTools"
-              :key="tool"
-              class="text-[11px] font-mono font-bold text-sky-600 px-2 py-0.5 bg-sky-50 border border-sky-200"
-            >
+            <PBadge v-for="tool in skill.requiredTools" :key="tool" size="sm" variant="primary">
               {{ tool }}
-            </span>
+            </PBadge>
           </div>
         </div>
 
         <!-- SKILL.md 内容 -->
         <div>
-          <h5 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 font-pixel">
+          <h5 class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] mb-2 font-pixel">
             {{ __t('ui.settings', '技能指令内容') }}
           </h5>
           <pre
-            class="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 p-3 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed font-mono"
+            class="text-[11px] text-[var(--ui-text-secondary)] bg-[var(--ui-bg-surface-soft)] border border-[color:var(--ui-border-default)] p-3 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed font-mono"
             >{{ skillContent }}</pre
           >
         </div>

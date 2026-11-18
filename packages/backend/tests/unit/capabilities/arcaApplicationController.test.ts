@@ -27,7 +27,7 @@ function createFederation(discovery?: { pid: number }) {
               appId: 'infos.arca',
               instanceId: 'instance-1',
               name: 'Arca',
-              appVersion: '0.9.13',
+              appVersion: '0.9.14',
               adapterVersion: '1.0.0',
               state: 'ready' as const,
               endpoints: [],

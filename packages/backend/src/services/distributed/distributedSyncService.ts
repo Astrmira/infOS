@@ -12,13 +12,14 @@ import { prepareRestoredDatabase } from '../backup/backupRecords'
 import type { DrizzleDb } from '../../database'
 import type { MemoryStoreRegistry } from '../../repositories/storeRegistry'
 import {
+  isTriviumUpgradePath,
   managedStoreBase,
   TRIVIUM_BACKUP_DIRECTORY,
   TRIVIUM_FORMAT,
   TRIVIUM_VERSION,
 } from '../../repositories/triviumFiles'
 
-const APP_VERSION = '0.9.13'
+const APP_VERSION = '0.9.14'
 const BUNDLE_VERSION = 3
 const SCHEMA_VERSION = 2
 const MAX_FILE_COUNT = 100_000
@@ -420,7 +421,7 @@ export class DistributedSyncService {
       const next = relative ? `${relative}/${entry.name}` : entry.name
       const normalized = next.replaceAll('\\', '/')
       signal?.throwIfAborted()
-      if (isSnapshotProgramPath(normalized) || isSnapshotTransientPath(normalized)) continue
+      if (isSnapshotProgramPath(normalized) || isSnapshotTransientPath(normalized) || isTriviumUpgradePath(normalized)) continue
       if (isMachinePath(normalized)) continue
       if (!relative && EXCLUDED_ROOTS.has(entry.name)) continue
       if (!relative && entry.name.startsWith('.resource-')) continue

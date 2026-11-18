@@ -18,6 +18,18 @@
   animation: motion-rise-in var(--motion-duration-medium) var(--motion-ease-spring) backwards;
 }
 /* 长消息流只让最后两条播放入场：切换会话、加载更早消息时不整页一起动 */
-.chat-messages > :deep(.msg-row:not(:nth-last-child(-n + 2))) {
+.chat-message-row--history :deep(.msg-row) {
   animation: none;
+}
+
+/* 主会话的头像与时间留在原位，只有当次交付的气泡浮入。 */
+.chat-message-list--main :deep(.msg-row-assistant) {
+  animation: none;
+}
+.chat-message-list--main :deep(.motion-main-reply-arrive) {
+  animation: motion-main-reply-in var(--motion-duration-slow) var(--motion-ease-out);
+}
+@keyframes motion-main-reply-in {
+  from { opacity: .35; transform: translateY(var(--motion-distance-md)); }
+  to { opacity: 1; transform: none; }
 }

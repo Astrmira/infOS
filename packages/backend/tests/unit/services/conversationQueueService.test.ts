@@ -11,7 +11,9 @@ import { RuntimeStateService } from '@infos/backend/services/runtime/runtimeStat
 let db: DrizzleDb
 let runtime: RuntimeStateService
 let queue: ConversationQueueService
+const observeQueue = vi.fn<(threadId: string) => void>()
 beforeEach(() => {
+  observeQueue.mockReset()
   vi.useFakeTimers()
   db = createDrizzleConnection(':memory:')
   runtime = new RuntimeStateService()
@@ -23,6 +25,8 @@ beforeEach(() => {
     } as never,
     { findByIds: async () => [] } as never,
     () => false,
+    undefined,
+    observeQueue,
   )
   queue.start()
 })
@@ -34,6 +38,21 @@ afterEach(() => {
 })
 
 describe('后台消息队列调度', () => {
+  it('订阅者可在变更通知后读到同一 Thread 已落盘的入队、领取和结算结果', async () => {
+    const reads: string[] = []
+    observeQueue.mockImplementation(id => {
+      expect(id).toBe('t')
+      const state = queue.snapshot(id)
+      reads.push(state.items.map(item => item.state).join(',') || 'empty')
+    })
+    let finish!: () => void
+    queue.setRunner(() => new Promise(resolve => { finish = () => resolve({ success: true }) }))
+    await queue.enqueue('m1', { threadId: 't', content: '你好' })
+    await vi.advanceTimersByTimeAsync(0)
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(reads).toEqual(['queued', 'running', 'empty'])
+  })
   it('前一条持久执行未结算前绝不派发第二条，失败后自动暂停', async () => {
     let finish!: (value: { success: boolean; error: string }) => void
     const runner = vi.fn(

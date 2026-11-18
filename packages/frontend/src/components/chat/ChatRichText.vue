@@ -11,6 +11,7 @@ import { copyClientText } from '../../lib/clientPlatform'
 import { inject, onActivated, onDeactivated, onBeforeUnmount, shallowRef, ref, watch } from 'vue'
 import EmbeddedWebPreview from './EmbeddedWebPreview.vue'
 import StreamText from './StreamText.vue'
+import { chatTextLayout as vChatTextLayout } from '../../compositor/chatTextLayout'
 import { segmentChatContent } from '../../lib/embeddedWebPreview'
 import { onChatMathReady, renderChatRichTextResult } from '../../lib/chatRichRenderer'
 import {
@@ -34,6 +35,7 @@ const props = withDefaults(
     cache?: boolean
     stable?: boolean
     webPreview?: boolean
+    measureLayout?: boolean
     agentId?: string
     threadId?: string
   }>(),
@@ -42,6 +44,7 @@ const props = withDefaults(
     cache: true,
     stable: true,
     webPreview: true,
+    measureLayout: false,
     agentId: undefined,
     threadId: undefined,
   },
@@ -264,6 +267,7 @@ async function handleClick(event: MouseEvent) {
     <!-- eslint-disable-next-line vue/no-v-html -->
     <div
       v-else
+      v-chat-text-layout="{ enabled: measureLayout && stable, html: segment.html, locale: appLocale }"
       :class="['chat-rich-text', { 'chat-rich-text--compact': compact }]"
       @click="handleClick"
       v-html="segment.html"

@@ -210,24 +210,25 @@ export const threadsApi = {
   },
 
   /** 获取 Thread 详情（含消息列表） */
-  get: (threadId: string, params?: { page?: number; pageSize?: number; debug?: boolean }) => {
+  get: (threadId: string, params?: { page?: number; pageSize?: number; debug?: boolean; signal?: AbortSignal }) => {
     const query = new URLSearchParams()
     if (params?.page) query.set('page', String(params.page))
     if (params?.pageSize) query.set('pageSize', String(params.pageSize))
     // 对话日志需要模型请求副本；普通聊天列表不请求这些调试字段。
     if (params?.debug) query.set('debug', '1')
     const qs = query.toString()
-    return apiClient.get<ThreadDetailData>(`/chat/threads/${threadId}${qs ? `?${qs}` : ''}`)
+    return apiClient.request<ThreadDetailData>(`/chat/threads/${threadId}${qs ? `?${qs}` : ''}`, { signal: params?.signal })
   },
 
   /** 获取 Conversation 权威 Projection 与 committed Surfaces。 */
-  getProjection: (threadId: string, params: { beforeCursor?: string; pageSize?: number } = {}) => {
+  getProjection: (threadId: string, params: { beforeCursor?: string; pageSize?: number; signal?: AbortSignal } = {}) => {
     const query = new URLSearchParams()
     if (params.beforeCursor) query.set('beforeCursor', params.beforeCursor)
     if (params.pageSize) query.set('pageSize', String(params.pageSize))
     const suffix = query.toString()
-    return apiClient.get<ConversationProjectionSnapshot>(
+    return apiClient.request<ConversationProjectionSnapshot>(
       `/chat/threads/${encodeURIComponent(threadId)}/projection${suffix ? `?${suffix}` : ''}`,
+      { signal: params.signal },
     )
   },
 

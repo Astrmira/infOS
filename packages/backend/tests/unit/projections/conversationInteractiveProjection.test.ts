@@ -8,7 +8,7 @@ function createProjection() {
   const inputs = new AgentInputService()
   const service = new ConversationProjectionService(
     {
-      getThread: async () => ({ id: 'thread-1', agentId: 'pero', threadKind: 'side', generation: 1 }),
+      getThread: async () => ({ id: 'thread-1', agentId: 'pero', threadKind: 'side', generation: 1, messageCount: 0, lastMessageAt: null }),
       assertGeneration: async () => {},
       listMessages: async () => ({ items: [], total: 0 }),
     } as never,
@@ -24,6 +24,25 @@ function createProjection() {
 }
 
 describe('Conversation交互Surface投影', () => {
+  it('队列终态只证明当前代次的最新历史首页，旧回合晚到也不能恢复过期凭据', async () => {
+    const { service } = createProjection()
+    const thread = { id: 'thread-1', generation: 1, messageCount: 0, lastMessageAt: null }
+    const first = await service.getSnapshot(thread.id)
+    service.recordQueueTerminal(first, 'queue-a', 'first')
+    expect(service.currentQueueTerminal(thread)).toBe('first')
+    expect(service.currentQueueTerminal(thread, 'queue-a')).toBe('first')
+    expect(service.currentQueueTerminal(thread, 'queue-b')).toBeUndefined()
+    expect(service.currentQueueTerminal({ ...thread, messageCount: 1 })).toBeUndefined()
+    expect(service.currentQueueTerminal({ ...thread, generation: 2 })).toBeUndefined()
+
+    service.invalidate(thread.id)
+    expect(service.currentQueueTerminal(thread)).toBeUndefined()
+    const latest = await service.getSnapshot(thread.id)
+    service.recordQueueTerminal(latest, 'queue-b', 'second')
+    service.recordQueueTerminal(first, 'queue-a', 'late')
+    expect(service.currentQueueTerminal(thread)).toBe('second')
+  })
+
   it('NIT 父子关系经过消息落盘读取后仍保留，历史子调用可被前端归组', async () => {
     const tool = {
       blockId: 'nested',

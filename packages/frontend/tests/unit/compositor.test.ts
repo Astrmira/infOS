@@ -413,6 +413,7 @@ describe('Internal Compositor', () => {
       frame(2, { type: 'surface.append-text', nodeId: 'markdown' as SurfaceNodeId, delta: 'A' }),
     )
     store.flush()
+    const accepted = store.get('surface-1')
 
     store.enqueue(
       frame(2, { type: 'surface.append-text', nodeId: 'markdown' as SurfaceNodeId, delta: 'B' }),
@@ -426,6 +427,7 @@ describe('Internal Compositor', () => {
     )
     store.flush()
     expect(store.get('surface-1')?.nodes[0]?.props).toEqual({ source: 'A', phase: 'preview' })
+    expect(store.get('surface-1')).toBe(accepted)
   })
 
   it('应按领域 Scope 原子替换、暂停和销毁 Surface', () => {

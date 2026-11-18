@@ -114,6 +114,60 @@ afterEach(() => {
 })
 
 describe('最近会话激活与初始化竞态', () => {
+  it.each(['main', 'side'] as const)('%s 的撤回结果优先于在途首页和旧终态', async (kind) => {
+    const store = useThreadStore()
+    const record = { ...recordFor('pero-thread'), threadKind: kind }
+    api.get.mockResolvedValue({ data: { thread: record } })
+    const page = projectionResponse(record).data!
+    const before: ConversationProjectionSnapshot = {
+      ...page, threadGeneration: 1, totalMessages: 2,
+      messages: ['11', '12'].map((id) => ({
+        messageId: id, threadId: record.id, role: id === '11' ? 'user' : 'assistant', revision: 1,
+        content: '相同文本', status: 'completed', timestamp: record.updatedAt, imageTranscription: false,
+        toolCalls: [], attachments: [], contentBlocks: [],
+      })),
+    }
+    api.projection.mockResolvedValue({ data: before })
+    await store.loadThreadMessages(record.id, record.agentId)
+    const delayed = deferred<{ data: ConversationProjectionSnapshot }>()
+    api.projection.mockReturnValueOnce(delayed.promise)
+    const reading = store.loadThreadMessages(record.id, record.agentId)
+    const kept = kind === 'main' ? [before.messages[1]!] : []
+    const deleted = kind === 'main' ? ['11'] : ['11', '12']
+    store.applyProjection({ ...before, messages: kept, totalMessages: kept.length, deletedMessageIds: deleted })
+    delayed.resolve({ data: before })
+    await expect(reading).resolves.toEqual({ status: 'superseded' })
+    store.applySurfaceFrame({
+      protocolVersion: 1, threadId: record.id, threadGeneration: 1,
+      surfaceId: 'old' as SurfaceId, generation: 'old', sequence: 3, revision: 3,
+      operationId: 'old-terminal', operation: { type: 'surface.settled', snapshot: before },
+    })
+    expect(store.messages.map(message => message.id)).toEqual(kind === 'main' ? ['12'] : [])
+  })
+
+  it('新连接只有已发表消息时，主线暂存同一执行的全部回复直到结算', async () => {
+    const store = useThreadStore()
+    const record = { ...recordFor('pero-thread'), threadKind: 'main' as const }
+    const base = projectionResponse(record).data!
+    const running: ConversationProjectionSnapshot = { ...base, messages: ['早安', '早餐吃什么？'].map((content, index) => ({
+      messageId: String(index + 1), threadId: record.id, role: 'assistant', content,
+      revision: 1, executionId: 'breakfast', executionPending: true, status: 'active',
+      timestamp: record.updatedAt, imageTranscription: false, toolCalls: [], attachments: [], contentBlocks: [],
+    })) }
+    api.get.mockResolvedValue({ data: { thread: record } })
+    api.projection.mockResolvedValue({ data: running })
+    await store.loadThreadMessages(record.id, record.agentId)
+    expect(store.messages.map(message => message.content)).toEqual(['早安', '早餐吃什么？'])
+    expect(store.timelineMessages.map(message => [message.content, message.executionPending])).toEqual([['', true]])
+    store.applySurfaceFrame({
+      protocolVersion: 1, threadId: record.id, threadGeneration: 1, surfaceId: 'breakfast' as SurfaceId,
+      generation: 'run', sequence: 4, revision: 4, operationId: 'done', operation: {
+        type: 'surface.settled', snapshot: { ...running, messages: running.messages.map(message => ({ ...message, executionPending: undefined })) },
+      },
+    })
+    expect(store.timelineMessages.map(message => message.content)).toEqual(['早安', '早餐吃什么？'])
+  })
+
   it('删除缓存会话后重新进入角色，从有效来源恢复并排除旧快照', async () => {
     const store = useThreadStore()
     await store.loadThreadMessages('selected-thread', 'pero')
@@ -176,6 +230,8 @@ describe('最近会话激活与初始化竞态', () => {
     const restoring = store.loadThreadMessages('pero-thread', 'pero', controller.signal)
     expect(store.isLoadingHistory).toBe(true)
     controller.abort()
+    expect(api.get.mock.lastCall?.[1].signal.aborted).toBe(true)
+    expect(api.projection.mock.lastCall?.[1].signal.aborted).toBe(true)
     expect(store.isLoadingHistory).toBe(false)
     store.addMessage({
       id: '停止后保留的消息',

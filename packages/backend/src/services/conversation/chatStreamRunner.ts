@@ -3,6 +3,11 @@ import type { PrepareTurnParams } from './conversationTurnService'
 import type { QueuedTurnOutcome } from './conversationQueueService'
 import { ConversationSurfaceSession } from '../../projections/conversationSurfaceSession'
 import { AppError } from '../../lib/appError'
+import type { SurfaceFrame } from '@infos/shared'
+
+type ChatStreamEvent =
+  | { event: 'surface'; data: SurfaceFrame }
+  | { event: 'rag_progress' | 'done' | 'error'; data: object }
 
 export type ChatStreamInput = Pick<
   PrepareTurnParams,
@@ -18,13 +23,13 @@ export type ChatStreamInput = Pick<
   | 'queueMessageId'
   | 'achievementSubjectId'
 > &
-  Pick<import('@infos/shared').QueuedConversationInput, 'taskResultEvent' | 'regeneration'>
+  Pick<import('@infos/shared').QueuedConversationInput, 'taskResultEvent' | 'regeneration' | 'supplementTo'>
 
 /** 普通 SSE 与持久消息队列共用同一执行、Surface 和结算路径。调用方先取得 Thread 占用。 */
 export async function runChatStream(
   ctx: AppContext,
   body: ChatStreamInput,
-  writeEvent: (event: { event: string; data: string }) => Promise<void>,
+  writeEvent: (event: ChatStreamEvent) => Promise<void>,
 ): Promise<QueuedTurnOutcome> {
   const { threadId, content } = body
   const agentId = body.agentId ?? ctx.runtimeStateService.getTaskInfo(threadId)?.agentId ?? ''
@@ -38,8 +43,8 @@ export async function runChatStream(
   let firstTokenMs: number | undefined
   let firstTokenAt: number | undefined
   const surfaceRef: { current: ConversationSurfaceSession | null } = { current: null }
-  const writeSurface = async (frame: import('@infos/shared').SurfaceFrame) => {
-    await writeEvent({ event: 'surface', data: JSON.stringify(frame) })
+  const writeSurface = async (frame: SurfaceFrame) => {
+    await writeEvent({ event: 'surface', data: frame })
   }
   let runState = 'thinking'
   let runLabel = '正在思考……'
@@ -64,6 +69,13 @@ export async function runChatStream(
   }
   try {
     thread = await ctx.threadService.getThread(threadId)
+    const report = body.taskResultEvent
+    const source = report ? ctx.threadRepo.conversations.taskResultSource(threadId, report.taskId, report.deliveryId) : undefined
+    if (thread?.threadKind === 'main' && report?.deliveryId.endsWith(':resume') && !source) {
+      // 原始交付已撤回；结清唤醒凭据，避免用队列副本重新讲述已移除的结果。
+      outcome = { success: true }
+      return outcome
+    }
     // 统一流式对话：创建 Pair、编译上下文、保存原始文本与工具调用都由服务处理。
     const gen = ctx.conversationTurnService.streamTurn({
       threadId,
@@ -71,11 +83,10 @@ export async function runChatStream(
       agentId,
       content,
       queueMessageId: body.queueMessageId,
+      supplementTo: body.supplementTo,
       regeneration: body.regeneration,
       achievementSubjectId: body.achievementSubjectId,
-      sourceMessageIds: body.taskResultEvent
-        ? [ctx.threadRepo.conversations.taskResultSource(threadId, body.taskResultEvent.taskId)?.id].filter((id): id is number => id !== undefined)
-        : undefined,
+      sourceMessageIds: source ? [source.id] : undefined,
       ...(body.taskResultEvent ? { inputPersistence: 'ephemeral' as const, proactive: true } : {}),
       attachmentIds: body.attachmentIds,
       imageMode: body.imageMode,
@@ -83,6 +94,10 @@ export async function runChatStream(
       environmentEvents: body.environmentEvents,
       generationType: body.generationType,
       signal,
+      onSupplementAccepted: async () => {
+        ctx.conversationProjection.invalidate(threadId)
+        if (surfaceRef.current) await writeSurface(surfaceRef.current.publish(await ctx.conversationProjection.getSnapshot(threadId)))
+      },
       onInputAccepted: async (accepted) => {
         ctx.conversationProjection.invalidate(threadId)
         if (surfaceRef.current) return
@@ -100,7 +115,7 @@ export async function runChatStream(
       onRagProgress: async (progress) => {
         await writeEvent({
           event: 'rag_progress',
-          data: JSON.stringify(progress),
+          data: progress,
         })
         if (
           surfaceRef.current &&
@@ -276,14 +291,16 @@ export async function runChatStream(
     const durationMs = completedAt - startTime
     const outputDurationMs = firstTokenAt ? completedAt - firstTokenAt : 0
     if (surfaceRef.current) {
-      await writeSurface(
-        committedMessage && committedSurface && !turnResult.executionPause && !turnResult.handoff ? surfaceRef.current.commit(projection, committedMessage, committedSurface, {
+      const terminal = committedMessage && committedSurface && !turnResult.executionPause && !turnResult.handoff
+        ? surfaceRef.current.commit(projection, committedMessage, committedSurface, {
           mode,
           firstTokenMs,
           outputDurationMs,
           totalDurationMs: durationMs,
-        }) : surfaceRef.current.settle(projection),
-      )
+        }) : surfaceRef.current.settle(projection)
+      if (body.queueMessageId)
+        ctx.conversationProjection.recordQueueTerminal(projection, body.queueMessageId, terminal.operationId)
+      await writeSurface(terminal)
     }
 
     outcome = {
@@ -294,7 +311,7 @@ export async function runChatStream(
     // 完成遥测与done事件
     await writeEvent({
       event: 'done',
-      data: JSON.stringify({
+      data: {
         usage: {
           promptTokens: ctx.tokenCounter.countMessages(turnResult.initialPromptMessages),
           completionTokens:
@@ -309,7 +326,7 @@ export async function runChatStream(
         durationMs,
         threadId,
         agentId,
-      }),
+      },
     })
   } catch (err) {
     const appError = err instanceof AppError ? err : null
@@ -328,11 +345,11 @@ export async function runChatStream(
     }
     await writeEvent({
       event: 'error',
-      data: JSON.stringify({
+      data: {
         code,
         message,
         data: appError?.data,
-      }),
+      },
     })
   } finally {
     if (signal?.aborted) outcome = { success: false, error: '用户已停止或执行已取消' }

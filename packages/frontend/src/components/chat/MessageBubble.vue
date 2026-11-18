@@ -16,6 +16,7 @@ import type { AttachmentSurfaceProps } from '@infos/shared'
 import PixelIcon from '../pixel/PixelIcon.vue'
 import ThinkingIndicator from './ThinkingIndicator.vue'
 import RunPulse from './RunPulse.vue'
+import MainReplyWaiting from './MainReplyWaiting.vue'
 import ChatRichText from './ChatRichText.vue'
 import ConversationSurface from '../compositor/ConversationSurface.vue'
 import { attachmentsApi } from '../../api/modules/attachmentsApi'
@@ -27,9 +28,10 @@ import ExpressionActions from '../expression/ExpressionActions.vue'
 import ExpressionAnnotations from '../expression/ExpressionAnnotations.vue'
 
 export interface ChatMessage {
+  queuePreview?: boolean
   executionRecord?: boolean
   id: string
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
   spokenReply?: string
   /** 从原始转写中提取的 Thinking 内容。 */
@@ -64,6 +66,7 @@ interface Props {
   deleteActionLabel?: string
   /** 系统消息视觉变体；旁白不复用普通系统提示样式。 */
   systemVariant?: 'default' | 'narration'
+  mainWaiting?: boolean
   isStreaming?: boolean
   /** 模型调用前自动 RAG 的实时阶段文案。 */
   progressLabel?: string
@@ -101,6 +104,8 @@ const emit = defineEmits<{
   ttsPlay: [msg: ChatMessage]
 }>()
 
+const mainWaiting = computed(() => props.mainWaiting ||
+  Boolean(props.message.surface?.processCollapsed && props.message.surface.state === 'open'))
 const isThinkingExpanded = ref(false)
 const generationStats = computed(() => props.message.surface?.generationStats)
 const generationRate = computed(() => {
@@ -225,6 +230,7 @@ function formatTime(ts?: number): string {
           :surface="message.surface"
           display-mode="content"
         />
+        <span v-else-if="message.queuePreview">{{ message.content }}</span>
         <span v-else>{{ __t('ui.chat', '消息 Surface 不可用') }}</span>
         <span v-if="message.timestamp" class="msg-user-time">
           {{ formatTime(message.timestamp) }}
@@ -323,7 +329,17 @@ function formatTime(ts?: number): string {
       <div class="msg-assistant-header">
         <span class="msg-assistant-name">{{ agentName }}</span>
         <span class="msg-time">{{ formatTime(message.timestamp) }}</span>
-        <div class="msg-actions">
+        <button
+          v-if="!mainWaiting && allowMutations && mutationActions.includes('delete')"
+          class="msg-action-btn msg-action-btn-danger"
+          type="button"
+          :aria-label="deleteActionLabel"
+          :title="deleteActionLabel"
+          @click="emit('deletePair', message.id)"
+        >
+          <PixelIcon name="trash" size="xs" />
+        </button>
+        <div v-if="!mainWaiting" class="msg-actions">
           <ExpressionActions :message="message" :agent-id="agentId" :streaming="isStreaming" />
           <!-- TTS 播放按钮（ playMessage） -->
           <button
@@ -375,20 +391,12 @@ function formatTime(ts?: number): string {
           >
             <PixelIcon name="git-branch" size="xs" />
           </button>
-          <button
-            v-if="allowMutations && mutationActions.includes('delete')"
-            class="msg-action-btn msg-action-btn-danger"
-            :title="deleteActionLabel"
-            @click="emit('deletePair', message.id)"
-          >
-            <PixelIcon name="trash" size="xs" />
-          </button>
         </div>
       </div>
 
       <!-- Thinking 折叠入口：放在气泡侧边，不干扰正文阅读。 -->
       <button
-        v-if="message.thinkingContent"
+        v-if="!mainWaiting && message.thinkingContent"
         class="msg-thinking-toggle"
         :class="{ 'msg-thinking-toggle--active': isThinkingExpanded }"
         :title="isThinkingExpanded ? __t('ui.chat', '收起碎碎念') : __t('ui.chat', '展开碎碎念')"
@@ -399,7 +407,7 @@ function formatTime(ts?: number): string {
         <PixelIcon :name="isThinkingExpanded ? 'chevron-up' : 'chevron-down'" size="xs" />
       </button>
 
-      <div v-if="message.thinkingContent && isThinkingExpanded" class="msg-thinking-panel">
+      <div v-if="!mainWaiting && message.thinkingContent && isThinkingExpanded" class="msg-thinking-panel">
         <div class="msg-thinking-panel-header">
           <div>
             <span class="msg-thinking-signal" />
@@ -422,8 +430,9 @@ function formatTime(ts?: number): string {
         </div>
       </div>
 
-      <!-- 消息体 -->
+      <MainReplyWaiting v-if="mainWaiting" />
       <ReplySelection
+        v-else
         :agent-id="agentId || message.senderId || message.surface?.principalId"
         class="msg-bubble msg-bubble-assistant"
         :streaming="isStreaming"
@@ -444,10 +453,10 @@ function formatTime(ts?: number): string {
         <ThinkingIndicator v-else-if="isStreaming" :name="agentName" :label="progressLabel" />
         <div v-else class="msg-surface-missing">{{ __t('ui.chat', '消息 Surface 不可用') }}</div>
       </ReplySelection>
-      <ExpressionAnnotations :message="message" :agent-id="agentId" :streaming="isStreaming" />
+      <ExpressionAnnotations v-if="!mainWaiting" :message="message" :agent-id="agentId" :streaming="isStreaming" />
       <Transition name="generation-stats">
         <div
-          v-if="!isStreaming && message.surface?.state === 'committed' && generationStats"
+          v-if="!mainWaiting && !isStreaming && message.surface?.state === 'committed' && generationStats"
           class="msg-generation-stats"
           :title="generationHint"
           :aria-label="__t('ui.chat', '本次对话输出统计')"

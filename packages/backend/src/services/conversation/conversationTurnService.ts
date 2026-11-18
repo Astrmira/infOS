@@ -22,6 +22,7 @@ import type { ToolCallRecord, ChatMessage } from '../pipeline/types'
 import type { ContentPart } from '../llm/types'
 import type { ContextCompiler, ContextManifest } from '../context/contextCompiler'
 import type { ThreadService } from '../thread/threadService'
+import type { MainConversationInbox, SupplementContent } from './mainConversationInbox'
 import type { AttachmentService } from '../attachment/attachmentService'
 import type { AttachmentRow } from '../../repositories/attachment.repo'
 import { retainedFileState } from '../context/fileWorkingContext'
@@ -68,6 +69,7 @@ import {
 const logger = createLogger('ConversationTurnService')
 
 export interface ConversationTurnDeps {
+  mainInbox?: MainConversationInbox
   isHandoffRequested?: (threadId: string) => boolean
   onUserActivity?: (agentId: string, threadId: string) => void | Promise<void>
   threadService: ThreadService
@@ -102,6 +104,9 @@ export interface ConversationTurnDeps {
 }
 
 export interface PrepareTurnParams {
+  /** 已关窗的补话另起执行时，继续沿用原气泡归组。仅服务端队列填写。 */
+  supplementTo?: string
+  onSupplementAccepted?: () => Promise<void>
   regeneration?: import('@infos/shared').QueuedConversationInput['regeneration']
   /** 可信宿主事件引用的独立消息来源，HTTP 请求无法指定。 */
   sourceMessageIds?: number[]
@@ -553,6 +558,9 @@ export class ConversationTurnService {
       ? `queue_${params.queueMessageId}`
       : `pair_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
     const inputSources: ConversationSource[] = []
+    const timelineGroupId = continuous && params.supplementTo
+      ? this.deps.threadService.conversations.timelineGroup(params.supplementTo, thread.id, thread.generation)
+      : undefined
     inputSources.push(...(regeneration?.sources ?? []))
     for (const id of params.sourceMessageIds ?? []) {
       const source = await this.deps.threadService.getMessageSource(params.threadId, id)
@@ -581,6 +589,7 @@ export class ConversationTurnService {
       inputSources.push({ messageId: userMessage.id, revision: userMessage.revision })
       if (continuous) this.deps.threadService.conversations.begin({
         id: pairId, threadId: thread.id, agentId, generation: thread.generation, sources: inputSources,
+        metadata: { acceptsSupplements: !!this.deps.mainInbox && !params.internalScene, timelineGroupId },
       })
       onInputSaved(inputRecord)
       if (attachmentIds.length) {
@@ -593,7 +602,9 @@ export class ConversationTurnService {
         id: pairId, threadId: thread.id, agentId, generation: thread.generation, sources: inputSources,
         metadata: regeneration ? { regeneration: { messageId: regeneration.message.id,
           revision: regeneration.message.revision, role: regeneration.message.role, content: regeneration.message.content,
-          replacementMessageIds: regeneration.replacementMessageIds } } : undefined,
+          replacementMessageIds: regeneration.replacementMessageIds } } : {
+          acceptsSupplements: !!this.deps.mainInbox && !!params.queueMessageId && !params.internalScene, timelineGroupId,
+        },
       })
       onInputSaved(inputRecord)
     }
@@ -611,33 +622,7 @@ export class ConversationTurnService {
     if (!params.userActivityNotified && (inputPersistence === 'persistent' || regeneration) && !params.taskId && !params.realmId)
       await this.deps.onUserActivity?.(agentId, params.threadId)
     const { modelConfig, maxInputTokens } = await resolveModel()
-    const audioEnabled = nativeAudioEnabled(modelConfig)
-    const nativeAudios = attachments.filter(
-      (row) =>
-        row.kind === 'audio' &&
-        audioEnabled &&
-        row.sizeBytes <= MAX_NATIVE_AUDIO_BYTES &&
-        this.deps.attachmentService.toDto(row).contextMode !== 'reference',
-    )
-    if (nativeAudios.reduce((sum, row) => sum + row.sizeBytes, 0) > MAX_NATIVE_AUDIO_BYTES)
-      throw new AppError('PAYLOAD_TOO_LARGE', {
-        message: __t('server.audio-input', '单轮原生音频不能超过 12MB'),
-      })
-
-    const imageRows = attachments.filter((row) => row.kind === 'image')
-    const transcription = imageRows.length
-      ? await this.deps.imageUnderstandingService.transcribe(
-          await Promise.all(
-            imageRows.map(async (row) => ({
-              mimeType: row.mimeType,
-              name: row.originalName,
-              bytes: (await this.deps.attachmentService.readContent(row.id)).bytes,
-            })),
-          ),
-          params.signal,
-          agentId,
-        )
-      : null
+    const { audioEnabled, imageRows, transcription } = await this.prepareMedia(attachments, modelConfig, agentId, params.signal)
 
     const compiled = await this.deps.contextCompiler.compile(params.threadId, agentId, {
       internalScene: Boolean(params.internalScene),
@@ -854,6 +839,7 @@ export class ConversationTurnService {
     let desktopInterrupted = false
     try {
       const reply = await this.deps.agentService.chatWithCompiledMessages({
+        readSupplements: this.supplementReader(prepared, params),
         conversation: this.conversationActions(prepared, params.signal),
         requestedBy: prepared.proactive || params.taskId ? 'agent' : 'user',
         browserScope: params.browserScope,
@@ -1023,6 +1009,7 @@ export class ConversationTurnService {
     let executionPause: CompletedTurn['executionPause']
     let desktopInterrupted = false
     const stream = this.deps.agentService.chatStreamWithCompiledMessages({
+      readSupplements: this.supplementReader(prepared, params),
       conversation: this.conversationActions(prepared, params.signal),
       requestedBy: prepared.proactive || params.taskId ? 'agent' : 'user',
       browserScope: params.browserScope,
@@ -1163,6 +1150,43 @@ export class ConversationTurnService {
     }
   }
 
+  private supplementReader(prepared: PreparedTurn, params: PrepareTurnParams) {
+    const inbox = this.deps.mainInbox
+    if (!inbox || !prepared.continuous || params.internalScene || params.regeneration ||
+        (prepared.proactive && !params.queueMessageId) || prepared.capabilityScope === 'perception') return
+    return async () => {
+      const messages = await inbox.read(prepared.threadId, prepared.pairId, prepared.generation,
+        (input) => this.prepareSupplement(input, prepared, params.signal), params.signal)
+      if (messages.length) await params.onSupplementAccepted?.()
+      return messages
+    }
+  }
+
+  private async prepareSupplement(input: import('@infos/shared').QueuedConversationInput,
+    prepared: PreparedTurn, signal?: AbortSignal): Promise<SupplementContent> {
+    const { threadId, agentId } = prepared
+    const result: SupplementContent = { message: { role: 'user', content: input.content } }
+    if (input.attachmentIds?.length) {
+      const rows = await this.deps.attachmentService.validateForBinding(input.attachmentIds, threadId)
+      const model = this.preparedModels.get(prepared)
+      const { audioEnabled, imageRows, transcription } = await this.prepareMedia(rows, model, agentId, signal)
+      const mode = input.imageMode ?? 'auto'
+      if (imageRows.length && mode !== 'relay' && !model?.enableVision)
+        throw new AppError('BAD_REQUEST', { message: __t('errors.backend', '当前主模型未启用视觉能力，无法发送图片附件；请启用 enableVision 或移除图片') })
+      result.message.content = await this.buildCurrentContent(input.content, rows, mode, transcription?.summary, audioEnabled)
+      result.attachments = rows.map((row) => this.deps.attachmentService.toDto(row))
+      if (transcription) result.transcription = {
+        content: `【图片内容转述】\n${transcription.summary}`,
+        metadataJson: JSON.stringify({ kind: 'image_transcription', source: 'attachment', mode,
+          attachmentIds: imageRows.map((row) => row.id), modelId: transcription.modelId }),
+      }
+    }
+    if (input.workspaceContext) result.message = await this.appendWorkspaceContext(result.message, input.workspaceContext, agentId, threadId)
+    if (input.environmentEvents?.length) result.message = appendContextText(result.message,
+      formatEnvironmentContext(await describeEnvironmentEvents(input.environmentEvents, agentId, this.deps.getBackgroundTask)))
+    return result
+  }
+
   private conversationActions(prepared: PreparedTurn, signal?: AbortSignal): ConversationActions | undefined {
     if (!prepared.continuous) return
     const repo = this.deps.threadService.conversations
@@ -1223,6 +1247,7 @@ export class ConversationTurnService {
       failureMessage: completed.failureMessage ? redactPerceptionText(completed.failureMessage) : undefined,
     }
     repo.settle(prepared.pairId, status, {
+      timelineGroupId: execution ? JSON.parse(execution.metadataJson).timelineGroupId : undefined,
       regeneration: execution ? JSON.parse(execution.metadataJson).regeneration : undefined,
       ...completed,
       sourceMessages: execution ? JSON.parse(execution.inputSourcesJson) : prepared.inputSources,
@@ -1410,6 +1435,38 @@ export class ConversationTurnService {
     return { ...message, content: contextText.trimStart() }
   }
 
+  private async prepareMedia(attachments: AttachmentRow[], modelConfig: import('../llm/llmService').ModelConfig | null | undefined,
+    agentId: string, signal?: AbortSignal) {
+    const audioEnabled = nativeAudioEnabled(modelConfig)
+    const nativeAudios = attachments.filter(
+      (row) =>
+        row.kind === 'audio' &&
+        audioEnabled &&
+        row.sizeBytes <= MAX_NATIVE_AUDIO_BYTES &&
+        this.deps.attachmentService.toDto(row).contextMode !== 'reference',
+    )
+    if (nativeAudios.reduce((sum, row) => sum + row.sizeBytes, 0) > MAX_NATIVE_AUDIO_BYTES)
+      throw new AppError('PAYLOAD_TOO_LARGE', {
+        message: __t('server.audio-input', '单轮原生音频不能超过 12MB'),
+      })
+
+    const imageRows = attachments.filter((row) => row.kind === 'image')
+    const transcription = imageRows.length
+      ? await this.deps.imageUnderstandingService.transcribe(
+          await Promise.all(
+            imageRows.map(async (row) => ({
+              mimeType: row.mimeType,
+              name: row.originalName,
+              bytes: (await this.deps.attachmentService.readContent(row.id)).bytes,
+            })),
+          ),
+          signal,
+          agentId,
+        )
+      : null
+    return { audioEnabled, imageRows, transcription }
+  }
+
   private async buildCurrentContent(
     content: string,
     attachments: AttachmentRow[],
@@ -1511,7 +1568,7 @@ export class ConversationTurnService {
           [transcription],
         ),
       })
-    } else if (imageMode === 'relay') {
+    } else if (imageMode === 'relay' && attachments.some((row) => row.kind === 'image')) {
       throw new AppError('CONFIG_ERROR', { message: '多模态转述不可用，请检查转述模型配置' })
     }
     return parts

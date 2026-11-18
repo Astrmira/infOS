@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryStoreRegistry } from '@infos/backend/repositories/storeRegistry'
+import { migrateTriviumStores } from '@infos/backend/repositories/triviumMigration'
 import {
   databaseFormat,
   triviumFiles,
@@ -81,7 +82,7 @@ describe('MemoryStoreRegistry维度联动', () => {
     }
   })
 
-  it('首次写入真实 v9 文件组前保留完整备份，迁移 v10 后保留向量、正文与关系', () => {
+  it('启动时备份真实 v9 文件组，迁移至 v15 并保留向量、正文与关系', async () => {
     const registry = fixture(4)
     const target = registry.resolveAgentStorePath('pero', 'main')
     const root = join(target, '../..')
@@ -97,6 +98,7 @@ describe('MemoryStoreRegistry维度联动', () => {
     mkdirSync(join(root, 'agent_pero'), { recursive: true })
     for (const [name, bytes] of originals) writeFileSync(join(root, 'agent_pero', name), bytes)
     expect(databaseFormat(target)).toBe(9)
+    await migrateTriviumStores(root)
     try {
       const store = registry.getAgentStore('pero', 'main')
       expect(store.nodeCount()).toBe(2)
@@ -107,7 +109,7 @@ describe('MemoryStoreRegistry维度联动', () => {
         metadata: { source: '旧版关系' },
       })
       registry.closeAll()
-      expect(databaseFormat(target)).toBe(10)
+      expect(databaseFormat(target)).toBe(15)
       const backupRoot = upgradeBackupPath(root, target)
       const backups = readdirSync(backupRoot)
       expect(backups).toHaveLength(1)
@@ -115,7 +117,51 @@ describe('MemoryStoreRegistry维度联动', () => {
         expect(readFileSync(join(backupRoot, backups[0]!, name))).toEqual(bytes)
       expect(
         JSON.parse(readFileSync(join(backupRoot, backups[0]!, 'backup.json'), 'utf8')),
-      ).toMatchObject({ targetVersion: '0.9.0', format: 9 })
+      ).toMatchObject({ targetVersion: '0.9.2', format: 9 })
+    } finally {
+      registry.closeAll()
+    }
+  })
+
+  it('v10 已确认的 WAL 经中断续迁后可检索，后续启动保留新增数据', async () => {
+    const registry = fixture(2)
+    const target = registry.resolveSharedStorePath('facts')
+    const root = join(target, '../..')
+    const saved = JSON.parse(
+      readFileSync(new URL('../../fixtures/trivium/v10-wal-f32.json', import.meta.url), 'utf8'),
+    ) as { files: Record<string, string> }
+    mkdirSync(join(root, 'knowledge'), { recursive: true })
+    for (const [name, data] of Object.entries(saved.files)) {
+      writeFileSync(target + name.slice('sample.tdb'.length), Buffer.from(data, 'base64'))
+    }
+    const unrelated = target + '.notes.md'
+    writeFileSync(unrelated, '保留这份文档')
+    // 让文件替换遇到真实 I/O 错误，留下已核验候选库和持久化切换记录。
+    const journal = target + '.infos-upgrade-v15'
+    mkdirSync(journal + '.install')
+    await expect(migrateTriviumStores(root)).rejects.toThrow()
+    expect(databaseFormat(target)).toBe(10)
+    const { backup } = JSON.parse(readFileSync(journal, 'utf8')) as { backup: string }
+    const archive = join(upgradeBackupPath(root, target), backup)
+    expect(readFileSync(join(archive, 'facts.tdb.wal'))).toEqual(Buffer.from(saved.files['sample.tdb.wal']!, 'base64'))
+    rmSync(journal + '.install', { recursive: true })
+    // 模拟主文件已替换、索引和 WAL 尚未替换时掉电。
+    writeFileSync(target, readFileSync(join(archive, 'converted', 'database.tdb')))
+    await migrateTriviumStores(root, { recoverOnly: true })
+    try {
+      const db = registry.getSharedStore('facts')
+      expect(db.allNodeIds().sort()).toEqual([7, 9])
+      expect(Array.from(db.get(9)!.vector)).toEqual([0.25, 1])
+      expect(db.get(9)?.payload).toMatchObject({ code: 'beta', text: '原始乙' })
+      expect(db.getEdge(7, 9, '关系')).toMatchObject({ weight: 0.5, metadata: { rank: 7, source: 'release-0.9.0' } })
+      expect(db.searchHybrid([0, 0], '独立关键词', 4, 0, 0, 0).map(hit => hit.id)).toContain(7)
+      expect(() => db.insertWithId(12, [0, 1], { code: 'alpha' })).toThrow()
+      db.insertWithId(11, [0, 1], { code: 'gamma', text: '升级后的新事实' })
+      registry.closeAll()
+      await migrateTriviumStores(root)
+      expect(registry.getSharedStore('facts').get(11)?.payload).toEqual({ code: 'gamma', text: '升级后的新事实' })
+      expect(readFileSync(unrelated, 'utf8')).toBe('保留这份文档')
+      expect(existsSync(journal)).toBe(false)
     } finally {
       registry.closeAll()
     }
@@ -433,11 +479,15 @@ describe('MemoryStoreRegistry维度联动', () => {
       registry.closeAll()
       const store = registry.getAgentStore('pero', 'main')
       store.insertWithId(1, [1, 0, 0, 0], { content: '快照正文' })
+      store.indexKeyword(1, 'blueberry')
+      store.indexText(1, 'blueberry')
       registry.captureSnapshot(snapshot, () => {
         mkdirSync(snapshot, { recursive: true })
         writeFileSync(join(snapshot, 'infos.db'), 'SQLite 同步副本')
       })
-      expect(clone.getAgentStore('pero', 'main').get(1)?.payload).toEqual({ content: '快照正文' })
+      const restored = clone.getAgentStore('pero', 'main')
+      expect(restored.get(1)?.payload).toEqual({ content: '快照正文' })
+      expect(restored.searchHybrid([0, 0, 0, 0], 'blueberry', 1, 0, 0.01, 0).map(hit => hit.id)).toEqual([1])
       expect(clone.getAgentStore('pero', 'social').get(2)?.payload).toEqual({ content: '社交主存' })
       const clonedPath = clone.resolveAgentStorePath('pero', 'main')
       expect(triviumFiles(clonedPath).some((file) => /\.pld\.\d+$/.test(file))).toBe(true)

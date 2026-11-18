@@ -1,9 +1,8 @@
 import { ref, type Ref } from 'vue'
-import { useEventListener } from '../useEventListener'
 
 /**
- * 下拉选择器的键盘导航：方向键 / Home / End 移动高亮，Enter / 空格确认，Esc 关闭。
- * 打开期间在 document 捕获阶段接管按键；由 PSelect 接线。
+ * 下拉选择器的键盘导航：方向键、Home、End 移动高亮，Enter 或空格确认。
+ * 展开时通过 useAnchoredPopup 接收按键，焦点保留在选择器入口。
  */
 export function useSelectKeyboard(options: {
   /** 当前选项列表（只读取 disabled）。 */
@@ -60,17 +59,8 @@ export function useSelectKeyboard(options: {
     options.open()
   }
 
-  /** 打开期间在捕获阶段接管按键，Esc 只关列表，不会连带关掉外层对话框。 */
-  function handleOpenKeydown(event: Event): void {
-    if (!isOpen.value) return
-    const { key } = event as KeyboardEvent
-    if (key === 'Escape') {
-      event.preventDefault()
-      event.stopPropagation()
-      options.close()
-      triggerRef.value?.focus({ preventScroll: true })
-      return
-    }
+  function handleOpenKeydown(event: KeyboardEvent): void {
+    const { key } = event
     if (key === 'Tab') {
       options.close()
       return
@@ -92,7 +82,5 @@ export function useSelectKeyboard(options: {
     handler()
   }
 
-  useEventListener(document, 'keydown', handleOpenKeydown, { capture: true })
-
-  return { activeIndex, revealActiveOption, handleTriggerKeydown }
+  return { activeIndex, revealActiveOption, handleTriggerKeydown, handleOpenKeydown }
 }

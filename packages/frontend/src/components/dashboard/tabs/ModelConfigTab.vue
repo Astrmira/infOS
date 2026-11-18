@@ -34,6 +34,7 @@ import {
   type LlmModel,
 } from '../../../composables/dashboard/useModelConfig'
 import BrandIcon from '../../brands/BrandIcon.vue'
+import RemoteModelField from '../RemoteModelField.vue'
 import BrandSelect, { type BrandSelectOption } from '../../brands/BrandSelect.vue'
 import { resolveModelBrand, resolveProviderBrand } from '../../../lib/modelBrands'
 import { useDashboardContext } from '../../../composables/dashboard'
@@ -375,7 +376,7 @@ const modelChoices = computed<BrandSelectOption[]>(() =>
 const mainModelBrand = computed(() =>
   resolveModelBrand(models.value.find((model) => model.id === mainModelId.value)?.modelId),
 )
-const taskModelChoices = computed<BrandSelectOption[]>(() => [
+const mainModelChoices = computed<BrandSelectOption[]>(() => [
   {
     get label() {
       return __t('ui.settings', '跟随主模型')
@@ -385,13 +386,12 @@ const taskModelChoices = computed<BrandSelectOption[]>(() => [
   },
   ...modelChoices.value,
 ])
-const agentModelChoices = computed<BrandSelectOption[]>(() => [
+const backgroundTaskModelChoices = computed<BrandSelectOption[]>(() => [
   {
     get label() {
-      return __t('ui.settings', '跟随主模型')
+      return __t('ui.settings', '跟随角色模型')
     },
     value: '',
-    brand: mainModelBrand.value,
   },
   ...modelChoices.value,
 ])
@@ -402,17 +402,6 @@ const visionModelChoices = computed<BrandSelectOption[]>(() =>
     brand: resolveModelBrand(model.modelId),
   })),
 )
-function choicesForModelIds(ids: string[]): BrandSelectOption[] {
-  return ids.map((modelId) => ({
-    label: modelId,
-    value: modelId,
-    brand: resolveModelBrand(modelId),
-  }))
-}
-const remoteModelChoices = computed(() => choicesForModelIds(remoteModels.value))
-const embeddingModelChoices = computed(() => choicesForModelIds(remoteEmbeddingModels.value))
-const rerankerModelChoices = computed(() => choicesForModelIds(remoteRerankerModels.value))
-
 function providerBrandForModel(model: LlmModel) {
   const connection = providerConnections.value.find(
     (item) => item.id === model.providerConnectionId,
@@ -704,10 +693,10 @@ function connectionName(model: LlmModel) {
       <PCard pixel padding="lg" class="shrink-0">
         <div class="flex items-center justify-between gap-4">
           <div class="min-w-0">
-            <h4 class="text-sm font-black text-slate-800 font-pixel">
+            <h4 class="text-sm font-black text-[var(--ui-text-primary)] font-pixel">
               {{ __t('ui.settings', '向量功能') }}
             </h4>
-            <p class="text-xs text-slate-400 mt-1.5">
+            <p class="text-xs text-[var(--ui-text-tertiary)] mt-1.5">
               {{ __t('ui.settings', '生成向量并用于检索') }}
             </p>
           </div>
@@ -729,20 +718,20 @@ function connectionName(model: LlmModel) {
       <PCard pixel padding="lg" overflow-visible>
         <div class="flex items-center gap-4 mb-5">
           <div
-            class="w-12 h-12 flex items-center justify-center bg-sky-500 text-white flex-shrink-0"
+            class="w-12 h-12 flex items-center justify-center bg-[var(--ui-accent-sky)] text-[var(--ui-text-inverse)] flex-shrink-0"
           >
             <PixelIcon name="brain" size="sm" />
           </div>
           <div>
-            <h4 class="text-base font-black text-slate-800 font-pixel">
+            <h4 class="text-base font-black text-[var(--ui-text-primary)] font-pixel">
               {{ __t('ui.settings', 'Embedding 嵌入模型') }}
             </h4>
-            <p class="text-xs text-slate-400 mt-0.5">{{ __t('ui.settings', '用于语义检索') }}</p>
+            <p class="text-xs text-[var(--ui-text-tertiary)] mt-0.5">{{ __t('ui.settings', '用于语义检索') }}</p>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel">
               {{ __t('ui.settings', '模型来源 Provider') }}
             </label>
             <PSelect
@@ -758,7 +747,7 @@ function connectionName(model: LlmModel) {
             />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel">
               {{ __t('ui.settings', '向量维度 Dimension') }}
             </label>
             <PInputNumber
@@ -767,44 +756,22 @@ function connectionName(model: LlmModel) {
               :max="4096"
               :disabled="embeddingProvider === 'local'"
             />
-            <p v-if="embeddingProvider === 'local'" class="text-[10px] text-slate-400 italic">
+            <p v-if="embeddingProvider === 'local'" class="text-[10px] text-[var(--ui-text-tertiary)] italic">
               {{ __t('ui.settings', '* 本地模型固定为 512 维') }}
             </p>
           </div>
           <template v-if="embeddingProvider === 'api'">
-            <div class="flex flex-col gap-1.5 col-span-2">
-              <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel flex items-center justify-between"
-              >
-                <span class="model-id-label">
-                  <BrandIcon :brand="resolveModelBrand(embeddingModelId)" size="xs" />
-                  {{ __t('ui.settings', '模型 ID') }}
-                </span>
-                <PButton
-                  variant="ghost"
-                  size="sm"
-                  :loading="isFetchingEmbedding"
-                  @click="fetchRemoteEmbeddingModels"
-                >
-                  <PixelIcon name="refresh" size="xs" />
-                  {{ __t('ui.settings', '获取模型列表') }}
-                </PButton>
-              </label>
-              <BrandSelect
-                v-if="remoteEmbeddingModels.length > 0"
-                v-model="embeddingModelId"
-                :options="embeddingModelChoices"
-                :placeholder="__t('ui.settings', '从列表中选择...')"
-              />
-              <PInput
-                v-else
-                v-model="embeddingModelId"
-                :placeholder="__t('ui.settings', '例如: text-embedding-3-small')"
-              />
-            </div>
+            <RemoteModelField
+              v-model="embeddingModelId"
+              class="col-span-2"
+              :model-ids="remoteEmbeddingModels"
+              :loading="isFetchingEmbedding"
+              :placeholder="__t('ui.settings', '例如: text-embedding-3-small')"
+              @refresh="fetchRemoteEmbeddingModels"
+            />
             <div class="flex flex-col gap-1.5">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 {{ __t('ui.settings', 'API Base URL (可选)') }}
               </label>
@@ -815,7 +782,7 @@ function connectionName(model: LlmModel) {
             </div>
             <div class="flex flex-col gap-1.5">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 {{ __t('ui.settings', 'API Key (可选)') }}
               </label>
@@ -832,8 +799,8 @@ function connectionName(model: LlmModel) {
           :class="[
             'mt-5 flex items-center gap-2 border-2 px-4 py-3 text-xs font-bold',
             embeddingActivationResult.status === 'success'
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-              : 'border-rose-300 bg-rose-50 text-rose-700',
+              ? 'border-[color:var(--ui-success)] bg-[var(--ui-success-soft)] text-[var(--ui-success)]'
+              : 'border-[color:var(--ui-danger)] bg-[var(--ui-danger-soft)] text-[var(--ui-danger)]',
           ]"
           role="status"
         >
@@ -850,55 +817,33 @@ function connectionName(model: LlmModel) {
         <div class="flex items-center gap-4 mb-5">
           <div
             :class="[
-              'w-12 h-12 flex items-center justify-center text-white flex-shrink-0',
-              rerankerEnabled ? 'bg-amber-500' : 'bg-slate-400',
+              'w-12 h-12 flex items-center justify-center text-[var(--ui-text-inverse)] flex-shrink-0',
+              rerankerEnabled ? 'bg-[var(--ui-warning)]' : 'bg-[var(--ui-text-disabled)]',
             ]"
           >
             <PixelIcon name="sparkle" size="sm" />
           </div>
           <div class="flex-1">
-            <h4 class="text-base font-black text-slate-800 font-pixel">
+            <h4 class="text-base font-black text-[var(--ui-text-primary)] font-pixel">
               {{ __t('ui.settings', 'Reranker 重排序模型') }}
             </h4>
-            <p class="text-xs text-slate-400 mt-0.5">{{ __t('ui.settings', '优化检索排序') }}</p>
+            <p class="text-xs text-[var(--ui-text-tertiary)] mt-0.5">{{ __t('ui.settings', '优化检索排序') }}</p>
           </div>
           <PSwitch v-model="rerankerEnabled" class="flex-shrink-0" />
         </div>
         <template v-if="rerankerEnabled">
           <div class="grid grid-cols-2 gap-4">
-            <div class="flex flex-col gap-1.5 col-span-2">
-              <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel flex items-center justify-between"
-              >
-                <span class="model-id-label">
-                  <BrandIcon :brand="resolveModelBrand(rerankerModelId)" size="xs" />
-                  {{ __t('ui.settings', '模型 ID') }}
-                </span>
-                <PButton
-                  variant="ghost"
-                  size="sm"
-                  :loading="isFetchingReranker"
-                  @click="fetchRemoteRerankerModels"
-                >
-                  <PixelIcon name="refresh" size="xs" />
-                  {{ __t('ui.settings', '获取模型列表') }}
-                </PButton>
-              </label>
-              <BrandSelect
-                v-if="remoteRerankerModels.length > 0"
-                v-model="rerankerModelId"
-                :options="rerankerModelChoices"
-                :placeholder="__t('ui.settings', '从列表中选择...')"
-              />
-              <PInput
-                v-else
-                v-model="rerankerModelId"
-                :placeholder="__t('ui.settings', '例如: bge-reranker-v2-m3')"
-              />
-            </div>
+            <RemoteModelField
+              v-model="rerankerModelId"
+              class="col-span-2"
+              :model-ids="remoteRerankerModels"
+              :loading="isFetchingReranker"
+              :placeholder="__t('ui.settings', '例如: bge-reranker-v2-m3')"
+              @refresh="fetchRemoteRerankerModels"
+            />
             <div class="flex flex-col gap-1.5">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 {{ __t('ui.settings', 'API Base URL (可选)') }}
               </label>
@@ -909,7 +854,7 @@ function connectionName(model: LlmModel) {
             </div>
             <div class="flex flex-col gap-1.5">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 {{ __t('ui.settings', 'API Key (可选)') }}
               </label>
@@ -923,7 +868,7 @@ function connectionName(model: LlmModel) {
         </template>
         <div
           v-else
-          class="reranker-disabled p-4 bg-slate-50 border border-slate-200 text-center text-[13px] text-slate-400"
+          class="p-4 bg-[var(--ui-bg-surface-soft)] border border-[color:var(--ui-border-default)] text-center text-[13px] text-[var(--ui-text-tertiary)]"
         >
           <p>{{ __t('ui.settings', 'Reranker 已关闭') }}</p>
         </div>
@@ -1083,36 +1028,15 @@ function connectionName(model: LlmModel) {
             />
           </div>
           <!-- 模型 ID + 获取列表 -->
-          <div class="flex flex-col gap-1.5">
-            <label
-              class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel flex items-center justify-between"
-            >
-              <span class="model-id-label">
-                <BrandIcon :brand="resolveModelBrand(editorForm.modelId)" size="xs" />
-                {{ __t('ui.settings', '模型 ID') }}
-              </span>
-              <PButton
-                variant="ghost"
-                size="sm"
-                :loading="isFetchingRemote"
-                @click="fetchRemoteModels"
-              >
-                <PixelIcon name="refresh" size="xs" />
-                {{ __t('ui.settings', '获取模型列表') }}
-              </PButton>
-            </label>
-            <BrandSelect
-              v-if="remoteModels.length > 0"
-              v-model="editorForm.modelId"
-              :options="remoteModelChoices"
-              :placeholder="__t('ui.settings', '从列表中选择...')"
-            />
-            <PInput
-              v-model="editorForm.modelId"
-              :placeholder="__t('ui.settings', '模型 ID，如 gpt-4o')"
-              :aria-invalid="!!editorErrors.modelId"
-            />
-          </div>
+          <RemoteModelField
+            v-model="editorForm.modelId"
+            keep-manual-input
+            :invalid="!!editorErrors.modelId"
+            :model-ids="remoteModels"
+            :loading="isFetchingRemote"
+            :placeholder="__t('ui.settings', '模型 ID，如 gpt-4o')"
+            @refresh="fetchRemoteModels"
+          />
           <!-- 请求参数：每项先决定是否传参，再显示匹配的编辑控件。 -->
           <div class="model-params flex flex-col gap-3 rounded border-2 p-3">
             <div class="flex items-center justify-between border-b border-slate-200 pb-2">
@@ -1382,7 +1306,7 @@ function connectionName(model: LlmModel) {
             </span>
             <div class="task-assignment-heading-copy">
               <h4>{{ __t('ui.settings', '系统任务') }}</h4>
-              <p>{{ __t('ui.settings', '默认使用主模型，选择后自动保存。') }}</p>
+              <p>{{ __t('ui.settings', '选择后自动保存。') }}</p>
             </div>
           </div>
           <div v-for="slot in TASK_SLOTS" :key="slot.key" class="task-assignment-row">
@@ -1396,7 +1320,7 @@ function connectionName(model: LlmModel) {
             <BrandSelect
               teleport
               :model-value="taskAssignments[slot.key] || ''"
-              :options="taskModelChoices"
+              :options="slot.key === 'background_task' ? backgroundTaskModelChoices : mainModelChoices"
               :aria-label="slot.label"
               class="task-assignment-select"
               @update:model-value="
@@ -1518,7 +1442,7 @@ function connectionName(model: LlmModel) {
               <BrandSelect
                 teleport
                 :model-value="agentAssignments[agent.id] || ''"
-                :options="agentModelChoices"
+                :options="mainModelChoices"
                 class="w-56"
                 @update:model-value="
                   (value: string | number) =>
@@ -1831,8 +1755,7 @@ function connectionName(model: LlmModel) {
   gap: 12px;
   margin-right: 10px;
 }
-.model-provider-line,
-.model-id-label {
+.model-provider-line {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -1869,8 +1792,7 @@ function connectionName(model: LlmModel) {
 }
 .capability-group,
 .model-params,
-.capability-editor,
-.reranker-disabled {
+.capability-editor {
   border-color: var(--ui-border-default);
   background: var(--dash-panel-soft);
   color: var(--ui-text-secondary);

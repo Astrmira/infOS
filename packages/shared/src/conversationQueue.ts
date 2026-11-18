@@ -4,6 +4,10 @@ export interface QueuedConversationInput {
   expectedGeneration?: number
   agentId?: string
   content: string
+  /** 主会话可显式要求另起一次执行，默认在本次执行的下一次模型调用前接收。 */
+  delivery?: 'next_turn'
+  /** 由服务端于入队事务内确定，客户端不能指定正在执行的目标。 */
+  supplementTo?: string
   attachmentIds?: string[]
   imageMode?: 'auto' | 'native' | 'relay'
   /** 仅宿主内部填写；HTTP 消息结构不接受该字段。 */
@@ -36,6 +40,8 @@ export interface ConversationQueueItem {
 
 export interface ConversationQueueSnapshot {
   threadId: string
+  /** 最近一次队列终态仍对应当前历史首页时，返回该帧的操作标识。 */
+  terminalOperationId?: string
   active?: boolean
   paused: boolean
   reason?: string

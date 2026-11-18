@@ -59,6 +59,50 @@ async function collectLoop(params: Parameters<typeof runReActLoop>[0]) {
 }
 
 describe('runReActLoop', () => {
+  it('自然答复交付前收到补话，模型按实际顺序合答，旧草稿只留在过程里', async () => {
+    const requests: ChatMessage[][] = []
+    const inbox: ChatMessage[] = []
+    const chatStream = (_: ModelConfig, messages: ChatMessage[]) => {
+      requests.push(structuredClone(messages))
+      if (requests.length === 1) inbox.push({ role: 'user', content: '我换个时间，明天再去' })
+      return streamFrom([{ choices: [{ delta: { content: requests.length === 1 ? '那今天去。' : '好，改到明天。' },
+        finishReason: 'stop' }] }])
+    }
+    const { result } = await collectLoop({ llmService: { chatStream } as never, modelConfig,
+      tools: undefined, toolExecutor: undefined,
+      source: 'desktop', agentId: 'pero', messages: [{ role: 'user', content: '今天去' }],
+      readSupplements: async () => inbox.splice(0),
+    })
+    expect(requests).toHaveLength(2)
+    expect(requests[1]!.filter((m) => m.role === 'user').map((m) => m.content)).toEqual(['今天去', '我换个时间，明天再去'])
+    expect(result.contentBlocks.filter((b) => b.kind === 'narration')).toMatchObject([
+      { content: '那今天去。', phase: 'progress' }, { content: '好，改到明天。', phase: 'final' },
+    ])
+  })
+  it('工具执行期间收到补话，完整的工具回传位于补话之前', async () => {
+    const requests: ChatMessage[][] = []
+    const inbox: ChatMessage[] = []
+    const chatStream = (_: ModelConfig, messages: ChatMessage[]) => {
+      requests.push(structuredClone(messages))
+      return requests.length === 1
+        ? streamFrom([{ choices: [{ delta: { toolCalls: [{ index: 0, id: 'read', type: 'function',
+          function: { name: 'read_file', arguments: '{"file_path":"清单.md"}' } }] }, finishReason: 'tool_calls' }] }])
+        : streamFrom([{ choices: [{ delta: { content: '共有三项。' }, finishReason: 'stop' }] }])
+    }
+    await collectLoop({ llmService: { chatStream } as never, modelConfig, source: 'desktop', agentId: 'pero',
+      messages: [{ role: 'user', content: '读一下清单' }], readSupplements: async () => inbox.splice(0),
+      tools: [{ name: 'read_file', description: '读取文件', parameters: { type: 'object' } }],
+      toolExecutor: { execute: async () => {
+        inbox.push({ role: 'user', content: '只告诉我项数' })
+        return { output: '甲、乙、丙', isError: false, shouldTerminate: false, durationMs: 1 }
+      } },
+    })
+    expect(requests).toHaveLength(2)
+    expect(requests[1]!.slice(-3)).toMatchObject([
+      { role: 'assistant', toolCalls: [{ id: 'read' }] }, { role: 'tool', toolCallId: 'read' },
+      { role: 'user', content: '只告诉我项数' },
+    ])
+  })
   it('极简侧会话首轮提供心流与完成工具，可直接交付回复并结束', async () => {
     const args = { reply: '今天也想陪你聊聊。' }
     const menus: string[][] = []

@@ -1,13 +1,8 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { t as __t } from '../../../i18n/index'
-import {
-  confirmTabLeave,
-  useMainNav,
-  type CompanionsSubTab,
-} from '../../../composables/main/useMainNav'
-import { redirectTabRequest, useDetachedPanels } from '../../../composables/shell/useDetachedPanels'
-import NavDetachMenu from '../../shell/NavDetachMenu.vue'
+import { useMainNav, type CompanionsSubTab } from '../../../composables/main/useMainNav'
+import HubWorkspace, { type HubTab } from './HubWorkspace.vue'
 import MainTabLoading from '../MainTabLoading.vue'
 import { PixelIcon } from '../../pixel'
 import HomeScopePicker from '../../desktop/home/HomeScopePicker.vue'
@@ -32,13 +27,9 @@ const AgentConfigTab = defineAsyncComponent({
 })
 
 const { companionsSubTab } = useMainNav()
-const shell = useDetachedPanels()
-const detachMenu = ref<InstanceType<typeof NavDetachMenu> | null>(null)
 const scope = useHomeScope()
 
-const tabs = computed<
-  Array<{ id: CompanionsSubTab; label: string; icon: string; detachPageId?: string }>
->(() => [
+const tabs = computed<HubTab<CompanionsSubTab>[]>(() => [
   {
     id: 'overview',
     label: __t('ui.navigation', '状态总览'),
@@ -57,78 +48,41 @@ const tabs = computed<
     detachPageId: 'agent_config',
   },
 ])
-
-async function selectSubTab(tabId: CompanionsSubTab, detachPageId?: string): Promise<void> {
-  if (detachPageId && redirectTabRequest(detachPageId)) return
-  if (companionsSubTab.value === tabId) return
-  if (!(await confirmTabLeave())) return
-  companionsSubTab.value = tabId
-}
 </script>
 
 <template>
-  <div class="hub-workspace">
-    <header class="hub-header">
-      <div class="hub-brand">
-        <PixelIcon name="paw" size="sm" class="hub-brand-icon" />
-        <h1 class="hub-brand-title">{{ __t('ui.navigation', '伙伴') }}</h1>
-      </div>
+  <HubWorkspace
+    v-model="companionsSubTab"
+    icon="paw"
+    :title="__t('ui.navigation', '伙伴')"
+    :navigation-label="__t('ui.navigation', '伙伴分区')"
+    :tabs="tabs"
+  >
+    <OverviewTab v-if="companionsSubTab === 'overview'" />
 
-      <nav class="hub-tabs" :aria-label="__t('ui.navigation', '伙伴分区')">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          type="button"
-          class="hub-tab-btn"
-          :class="{ 'is-active': companionsSubTab === tab.id }"
-          :aria-current="companionsSubTab === tab.id ? 'page' : undefined"
-          :data-onboarding-nav="tab.detachPageId ?? tab.id"
-          @click="selectSubTab(tab.id, tab.detachPageId)"
-          @contextmenu="tab.detachPageId && detachMenu?.open($event, tab.detachPageId)"
-        >
-          <PixelIcon :name="tab.icon" size="xs" />
-          <span>{{ tab.label }}</span>
-          <PixelIcon
-            v-if="tab.detachPageId && shell.isDetached(tab.detachPageId)"
-            name="external-link"
-            size="xs"
-            class="hub-tab-detached"
-            :title="__t('ui.desktop-shell', '已摘出到桌面')"
-          />
-        </button>
-      </nav>
-    </header>
-
-    <div class="hub-stage settings-scrollbar">
-      <OverviewTab v-if="companionsSubTab === 'overview'" />
-
-      <div v-else-if="companionsSubTab === 'space'" class="companions-space-view">
-        <header class="companions-space-head">
-          <div class="companions-space-brand">
-            <span class="companions-space-emblem" aria-hidden="true">
-              <PixelIcon name="archive" size="md" />
-            </span>
-            <div class="companions-space-title-wrap">
-              <h2>{{ __t('ui.desktop', '共享空间') }}</h2>
-              <p>{{ __t('ui.desktop', '与伙伴交换文件与物品，管理记住的电脑地点。') }}</p>
-            </div>
+    <div v-else-if="companionsSubTab === 'space'" class="companions-space-view">
+      <header class="companions-space-head">
+        <div class="companions-space-brand">
+          <span class="companions-space-emblem" aria-hidden="true">
+            <PixelIcon name="archive" size="md" />
+          </span>
+          <div class="companions-space-title-wrap">
+            <h2>{{ __t('ui.desktop', '共享空间') }}</h2>
+            <p>{{ __t('ui.desktop', '与伙伴交换文件与物品，管理记住的电脑地点。') }}</p>
           </div>
-        </header>
-        <HomeScopePicker :state="scope" />
-        <div class="companions-space-grid">
-          <HomeShelfPanel :scope="scope.scope.value" />
-          <HomeMapPanel :scope="scope.scope.value" />
         </div>
+      </header>
+      <HomeScopePicker :state="scope" />
+      <div class="companions-space-grid">
+        <HomeShelfPanel :scope="scope.scope.value" />
+        <HomeMapPanel :scope="scope.scope.value" />
       </div>
-
-      <AgentConfigTab v-else-if="companionsSubTab === 'agent_config'" />
     </div>
 
-    <NavDetachMenu ref="detachMenu" />
-  </div>
+    <AgentConfigTab v-else-if="companionsSubTab === 'agent_config'" />
+  </HubWorkspace>
 </template>
 
-<style scoped src="./hub-workspace.css"></style>
 <style scoped>
 .companions-space-view {
   /* 硬朗哑光工程面板语义变量，供下级 ScopePicker / 置物架 / 地图统一继承 */

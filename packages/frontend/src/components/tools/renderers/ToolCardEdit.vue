@@ -4,6 +4,7 @@ import { t as __t } from '../../../i18n/index'
 /** ToolCardEdit — infOS 文件变更检查器：统一 Diff 轨道、行号和修改统计。 */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { FileWritePreviewBaseline } from '@infos/shared'
+import FileDiffView from './FileDiffView.vue'
 import {
   useFileMutationPreview,
   type FileMutationPreview,
@@ -36,7 +37,9 @@ const localPreview = useFileMutationPreview(
   () => !props.preview && props.active,
 )
 const preview = computed(() => props.preview ?? localPreview.value)
-const grid = ref<HTMLDivElement>()
+const legacyGrid = ref<HTMLDivElement>()
+const diffView = ref<InstanceType<typeof FileDiffView>>()
+const grid = computed(() => diffView.value?.viewport ?? legacyGrid.value)
 const scrollTop = ref(0)
 const following = ref(true)
 let scrollFrame: number | undefined
@@ -111,7 +114,10 @@ function chaseBottom(): void {
   }
   scrollFrame = requestAnimationFrame(step)
 }
-watch([diffRows, () => props.active], async () => {
+watch(grid, (element) => {
+  if (element) element.scrollTop = scrollTop.value
+})
+watch([diffRows, () => props.active, grid], async () => {
   await nextTick()
   const el = grid.value
   if (el) scrollTop.value = el.scrollTop
@@ -174,15 +180,13 @@ function resumeFollowing(): void {
       </button>
     </div>
 
-    <div
+    <FileDiffView
       v-if="diffRows.length"
-      ref="grid"
-      class="diff-grid"
-      role="table"
-      :aria-label="__t('ui.tools', '文件差异')"
-      :aria-rowcount="diffRows.length"
-      tabindex="0"
-      @scroll.passive="onScroll"
+      ref="diffView"
+      :rows="diffRows"
+      :path="filePath"
+      :active="active"
+      @scroll="onScroll"
       @wheel.passive="stopFollowing"
       @touchstart.passive="stopFollowing"
       @pointerdown="stopFollowing"
@@ -190,31 +194,47 @@ function resumeFollowing(): void {
       @keydown.page-up="stopFollowing"
       @keydown.home="stopFollowing"
     >
-      <div :style="{ height: `${firstRow * rowHeight}px` }" aria-hidden="true" />
       <div
-        v-for="(row, index) in windowRows"
-        :key="`${firstRow + index}:${row.kind}`"
-        class="diff-row"
-        :class="`is-${row.kind}`"
-        role="row"
-        :aria-rowindex="firstRow + index + 1"
+        ref="legacyGrid"
+        class="diff-grid"
+        role="table"
+        :aria-label="__t('ui.tools', '文件差异')"
+        :aria-rowcount="diffRows.length"
+        tabindex="0"
+        @scroll.passive="onScroll"
+        @wheel.passive="stopFollowing"
+        @touchstart.passive="stopFollowing"
+        @pointerdown="stopFollowing"
+        @keydown.up="stopFollowing"
+        @keydown.page-up="stopFollowing"
+        @keydown.home="stopFollowing"
       >
-        <span class="diff-line diff-line--old">{{ row.oldLine ?? '' }}</span>
-        <span class="diff-line diff-line--new">{{ row.newLine ?? '' }}</span>
-        <span class="diff-sign">
-          {{ row.kind === 'add' ? '+' : row.kind === 'remove' ? '−' : '·' }}
-        </span>
-        <code>
-          {{ row.text || ' ' }}
-          <i
-            v-if="pending && firstRow + index === diffRows.length - 1"
-            class="diff-cursor"
-            aria-hidden="true"
-          />
-        </code>
+        <div :style="{ height: `${firstRow * rowHeight}px` }" aria-hidden="true" />
+        <div
+          v-for="(row, index) in windowRows"
+          :key="`${firstRow + index}:${row.kind}`"
+          class="diff-row"
+          :class="`is-${row.kind}`"
+          role="row"
+          :aria-rowindex="firstRow + index + 1"
+        >
+          <span class="diff-line diff-line--old">{{ row.oldLine ?? '' }}</span>
+          <span class="diff-line diff-line--new">{{ row.newLine ?? '' }}</span>
+          <span class="diff-sign">
+            {{ row.kind === 'add' ? '+' : row.kind === 'remove' ? '−' : '·' }}
+          </span>
+          <code>
+            {{ row.text || ' ' }}
+            <i
+              v-if="pending && firstRow + index === diffRows.length - 1"
+              class="diff-cursor"
+              aria-hidden="true"
+            />
+          </code>
+        </div>
+        <div :style="{ height: `${spacerAfter}px` }" aria-hidden="true" />
       </div>
-      <div :style="{ height: `${spacerAfter}px` }" aria-hidden="true" />
-    </div>
+    </FileDiffView>
 
     <div v-if="diffTruncated" class="diff-inspector__truncated">
       <span>{{ __t('ui.tools', '预览已限长') }}</span>

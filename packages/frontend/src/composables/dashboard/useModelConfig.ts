@@ -61,6 +61,16 @@ export type ModelTab = 'llm' | 'vector'
 /** 任务槽元数据（供前端 UI 使用） */
 export const TASK_SLOTS = [
   {
+    key: 'background_task',
+    get label() {
+      return __t('ui.settings', '后台任务')
+    },
+    get description() {
+      return __t('ui.settings', '执行交给伙伴的后台任务')
+    },
+    icon: 'briefcase',
+  },
+  {
     key: 'approval',
     get label() {
       return __t('ui.settings', '工具审批')

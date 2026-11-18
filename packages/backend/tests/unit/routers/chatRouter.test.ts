@@ -211,6 +211,29 @@ function createCtx() {
 }
 
 describe('ChatRouter', () => {
+  it('SSE 将 Surface 和业务错误各编码一次，保留换行与引号', async () => {
+    const ctx = createCtx()
+    const message = '模型返回了“错误”\n第二行 "detail"'
+    ctx.conversationTurnService.streamTurn.mockImplementation(() => { throw new AppError('CONFIG_ERROR', { message }) })
+    const response = await createChatRouter(ctx as never).request('http://test/stream', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ threadId: 't1', agentId: 'pero', content: '你好' }),
+    })
+    expect(response.status).toBe(200)
+    const events = (await response.text()).trim().split(/\r?\n\r?\n/).map(block => {
+      const fields = Object.fromEntries(block.split(/\r?\n/).map(line => {
+        const colon = line.indexOf(':')
+        return [line.slice(0, colon), line.slice(colon + 1).trimStart()]
+      }))
+      return { event: fields.event, data: JSON.parse(fields.data!) }
+    })
+    expect(events).toMatchObject([
+      { event: 'surface', data: { sequence: 1, operation: { type: 'surface.open', threadId: 't1' } } },
+      { event: 'surface', data: { sequence: 2, operation: { type: 'surface.fail', code: 'CONFIG_ERROR', message } } },
+      { event: 'error', data: { code: 'CONFIG_ERROR', message } },
+    ])
+  })
+
   it('会话 Skills 选择保存后可读取，取消后不再启用', async () => {
     const ctx = createCtx()
     ctx.capabilityGate.resolve.mockReturnValue({

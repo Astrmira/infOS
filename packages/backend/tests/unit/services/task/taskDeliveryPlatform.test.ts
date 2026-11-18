@@ -99,9 +99,9 @@ describe('平台无关的任务投递', () => {
     })
   })
 
-  it('桌面结果回填与持久唤醒各投递一次，不截断权威结果', async () => {
+  it.each(['main', 'side'] as const)('%s 桌面结果回填与持久唤醒各投递一次，不截断权威结果', async (threadKind) => {
     const { db, service } = setup()
-    db.insert(schema.threads).values({ id: 'origin', agentId: 'pero', channel: 'desktop' }).run()
+    db.insert(schema.threads).values({ id: 'origin', agentId: 'pero', channel: 'desktop', threadKind }).run()
     const repo = new BackgroundTaskRepository(db)
     const task = await repo.create({
       id: 'desktop-task',

@@ -72,26 +72,34 @@
 2. **尾部区 (Tail)**：正在追加的流式块沿同一富文本管线渲染，不额外经历纯文本降级态。
 3. **调度**：流式未闭合块通过 `requestAnimationFrame` 将同一显示帧内的多次 delta 合并为单次 DOM 更新（最高 60fps），收口转为 `stable` 时立即取消挂起帧并同步提交最终分段。
 
-### 3.4 对话历史分页、渐进窗口与会话投影缓存
+### 3.4 对话历史分页、虚拟列表与会话投影缓存
 
 对话页不得一次加载并挂载整个 Thread，也不得依赖固定 200 条 Projection 上限掩盖 DOM 增长。采用以下组合策略：
 
-- 首次只请求最新 60 条消息；`ChatContainer.vue` 初次仅挂载底部最新 24 条消息窗口，用户上滚接近窗口顶部时每次锁定锚点渐进展开 24 条，触达已拉取边界后再按游标继续加载更早历史。
+- 首次请求最新 60 条消息。`ChatContainer.vue → useChatVirtualList.ts` 使用 `@tanstack/vue-virtual` 挂载可见范围及前后各 5 条缓冲消息，接近顶部后按游标加载更早历史。稳定行键由角色、Thread 与 `renderKey(messageId)` 组成，客户端消息确认后沿用原有乐观身份。`anchorTo: end` 处理头部补页的阅读锚点，相邻的已挂载行按普通文档流排列，跳过的区间由虚拟列表预留高度。行尺寸由共享 `ResizeObserver` 跟踪，`useChatScroll` 继续负责流式吸底与用户上翻后的解除跟随。
 - `useThreadStore.ts` 与 `ChatTab.vue` 维护最多 12 条最近访问会话的 LRU 投影快照与会话列表缓存（SWR），切换角色或重返已访问会话时 `0ms` 还原消息与 Compositor 作用域，并在后台静默校验增量；淘汰旧会话时同步调用 `compositor.disposeScope` 回收作用域。
-- 流式消息、当前播放消息和交互 Surface 必须保持真实 DOM，不得被窗口化卸载。
-- 已提交 Markdown 以源码为键使用有界 LRU 缓存；消息与 Surface 按 `messageId + revision` 保持对象身份。
+- 流式消息、当前播放消息、交互 Surface、含展开详情的消息、当前焦点及文本选区覆盖的消息通过 `rangeExtractor` 保持挂载。原生音视频播放事件与详情展开属性更新挂载集合，关闭详情或收起选区后恢复范围回收。窗口宽度或字体加载变化会重测行高，保留当前阅读锚点或底部位置。KeepAlive 与主面板可见性控制测量观察器生命周期。
+- 虚拟列表读取 Thread 的消息顺序和稳定行键。每个已挂载的 `ThreadMessageBubble.vue` 通过自己的 `surfaceId` 读取浅响应式 Map 中的节点。每批正文增量只发布发生变化的 Surface。交互与运行状态变更时，Compositor 同步维护需要持续挂载的 Surface 集合。已提交 Markdown 以源码为键使用有界 LRU 缓存。
+- 队列结算时，客户端先应用终态中的持久消息、审批与分页信息，再用队列响应的 `terminalOperationId` 核对本地已应用的终态。双方一致且本地历史仍有效时直接结束同步。断流、暂停、读取失败或旧服务端省略标识时，客户端通过历史接口恢复。
+- 对话、工作区和桌宠按当前 Thread 登记实时观察。同一 Gateway 连接中的观察者共用订阅，最后一个观察者离开时释放对应历史基线。Gateway 在分发给各个消费者之前还原增量投影。协议字段见 [流式与队列契约](./S02_API_SPEC.md#9-aios-thread-sse-与能力契约)。
+- 已确认订阅的空闲队列逐步延长兜底轮询间隔，前台最长 30 秒、后台最长 60 秒。服务端通知、发送和回到前台会唤醒同步。执行中或连接缺少实时订阅时采用前台 2 秒、后台 8 秒的轮询间隔。读取期间收到新的变更会在本次读取后再同步一次。
 - `useMessageVisibility.ts` 将同一批 `IntersectionObserver` 回调合并后通过 `setSuspendedBatch` 一次性提交，不可见时以容器样式类暂停动画并暂停 Video、Audio，卸载 iframe、Mermaid 与 Programmable Surface 等重型运行时；恢复时使用缓存高度避免滚动跳变。
 - KaTeX、Mermaid 等重型渲染依赖按首次命中公式或图表语法时动态加载。
+- 已完成助手回复的普通段落通过 `StreamMarkdown.vue → ChatRichText.vue → compositor/chatTextLayout.ts` 按需加载 `@chenglou/pretext`。准备结果按文字、字体、字距及语言缓存，宽度变化复用字宽计算换行与高度。共享缓存最多 256 项、20 万字符，超大文本采用原生布局。
+- 文本布局缓存向 `content-visibility: auto` 提供固有宽高，浏览器负责已挂载消息中的离屏段落布局跳过。可见块由 `ResizeObserver` 提供的实际高度优先。主题、页面语言与字体加载变化使准备缓存失效，最终卸载时释放观察器和字体缓存。浏览器原生页面查找覆盖当前挂载文本，消息定位先按历史游标找到目标，再通过虚拟索引挂载并聚焦。
+- 预计算范围为普通段落、显式换行、常规字体和横向排版。强调、链接、列表、代码、图片、公式及工具卡片由各自渲染组件管理尺寸。CSS 特征或测量能力超出支持范围时采用浏览器布局。
 
-IntersectionObserver 负责可见性和重型节点生命周期，动态消息窗口负责控制 Vue 组件与普通 Markdown DOM 数量；两者职责不可混淆。
+IntersectionObserver 管理已挂载消息的可见性和重型节点生命周期，虚拟列表管理行位置、挂载范围与行高缓存，Pretext 缓存普通段落的文字布局。
 
 ### 3.5 ReAct 执行段折叠
 
 `ConversationSurface` 在 Markdown 分段与 NIT 父子调用归并之后，由 `compositor/executionGroups.ts` 将连续工具、思考、重试及状态节点归为执行段。可见正文构成段落边界；审批、提问、独立附件及错误提示保持在段外。空白正文不创建边界，工具结果按调用 ID 回填原卡片，不改变展示顺序或持久化内容。
 
-含工具调用的执行段通过 `ExecutionProcess.vue` 渲染哑光微立体折叠胶囊（`正在探索`／`走过 {0} 步足迹`），左侧叠置最多 4 枚由 `TrajectoryIcon.vue` 绘制的双调微刻精工图标，中间汇总 NIT 连携计数、代码增删统计、提醒时间、异常徽标与总耗时，右侧提供独立微凸扳机小键；主会话 `processCollapsed` 外层总胶囊启用且仅包含单一工具执行段时，内层切换为 `headless` 模式仅输出纵向导轨以避免双重折叠头。执行中默认展开，Surface 从 `open` 进入结束状态时自动收起；历史记录初次挂载默认收起。用户可逐段展开，后续结果更新不覆盖选择；NIT 子调用仍留在原有父工具内部。折叠保留已挂载卡片和内部交互状态，同时通过 `active` 暂停隐藏内容的重型运行时。
+含工具调用的执行段通过 `ExecutionProcess.vue` 渲染哑光微立体折叠胶囊（`正在探索`／`走过 {0} 步足迹`），左侧叠置最多 4 枚由 `TrajectoryIcon.vue` 绘制的双调微刻精工图标，中间汇总 NIT 连携计数、代码增删统计、提醒时间、异常徽标与总耗时，右侧提供独立微凸扳机小键；主会话 `processCollapsed` 外层总胶囊启用且仅包含单一工具执行段时，内层切换为 `headless` 模式仅输出纵向导轨以避免双重折叠头。侧会话执行中默认展开。主会话等待与批量交付见[前端主会话展示](./B26_MAIN_SIDE_THREADS.md#22-前端主会话展示)。侧会话 Surface 从 `open` 进入结束状态时自动收起；历史记录初次挂载默认收起。用户可逐段展开，后续结果更新不覆盖选择；NIT 子调用仍留在原有父工具内部。折叠保留已挂载卡片和内部交互状态，同时通过 `active` 暂停隐藏内容的重型运行时。
 
 展开态通过 `trajectory-tactile.css` 的双线微刻压痕纵向主轴（`.traj-spine`）统一串联段内思考节点（`thinking` 采用 `2px` 错位叠纸碎碎念便签，`native-reasoning` 采用无框精简单行，提交后自动收起并保留单行正文预览）与异构工具节点（`ToolCallCard.vue`：NIT 编排双舱主条与虚线圆角分叉树及独立轻内凹沙箱脚本抽屉、NIT 纯沙箱演算条、代码变更 5 格内凹比例尺双舱条、定时提醒硬卡打孔小票、角色心情叙事胶囊、据点房间穿梭小键、托盘置物条、画面光圈条，以及常规高频工具的无框静默灵动行）。主轴节点统一挂载 `23×23px` 哑光微立体铭牌（`ToolArchetypeSignature.vue`），运行脉动与悬停微动严格遵循减少动态效果设置。
+
+工具提供专用渲染器时沿用对应检查器。通用检查器 `ToolCardGeneric.vue` 在卡片展开且所在执行段可见时解析参数与结果。普通 JSON 对象按字段列出，数组按下标列出。流式片段、长日志和大集合按原文展示。技术详情抽屉直接读取调用时的参数和返回文本，便于复制完整内容。
 
 ---
 
@@ -131,7 +139,7 @@ const { sendMessage } = useChat()
 主界面采用 **「常驻紧凑图标轨 + 居中模态设置中心」** 两层扁平导航（`useMainNav.ts`）：
 
 - **左侧常驻紧凑轨（`MainNav.vue`，`78px`）**：顶部常驻 `infOS` 品牌标识与 `PEROPEROCHAT` 英文副标；中部固定一级舞台入口（对话 `chat`、据点 `stronghold`、工作区 `workspace`、伙伴 `companions`、记忆馆 `memory_hub`、任务 `tasks`，Electron 桌面端另有独立的卡片 `cards`），桌面端切换页面时导航轨宽度恒定不跳变，任务与卡片均支持直接右键摘出为独立桌面面板；底部固定「设置」入口。
-- **二级聚合工作台与独立功能页**：`CompanionsTab.vue`（状态总览／共享空间／伙伴设定）与 `MemoryHubTab.vue`（核心记忆／知识库／对话日志）以顶部横向标签组织子视图；`TasksTab.vue`（任务中心）与 `CardsTab.vue`（桌面卡片与收纳框预制件）各自作为独立一级页面运行。
+- **二级聚合工作台与独立功能页**：`CompanionsTab.vue`（状态总览／共享空间／伙伴设定）与 `MemoryHubTab.vue`（核心记忆／知识库／对话日志）通过 `HubWorkspace.vue` 渲染分区标签。业务页持有选中的子页和内容，公共导航负责离开确认、引导定位和独立窗口操作。已摘出的分区优先聚焦对应窗口，共享空间只在主窗口内切换。`TasksTab.vue`（任务中心）与 `CardsTab.vue`（桌面卡片与收纳框预制件）各自作为独立一级页面运行。
 - **居中模态设置中心（`SettingsHubModal.vue`）**：挂载于主首页工作面（`#desktop-home-panel`）内部，天然保留顶部窗口标签栏（含实时主题切换）且遮罩不叠加模糊；承载 4 大扁平分组（常规与陪伴、连接与服务、能力与安全、极客与维护）并提供关键字即时过滤，消除嵌套竖向侧边栏；弹窗独立声明浅/深色实体面板令牌，与全局壁纸半透明材质彻底解耦以保证表单可读性。`setTab(id)` 完整兼容历史 `pageId` 映射与桌面独立面板摘出重定向。
 
 ---
@@ -186,10 +194,12 @@ const { sendMessage } = useChat()
 
 ### 6.3 模板写法示例
 
+设置页的标题、字段标签和辅助说明分别使用 `--ui-text-primary`、`--ui-text-secondary` 和 `--ui-text-tertiary`。迁移旧表单时可直接替换对应的文字色工具类，保留原有字体、间距和控件。MCP 与 Skills 的服务状态、技能分类和依赖工具使用 `PBadge` 的语义色。LLM、Embedding、Reranker 和 ASR 的模型 ID 通过 `RemoteModelField.vue` 选择或输入，各设置页负责拉取候选列表、处理失败和保存。LLM 编辑器始终保留手动输入框，其余三处在候选列表为空时提供手动输入。其他动态设置页仍可能依赖 `dashboard-dark.css` 的兼容选择器。
+
 ```vue
 <!-- ✅ 正确：Tailwind + 全局像素类混合 -->
 <div class="flex items-center gap-3 p-4 bg-white pixel-border-sky press-effect">
-  <span class="text-sm font-bold text-slate-600 font-pixel">标题</span>
+  <span class="text-sm font-bold text-[var(--ui-text-primary)] font-pixel">标题</span>
 </div>
 
 <!-- ❌ 错误：用 scoped CSS 重写同样效果 -->
@@ -323,13 +333,15 @@ surface.upsert-node / surface.patch-node / surface.commit / surface.fail / surfa
 
 ### 8.3 Compositor 与核心交互规则
 
+- **锚定浮层**由 `useAnchoredPopup` 协调。输入栏的 `InputBarFoldout` 和表单的 `PSelect` 共用窗口事件监听，展开期间由 `autoUpdate` 跟踪锚点。点击或聚焦浮层外部会收起对应层级，Escape 收起最内层并把焦点还给触发按钮。切走 KeepAlive 页面或卸载组件时释放监听和定位观察器。
+- `InputBarFoldout` 优先向上展开，定位后聚焦面板内的操作项。`PSelect` 保持焦点在触发按钮上，通过 `aria-activedescendant` 标识高亮选项；`computeDropdownPlacement` 根据按钮宽度和可视视口安排列表，`useSelectKeyboard` 负责移动高亮和确认选项。
 - **Surface 树与生命周期**：Compositor 管理 Surface Tree、Revision 与稳定 Node ID，路由键鼠与无障碍输入，按可见性冻结动画、Canvas、视频与重型组件；流式渲染分离稳定区（已完成复杂子树保持稳定身份，Mermaid/KaTeX/代码/工具卡各自持有独立生命周期）与活动尾部，非当前视图继续推进 Projection 但暂停无效 DOM 更新。
 - **富文本与公式缓存**（`chatRichRenderer`）：同步返回 HTML 使用 `renderChatRichText`，管理缓存使用返回 `{html, mathReady}` 的 `renderChatRichTextResult`，`prepareChatRichText` 按需加载公式依赖（`peromath` 围栏与渲染共用 Marked 词法与语言归一化规则）。窗口内存驻留含资源卡、隔离预览分段与已净化 HTML 的渲染快照（源码、预览模式与语言未变时复用分段对象及 DOM）；未就绪公式降级结果不入底层 HTML 缓存、组件驻留快照或共享缓存，待依赖就绪事件到达后对可见视图重渲染（离屏等恢复可见再渲染，预览销毁或替换时清理订阅）。缓存只存当前窗口内存。
 - **全局审批兜底**：`useApprovalStore` 前台每 `4` 秒拉取全局 pending 列表，窗口隐藏或被应用标签遮盖时降为每 `60` 秒补齐，恢复可见立即刷新（弥补 Gateway 仅向当前角色输入席位推送的局限）；等价结果复用原 Map 引用避免冗余更新，停止轮询时清理定时器。
 - **游标分页与预算**：Conversation Projection 按游标返回请求窗口与 `hasMoreBefore / beforeCursor`，追加历史时按 `messageId + revision` 复用对象，工具结果按 `callId` 建立索引（不在模板渲染阶段线性扫描 Surface Node）。输入栏 Token 计数在 ReAct 期间读取当前 Thread 与 Principal 的活动 Surface 逐轮更新（区分请求估算与上游实测，与累计 Token 消费分列）并暂停草稿预算请求，切换角色或 Thread 清空旧预览；草稿预算预览不触发远程记忆检索并标注「不含待检索记忆」。模型配置页重拉模型列表先清空旧候选，接口失败展示后端真实错误，返回空列表时提示手动输入模型名。
 - **附件上传与录音入口**：输入栏单个「文件」选择入口、拖拽文件与粘贴文件复用同一流式处理——立即生成本地 `0ms` 缩略占位，最多 `3` 路并发异步校验能力、建会话并上传原件（上传完成前锁定发送按钮直至获取 `attachmentId`）；单文件上限 `100 MiB`，适格图片与小文本分别走原生识图、转述或上下文装配，超大文本、非 UTF-8、未知格式或模型不支持的图像保留原件引用（Agent 仅获得服务端存储路径与引用，目录拖入提示先压缩，嵌套输入栏防重传，切换会话撤销未完成上传批次）。录音按钮按会话设置所选模式（转写／原音）并在开始前复核真实能力。
 - **会话设置面板与滑块**（`SessionSettingsPanel.vue`、`SessionModelControls.vue`、`SessionSlider.vue`、`SessionSegment.vue`）：
-  - 输入栏页脚左侧入口复用 `InputBarFoldout`（`variant="text"`，自定义 `trigger` 与 `head-actions` 插槽，点击外部/Escape/外部滚动/切 Thread 关闭、窗口缩放重定位、`no-drag` 标记）展示模式图标、当前模式与模型名称；`SessionModelControls.vue` 读写模型与思考设置，`InputBar.vue` 保存模式、执行权限与识图／语音，采用**乐观先行 + Last-Write-Wins**，后台持久化不阻塞连续切换与发送，失败回滚至最近权威值。
+  - 输入栏页脚左侧入口复用 `InputBarFoldout`（`variant="text"`，自定义 `trigger` 与 `head-actions` 插槽，点击外部/Escape/切 Thread 关闭、`no-drag` 标记）展示模式图标、当前模式与模型名称。`@floating-ui/vue` 以固定定位及 `offset / flip / shift / size` 处理避让、翻转与可用尺寸，展开期间通过 `autoUpdate` 跟随滚动、缩放及尺寸变化，定位完成后再移动焦点。`v-show` 保留选项状态，关闭时回收定位观察器。`SessionModelControls.vue` 读写模型与思考设置，`InputBar.vue` 保存模式、执行权限与识图／语音，采用**乐观先行 + Last-Write-Wins**，后台持久化不阻塞连续切换与发送，失败回滚至最近权威值。
   - `SessionSlider.vue` 由同一组档位名称生成等宽标签与刻度，原生透明 `input[type=range]` 对齐可见刻度（`input` 预览、`change` 与点按节点直接提交，失焦/切换 Thread 清理预览，思考首档为「跟随」）。
   - 思考档位按钮按模型支持顺序循环切换；`SessionSegment.vue` 用 `transform` 移动等宽选中条并支持 `radiogroup` 键盘导航、网格等高说明与 `grid-template-rows` 折叠过渡；执行权限提升至 `auto_approve` 或 `full` 时先进入虚线手柄待确认状态，经用户确认后再保存。
 - **输入栏工具轨与 Skills**（`InputBar.vue`、`input-toolbar.css`、`ThreadSkillControls.vue`、`ThreadExperiences.vue`）：
@@ -337,6 +349,7 @@ surface.upsert-node / surface.patch-node / surface.commit / surface.fail / surfa
   - 会话工具弹窗按「已启用系统协议项 → 普通启用项 → 关闭项（含模式未开放项）」分组，组内按 `packageId` 聚合同包工具并按函数名排序，开关变化即时重排且搜索保持排序顺序。
   - `ThreadSkillControls.vue` 提供本会话 Skills 勾选、搜索与一键全关，保存期间锁定发送与冲突配置操作，极简模式暂停生效但保留选择（契约见 [M02](./M02_CAPABILITY_GATE.md#32-会话-skills)）。
 - **Diff 预览与正文排版**：文件写入与编辑折叠栏与展开视图共用一次预览计算，参数流按 `75ms` 合并更新并在结束时对齐真实执行统计（支持读取引用、行范围与批量步骤；旧文不可用时删除数标为待确认）；折叠释放 Diff 轨道、后台暂停解析、长文件保持窗口化渲染。Markdown 正文行距 `1.9`（段落/标题/引用/列表各自留白，流式分块间保留同节奏且空块不占位），工具轨迹与原生思考宽度为正文的 `96%`（窄屏铺满）。
+  - `ToolCardEdit.vue → FileDiffView.vue` 在展开且活跃时按需加载 `@pierre/diffs`，使用统一差异、语法高亮与行虚拟化。`fileDiffPatch.ts` 将已有预览行转为补丁片段，保留旧／新行号与批量步骤边界，统计与执行状态来自原有预览及后端结果。模块加载、补丁解析或行号数据不适配时，插槽承载原有窗口化差异行。隐藏详情会回收实例和观察器，主题变量与 `data-theme` 连接 Shadow DOM 中的字体、配色及明暗主题。
 
 ### 8.4 性能与 UX 不变量
 

@@ -7,7 +7,7 @@ import { t as __t } from '../i18n/index'
  */
 import { frontendPerformance } from '../compositor/performanceBaseline'
 import { defineStore } from 'pinia'
-import { shallowRef, onScopeDispose } from 'vue'
+import { shallowReactive, shallowRef, onScopeDispose } from 'vue'
 import type {
   SurfaceFrame,
   SurfaceId,
@@ -55,7 +55,27 @@ export interface CompositorInputSeat {
 
 /** Internal Surface Protocol 的客户端合成状态；不持有业务权威数据。 */
 export const useCompositorStore = defineStore('compositor', () => {
-  const surfaces = shallowRef<Map<SurfaceId, CompositorSurface>>(new Map())
+  const surfaces = shallowReactive(new Map<SurfaceId, CompositorSurface>())
+  const pinnedSurfaceIds = shallowReactive(new Set<SurfaceId>())
+  const interactionSurfaceIds = shallowReactive(new Set<SurfaceId>())
+
+  function storeSurface(surface: CompositorSurface): void {
+    const id = surface.surfaceId
+    surfaces.set(id, surface)
+    if (surface.state === 'open' || surface.nodes.some(node => node.lifecycle === 'interactive'))
+      pinnedSurfaceIds.add(id)
+    else pinnedSurfaceIds.delete(id)
+    if ((surface.scopeId && !surface.messageId) ||
+        surface.nodes.some(node => node.kind === 'input' || node.kind === 'approval'))
+      interactionSurfaceIds.add(id)
+    else interactionSurfaceIds.delete(id)
+  }
+
+  function removeSurface(id: SurfaceId): void {
+    pinnedSurfaceIds.delete(id)
+    interactionSurfaceIds.delete(id)
+    surfaces.delete(id)
+  }
   const windows = shallowRef<Map<string, CompositorWindow>>(new Map())
   const inputSeats = shallowRef<Map<string, CompositorInputSeat>>(new Map())
   const pending = new Map<SurfaceId, SurfaceFrame[]>()
@@ -63,7 +83,9 @@ export const useCompositorStore = defineStore('compositor', () => {
   function invalidateThreadGeneration(threadId: string, generation: number): void {
     if ((threadGenerations.get(threadId) ?? 0) >= generation) return
     threadGenerations.set(threadId, generation)
-    surfaces.value = new Map([...surfaces.value].filter(([, surface]) => surface.threadId !== threadId || surface.threadGeneration === generation))
+    for (const [id, surface] of surfaces) {
+      if (surface.threadId === threadId && surface.threadGeneration !== generation) removeSurface(id)
+    }
   }
   function staleFrame(frame: SurfaceFrame): boolean {
     if (!frame.threadId || frame.threadGeneration === undefined) return false
@@ -133,52 +155,49 @@ export const useCompositorStore = defineStore('compositor', () => {
     let rejectedCount = 0
     frameHandle = null
     if (!pending.size) return
-    const next = new Map(surfaces.value)
     for (const [surfaceId, frames] of pending) {
       frames.sort((a, b) => a.sequence - b.sequence)
-      let surface = next.get(surfaceId)
-      let operationIds = new Set(surface?.operationIds ?? [])
-      // 批次内只修改私有副本；已发布的快照和节点始终保持不可变。
-      if (surface) surface = { ...surface, operationIds, nodes: [...surface.nodes] }
+      const previous = surfaces.get(surfaceId)
+      let surface = previous
+      let operationIds = surface?.operationIds ?? new Set<string>()
       for (const frame of frames) {
-        if (staleFrame(frame)) continue
-        frameCount += 1
-        const rejected =
-          Boolean(
-            surface &&
-            surface.generation !== frame.generation &&
-            frame.operation.type !== 'surface.open',
-          ) ||
-          Boolean(surface?.operationIds.has(frame.operationId)) ||
-          Boolean(surface && frame.sequence <= surface.sequence) ||
-          Boolean(!surface && frame.operation.type !== 'surface.open')
-        if (rejected) rejectedCount += 1
         const arrival = frameArrivals.get(frame.operationId)
         if (arrival !== undefined) {
           frontendPerformance.observe('surface_frame_to_flush_ms', performance.now() - arrival)
           frameArrivals.delete(frame.operationId)
         }
-        if (
-          surface &&
-          surface.generation !== frame.generation &&
-          frame.operation.type === 'surface.open'
-        )
+        if (staleFrame(frame)) continue
+        frameCount += 1
+        if (!surface || surface.generation !== frame.generation) {
+          if (frame.operation.type !== 'surface.open') {
+            rejectedCount++
+            continue
+          }
+          surface = undefined
           operationIds = new Set()
+        } else if (surface.operationIds.has(frame.operationId) || frame.sequence <= surface.sequence) {
+          rejectedCount++
+          continue
+        } else if (surface === previous) {
+          // 每批首条有效更新才复制节点和去重集合，重播的旧帧保留原对象。
+          operationIds = new Set(surface.operationIds)
+          surface = { ...surface, operationIds, nodes: [...surface.nodes] }
+        }
         surface = reduceFrame(surface, frame, operationIds)
       }
-      if (surface?.surfaceId !== surfaceId) next.delete(surfaceId)
-      if (surface?.state === 'disposed') next.delete(surface.surfaceId)
-      else if (surface) next.set(surface.surfaceId, surface)
+      if (surface === previous) continue
+      if (surface?.surfaceId !== surfaceId) removeSurface(surfaceId)
+      if (surface?.state === 'disposed') removeSurface(surface.surfaceId)
+      else if (surface) storeSurface(surface)
     }
     pending.clear()
-    surfaces.value = next
     frontendPerformance.observe('surface_flush_batch_frames', frameCount)
     frontendPerformance.observe('surface_flush_cpu_ms', performance.now() - flushStartedAt)
     frontendPerformance.observe('surface_rejected_frames', rejectedCount)
   }
 
   function get(surfaceId?: string): CompositorSurface | undefined {
-    return surfaceId ? surfaces.value.get(surfaceId as SurfaceId) : undefined
+    return surfaceId ? surfaces.get(surfaceId as SurfaceId) : undefined
   }
 
   function replaceScope(
@@ -186,19 +205,17 @@ export const useCompositorStore = defineStore('compositor', () => {
     descriptors: import('@infos/shared').SurfaceDescriptor[],
   ): void {
     flush()
-    const next = new Map(surfaces.value)
-    for (const [surfaceId, surface] of next) {
-      if (surface.scopeId === scopeId) next.delete(surfaceId)
+    for (const [surfaceId, surface] of surfaces) {
+      if (surface.scopeId === scopeId) removeSurface(surfaceId)
     }
     for (const descriptor of descriptors) {
-      next.set(descriptor.surfaceId, {
+      storeSurface({
         ...descriptor,
         scopeId,
         suspended: false,
         operationIds: new Set(),
       })
     }
-    surfaces.value = next
   }
 
   function replaceProjection(snapshot: import('@infos/shared').SurfaceProjectionSnapshot): void {
@@ -211,32 +228,36 @@ export const useCompositorStore = defineStore('compositor', () => {
     replaceScope(`conversation:${snapshot.threadId}`, snapshot.surfaces)
   }
 
-  function mergeSnapshot(snapshot: import('@infos/shared').ConversationProjectionSnapshot): void {
+  function mergeSnapshot(snapshot: import('@infos/shared').ConversationProjectionSnapshot, terminal = false): void {
     if (snapshot.threadGeneration !== undefined && snapshot.threadGeneration < (threadGenerations.get(snapshot.threadId) ?? 0)) return
     if (snapshot.threadGeneration !== undefined) invalidateThreadGeneration(snapshot.threadId, snapshot.threadGeneration)
     flush()
     const scopeId = `conversation:${snapshot.threadId}`
-    const next = new Map(surfaces.value)
+    if (terminal) {
+      const incoming = new Set(snapshot.surfaces.map(surface => surface.surfaceId))
+      for (const surface of interactionSurfaces()) {
+        if (surface.scopeId === scopeId && !surface.messageId && !incoming.has(surface.surfaceId))
+          removeSurface(surface.surfaceId)
+      }
+      for (const id of snapshot.deletedMessageIds ?? []) dispose(`conversation-message:${id}`)
+    }
     for (const descriptor of snapshot.surfaces) {
-      const current = next.get(descriptor.surfaceId)
-      if (current?.revision === descriptor.revision) continue
-      next.set(descriptor.surfaceId, {
+      const current = surfaces.get(descriptor.surfaceId)
+      if (!terminal && current?.revision === descriptor.revision) continue
+      storeSurface({
         ...descriptor,
         scopeId,
         suspended: current?.suspended ?? false,
         operationIds: current?.operationIds ?? new Set(),
       })
     }
-    surfaces.value = next
   }
 
   function install(surface: import('@infos/shared').ConversationSurfaceDescriptor): void {
     if (surface.threadGeneration !== undefined && surface.threadGeneration < (threadGenerations.get(surface.threadId) ?? 0)) return
     if (surface.threadGeneration !== undefined)
       invalidateThreadGeneration(surface.threadId, surface.threadGeneration)
-    const next = new Map(surfaces.value)
-    next.set(surface.surfaceId, { ...surface, operationIds: new Set() })
-    surfaces.value = next
+    storeSurface({ ...surface, operationIds: new Set() })
   }
 
   function installLocalMessage(input: {
@@ -321,35 +342,23 @@ export const useCompositorStore = defineStore('compositor', () => {
         },
       }
     })
-    const next = new Map(surfaces.value)
-    next.set(current.surfaceId, {
+    storeSurface({
       ...current,
       state: changed || stopExecution ? 'committed' : current.state,
       nodes: changed ? nodes : current.nodes,
       suspended: true,
     })
-    surfaces.value = next
   }
 
   function setSuspended(surfaceId: string, suspended: boolean): void {
     const current = get(surfaceId)
     if (!current || current.suspended === suspended) return
-    const next = new Map(surfaces.value)
-    next.set(current.surfaceId, { ...current, suspended })
-    surfaces.value = next
+    storeSurface({ ...current, suspended })
   }
 
-  /** 批量更新多个消息 Surface 的挂起状态，单次浅拷贝避免滚动或切页时的 O(N^2) Map 克隆风暴。 */
+  /** 只发布可见性实际变化的 Surface。 */
   function setSuspendedBatch(entries: ReadonlyArray<readonly [string, boolean]>): void {
-    if (!entries.length) return
-    let next: Map<SurfaceId, CompositorSurface> | null = null
-    for (const [surfaceId, suspended] of entries) {
-      const current = (next ?? surfaces.value).get(surfaceId as SurfaceId)
-      if (!current || current.suspended === suspended) continue
-      next ??= new Map(surfaces.value)
-      next.set(current.surfaceId, { ...current, suspended })
-    }
-    if (next) surfaces.value = next
+    for (const [surfaceId, suspended] of entries) setSuspended(surfaceId, suspended)
   }
 
   /** 本地乐观预览编辑后的消息正文，返回失败时的原样回滚函数。 */
@@ -372,48 +381,38 @@ export const useCompositorStore = defineStore('compositor', () => {
       revision: targetNode.revision + 1,
       props: { ...targetNode.props, source: content },
     }
-    const next = new Map(surfaces.value)
-    next.set(snapshot.surfaceId, {
+    storeSurface({
       ...snapshot,
       revision: snapshot.revision + 1,
       nodes: nextNodes,
     })
-    surfaces.value = next
     return () => {
-      const current = surfaces.value.get(snapshot.surfaceId)
+      const current = surfaces.get(snapshot.surfaceId)
       if (!current) return
-      const restored = new Map(surfaces.value)
-      restored.set(snapshot.surfaceId, snapshot)
-      surfaces.value = restored
+      storeSurface(snapshot)
     }
   }
 
   function setScopeSuspended(scopeId: string, suspended: boolean): void {
-    const next = new Map(surfaces.value)
-    for (const [surfaceId, surface] of next) {
+    for (const surface of surfaces.values()) {
       if (surface.scopeId === scopeId && surface.suspended !== suspended) {
-        next.set(surfaceId, { ...surface, suspended })
+        storeSurface({ ...surface, suspended })
       }
     }
-    surfaces.value = next
   }
 
   /** 清理页面Scope中的非运行Surface；进行中的流式Surface跨页面切换继续存活。 */
   function disposeScope(scopeId: string, includeOpen = false): void {
-    const next = new Map(surfaces.value)
-    for (const [surfaceId, surface] of next) {
+    for (const [surfaceId, surface] of surfaces) {
       if (surface.scopeId === scopeId && (includeOpen || surface.state !== 'open')) {
-        next.delete(surfaceId)
+        removeSurface(surfaceId)
         pending.delete(surfaceId)
       }
     }
-    surfaces.value = next
   }
 
   function dispose(surfaceId: string): void {
-    const next = new Map(surfaces.value)
-    next.delete(surfaceId as SurfaceId)
-    surfaces.value = next
+    removeSurface(surfaceId as SurfaceId)
     pending.delete(surfaceId as SurfaceId)
   }
 
@@ -426,16 +425,14 @@ export const useCompositorStore = defineStore('compositor', () => {
   function bindScopeToWindow(scopeId: string, windowId: string): void {
     const window = windows.value.get(windowId)
     if (!window || window.state === 'closed') throw new Error('COMPOSITOR_WINDOW_UNAVAILABLE')
-    const next = new Map(surfaces.value)
-    for (const [surfaceId, surface] of next) {
+    for (const surface of surfaces.values()) {
       if (surface.scopeId === scopeId) {
-        next.set(surfaceId, {
+        storeSurface({
           ...surface,
           windowIds: new Set([...(surface.windowIds ?? []), windowId]),
         })
       }
     }
-    surfaces.value = next
   }
 
   function installInputSeat(seat: CompositorInputSeat): void {
@@ -477,24 +474,28 @@ export const useCompositorStore = defineStore('compositor', () => {
     const nextSeats = new Map(inputSeats.value)
     for (const [seatId, seat] of nextSeats) if (seat.windowId === windowId) nextSeats.delete(seatId)
     inputSeats.value = nextSeats
-    const nextSurfaces = new Map(surfaces.value)
-    for (const [surfaceId, surface] of nextSurfaces) {
+    for (const surface of surfaces.values()) {
       if (surface.windowIds?.has(windowId)) {
         const remaining = new Set(surface.windowIds)
         remaining.delete(windowId)
-        nextSurfaces.set(surfaceId, { ...surface, windowIds: remaining })
+        storeSurface({ ...surface, windowIds: remaining })
       }
     }
-    surfaces.value = nextSurfaces
   }
 
   function surfacesForWindow(windowId: string): CompositorSurface[] {
-    return [...surfaces.value.values()].filter((surface) => surface.windowIds?.has(windowId))
+    return [...surfaces.values()].filter((surface) => surface.windowIds?.has(windowId))
+  }
+
+  function interactionSurfaces(): CompositorSurface[] {
+    return Array.from(interactionSurfaceIds, id => surfaces.get(id)!)
   }
 
   return {
     invalidateThreadGeneration,
     surfaces,
+    pinnedSurfaceIds,
+    interactionSurfaces,
     windows,
     inputSeats,
     enqueue,
@@ -528,14 +529,6 @@ function reduceFrame(
   frame: SurfaceFrame,
   operationIds: Set<string>,
 ): CompositorSurface | undefined {
-  if (current && current.generation !== frame.generation) {
-    if (frame.operation.type !== 'surface.open') return current
-    current = undefined
-  }
-  if (current?.operationIds.has(frame.operationId)) return current
-  if (current && frame.sequence <= current.sequence) return current
-  if (!current && frame.operation.type !== 'surface.open') return undefined
-
   operationIds.add(frame.operationId)
   if (operationIds.size > 2048) operationIds.delete(operationIds.values().next().value!)
 

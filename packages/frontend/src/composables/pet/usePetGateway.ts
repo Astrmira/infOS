@@ -263,7 +263,8 @@ export function usePetGateway() {
   }
   watch(
     [activeAgentId, activeSessionId],
-    ([agentId, threadId]) => {
+    ([agentId, threadId], _previous, onCleanup) => {
+      if (threadId) onCleanup(gateway.watchThread(threadId))
       petState.selectThread(agentId, threadId ?? '')
     },
     { immediate: true },

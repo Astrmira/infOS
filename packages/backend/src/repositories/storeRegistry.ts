@@ -44,12 +44,9 @@ import type { PathResolver } from '../core/pathResolver'
 import { createLogger } from '../lib/logger'
 import {
   assertManagedFilePath,
-  backupLegacyStore,
-  databaseFormat,
   managedRelative,
   managedStoreBase,
   triviumFiles,
-  TRIVIUM_FORMAT,
   TRIVIUM_BACKUP_DIRECTORY,
   isTriviumFile,
   upgradeBackupRoots,
@@ -408,33 +405,6 @@ export class MemoryStoreRegistry {
     }
   }
 
-  /** 升级只在首次写入旧格式前进行；备份时用共享读锁排除其他 Writer。 */
-  private prepareLegacyStore(tdbPath: string): void {
-    const format = databaseFormat(tdbPath)
-    if (format === null || format >= TRIVIUM_FORMAT) return
-    if (format < 5) throw new Error('旧数据库格式过早，请先用对应版本导出迁移')
-    let reader: TriviumDBType | undefined
-    try {
-      reader = this.openExistingReader(tdbPath)
-      const lockedFormat = databaseFormat(tdbPath)
-      if (lockedFormat === null) throw new Error('持有共享读锁后旧库主文件缺失')
-      if (lockedFormat >= TRIVIUM_FORMAT) return
-      const backup = backupLegacyStore(this.pathResolver.resolve('@data'), tdbPath, lockedFormat)
-      logger.info(__t('logs.repositories', '已保留数据库升级前的完整备份'), {
-        path: tdbPath,
-        format: lockedFormat,
-        backup,
-      })
-    } catch (error) {
-      throw new Error(
-        '升级前备份未完成，尚未打开可写旧库。请关闭其他 Writer；如有待恢复 WAL，请先用旧版正常启动并退出。',
-        { cause: error },
-      )
-    } finally {
-      reader?.close()
-    }
-  }
-
   /** 永久删除与重建不能留下包含旧正文的升级副本。 */
   discardUpgradeBackup(tdbPath: string, preserveStaging?: string): void {
     this.assertManagedStorePath(tdbPath)
@@ -531,7 +501,7 @@ export class MemoryStoreRegistry {
         mkdirSync(path.dirname(target), { recursive: true })
         for (const file of triviumFiles(source)) {
           // 旧 manifest 可能对应上次提交；普通恢复由当前 flush marker 校验整组文件。
-          if (file.endsWith('.tmp') || file.endsWith('.manifest.json')) continue
+          if (file.endsWith('.tmp') || file.endsWith('.tmp.lease') || file.endsWith('.manifest.json')) continue
           copyFileSync(file, path.join(path.dirname(target), path.basename(file)))
         }
         const check = this.openExistingReader(target, destination)
@@ -851,7 +821,6 @@ export class MemoryStoreRegistry {
     this.assertNoActiveCalls(target)
     if (!existsSync(target) && !this.stores.has(target)) return 0
     const cached = this.stores.get(target)
-    if (!cached) this.prepareLegacyStore(target)
     // 重建前允许引擎恢复未落盘的 WAL，避免把可恢复的社交摘要当成缺失数据。
     const source =
       cached ??
@@ -1079,7 +1048,6 @@ export class MemoryStoreRegistry {
       }
     }
     logger.info(__t('logs.repositories', '打开 TriviumDB Store: {0}', [tdbPath]))
-    this.prepareLegacyStore(tdbPath)
     store = new TriviumDB(tdbPath, {
       dim: this.dim,
       dtype: 'f32',

@@ -1,4 +1,9 @@
 {
+  "补充本轮": "Add to this reply",
+  "下一轮": "Next turn",
+  "下一轮发送（Alt+Enter）": "Send next turn (Alt+Enter)",
+  "等待中……": "Waiting…",
+  "删除消息": "Delete message",
   "重新生成消息": "Regenerate message",
   "已撤回 {0} 条消息": "Retracted {0} messages",
   "重新生成相关回复？": "Regenerate related replies?",

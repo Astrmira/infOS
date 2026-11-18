@@ -48,7 +48,8 @@
           "type": "string"
         },
         "message": {
-          "type": "string"
+          "type": "string",
+          "description": "主会话单独调用 create 时可填写给用户的简短受理回执，创建成功后直接交付；回答任务问题时填写答复。"
         },
         "inputId": {
           "type": "string"

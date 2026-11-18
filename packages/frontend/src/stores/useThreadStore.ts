@@ -9,6 +9,7 @@ import { t as __t } from '../i18n/index'
 
 import type {
   ConversationMessageProjection,
+  ConversationQueueSnapshot,
   InteractionMode,
   LiveContextBudget,
   StatusSurfaceProps,
@@ -24,6 +25,7 @@ import type { ThreadChannel, ThreadAttachmentInfo } from '../api/modules/threads
 import { logger } from '../lib/logger'
 import { useCompositorStore } from './useCompositorStore'
 import { createPendingTurnTracker } from './threadPendingTurn'
+import { mainConversationTimeline } from './mainConversationTimeline'
 
 export interface RagFailureTrace {
   kind: 'embedding' | 'rag'
@@ -44,7 +46,10 @@ export interface ChatMessage {
   /** 对话对 ID，用于精确级联删除。 */
   pairId?: string | null
   publicationId?: string | null
+  timelineGroupId?: string
+  queuePreview?: boolean
   executionId?: string | null
+  executionPending?: boolean
   executionRecord?: boolean
   sourceMessages?: import('@infos/shared').ConversationSource[]
   revision?: number
@@ -114,6 +119,11 @@ export const useThreadStore = defineStore('thread', () => {
 
   /** 消息列表 (shallowRef 避免深度代理) */
   const messages = shallowRef<ChatMessage[]>([])
+  // 对话与工作区可能同时观察同一终态，凭据由持有消息列表的 Store 共享。
+  const terminalOperations = new WeakMap<ChatMessage[], string>()
+  function hasAppliedTerminal(operationId: string): boolean {
+    return terminalOperations.get(messages.value) === operationId
+  }
 
   /** 当前生成状态 */
   const generationState = ref<GenerationState>('idle')
@@ -134,9 +144,10 @@ export const useThreadStore = defineStore('thread', () => {
   /** 当前会话每轮模型请求的上下文占用，随 Surface 增量更新，不累计多轮消费。 */
   const liveContextBudget = computed<LiveContextBudget | null>(() => {
     let latest: LiveContextBudget | null = null
-    for (const surface of compositor.surfaces.values()) {
+    for (const id of compositor.pinnedSurfaceIds) {
+      const surface = compositor.get(id)
       if (
-        surface.state !== 'open' ||
+        surface?.state !== 'open' ||
         surface.threadId !== threadId.value ||
         surface.principalId !== agentId.value
       )
@@ -234,8 +245,10 @@ export const useThreadStore = defineStore('thread', () => {
       timestamp: message.timestamp,
       pairId: message.pairId,
       publicationId: message.publicationId,
+      timelineGroupId: message.timelineGroupId,
       executionId: message.executionId,
       executionRecord: message.executionRecord,
+      executionPending: message.executionPending,
       sourceMessages: message.sourceMessages,
       revision: message.revision,
       surfaceId: `conversation-message:${message.messageId}`,
@@ -288,7 +301,8 @@ export const useThreadStore = defineStore('thread', () => {
     const surface = openSurfaceForThread(targetThreadId)
     const existing = sameConversation
       ? messages.value.find(
-          (message) => message.isStreaming && (!surface || message.surfaceId === surface.surfaceId),
+          (message) => message.isStreaming && (!surface || message.surfaceId === surface.surfaceId ||
+            (!message.surfaceId && message.id === streamingMessageId.value)),
         )
       : undefined
     if (!surface && existing && generationState.value !== 'idle') {
@@ -300,7 +314,7 @@ export const useThreadStore = defineStore('thread', () => {
       streamingMessageId.value = null
       return persisted
     }
-    const shell: ChatMessage = existing ?? {
+    const shell: ChatMessage = existing ? { ...existing, surfaceId: surface.surfaceId } : {
       id: `streaming:${surface.executionId ?? surface.surfaceId}`,
       role: 'assistant',
       content: '',
@@ -364,6 +378,7 @@ export const useThreadStore = defineStore('thread', () => {
   function mergeProjectionForCache(
     previous: import('@infos/shared').ConversationProjectionSnapshot | undefined,
     incoming: import('@infos/shared').ConversationProjectionSnapshot,
+    retained?: ReadonlySet<string>,
   ): import('@infos/shared').ConversationProjectionSnapshot {
     if (
       !previous ||
@@ -373,9 +388,11 @@ export const useThreadStore = defineStore('thread', () => {
       return incoming
     }
     const deleted = new Set(incoming.deletedMessageIds ?? [])
-    const bySurfaceId = new Map(previous.surfaces.map((item) => [item.surfaceId, item]))
+    const oldSurfaces = retained ? previous.surfaces.filter(item => item.messageId && retained.has(item.messageId)) : previous.surfaces
+    const bySurfaceId = new Map(oldSurfaces.map((item) => [item.surfaceId, item]))
     for (const item of incoming.surfaces) bySurfaceId.set(item.surfaceId, item)
-    const byMessageId = new Map(previous.messages.map((item) => [item.messageId, item]))
+    const oldMessages = retained ? previous.messages.filter(item => retained.has(item.messageId)) : previous.messages
+    const byMessageId = new Map(oldMessages.map((item) => [item.messageId, item]))
     for (const item of incoming.messages) byMessageId.set(item.messageId, item)
     for (const id of deleted) {
       byMessageId.delete(id)
@@ -391,12 +408,14 @@ export const useThreadStore = defineStore('thread', () => {
 
   function syncActiveThreadCache(
     incomingProjection?: import('@infos/shared').ConversationProjectionSnapshot,
+    terminal = false,
   ): void {
     const activeId = threadId.value
     if (!activeId) return
     const existing = threadSnapshotCache.get(activeId)
     const projection = incomingProjection
-      ? mergeProjectionForCache(existing?.projection, incomingProjection)
+      ? mergeProjectionForCache(existing?.projection, incomingProjection,
+          terminal ? new Set(messages.value.map(message => message.id)) : undefined)
       : existing?.projection
     if (!projection) return
     const persisted = messages.value.filter(
@@ -471,9 +490,10 @@ export const useThreadStore = defineStore('thread', () => {
     }
     signal?.addEventListener('abort', abandon, { once: true })
     try {
+      const readSignal = signal && AbortSignal.any([signal, AbortSignal.timeout(15_000)])
       const [threadResponse, projectionResponse] = await Promise.all([
-        threadsApi.get(nextThreadId, { page: 1, pageSize: 1 }),
-        threadsApi.getProjection(nextThreadId, { pageSize: HISTORY_PAGE_SIZE }),
+        threadsApi.get(nextThreadId, { page: 1, pageSize: 1, signal: readSignal }),
+        threadsApi.getProjection(nextThreadId, { pageSize: HISTORY_PAGE_SIZE, signal: readSignal }),
       ])
       if (generation !== loadGeneration) return { status: 'superseded' }
       const thread = threadResponse.data?.thread
@@ -526,7 +546,7 @@ export const useThreadStore = defineStore('thread', () => {
       )
       const persisted = projection.messages.map(fromProjection).map((message) => {
         const current = existing.get(message.id)
-        return current && current.revision === message.revision ? current : message
+        return current && current.revision === message.revision && current.executionPending === message.executionPending ? current : message
       })
       writeThreadCache({
         threadId: thread.id,
@@ -581,6 +601,7 @@ export const useThreadStore = defineStore('thread', () => {
 
   async function loadOlderMessages(): Promise<number> {
     if (!threadId.value || !hasMoreHistory.value || isLoadingOlderHistory.value) return 0
+    const requestGeneration = loadGeneration
     isLoadingOlderHistory.value = true
     try {
       const response = await threadsApi.getProjection(threadId.value, {
@@ -588,13 +609,13 @@ export const useThreadStore = defineStore('thread', () => {
         pageSize: HISTORY_PAGE_SIZE,
       })
       const projection = response.data
-      if (!projection || projection.threadId !== threadId.value) return 0
+      if (requestGeneration !== loadGeneration || !projection || projection.threadId !== threadId.value) return 0
       if (projection.threadGeneration !== undefined && projection.threadGeneration !== threadGeneration.value) return 0
       compositor.mergeSnapshot(projection)
       const existing = new Map(messages.value.map((message) => [message.id, message]))
       const older = projection.messages.map(fromProjection).map((message) => {
         const current = existing.get(message.id)
-        return current && current.revision === message.revision ? current : message
+        return current && current.revision === message.revision && current.executionPending === message.executionPending ? current : message
       })
       const additions = older.filter((message) => !existing.has(message.id))
       messages.value = [...additions, ...messages.value]
@@ -730,18 +751,25 @@ export const useThreadStore = defineStore('thread', () => {
 
   function mergeProjectionMessages(
     snapshot: import('@infos/shared').ConversationProjectionSnapshot,
+    terminal = false,
   ): ChatMessage[] {
     const existing = new Map<string, ChatMessage>(
       messages.value.map((message) => [message.id, message]),
     )
     const deleted = new Set(snapshot.deletedMessageIds ?? [])
-    const projected = snapshot.messages.map(fromProjection).map((message) => {
-      const current = existing.get(message.id)
-      return current && current.revision === message.revision ? current : message
+    const projected = snapshot.messages.map((item) => {
+      const current = existing.get(item.messageId)
+      if (!terminal && current && current.revision === item.revision && current.executionPending === item.executionPending) return current
+      const message = fromProjection(item)
+      if (current?.ragFailureTrace) message.ragFailureTrace = current.ragFailureTrace
+      return message
     })
     adoptPendingMessages(projected, false)
     const firstProjectedId = Number(projected.find((message) => !message.executionRecord)?.id)
-    const retainedHistory = Number.isSafeInteger(firstProjectedId)
+    // 首页与本地历史无交集时，从新的首页游标继续补页，避免把断线期间的空档拼成连续历史。
+    const contiguous = !terminal || existing.has(String(firstProjectedId))
+    const projectedIds = new Set(projected.map((item) => item.id))
+    const retainedHistory = snapshot.hasMoreBefore !== false && contiguous && Number.isSafeInteger(firstProjectedId)
       ? messages.value.filter(
           (message) =>
             (Number.isSafeInteger(Number(message.id)) && Number(message.id) < firstProjectedId) ||
@@ -749,11 +777,10 @@ export const useThreadStore = defineStore('thread', () => {
               message.sourceMessages!.every((source) => source.messageId < firstProjectedId)),
         )
       : []
-    return [...retainedHistory, ...projected].filter((message) => !deleted.has(message.id))
+    return [...retainedHistory.filter((item) => !projectedIds.has(item.id)), ...projected].filter((message) => !deleted.has(message.id))
   }
 
   function applyProjection(snapshot: import('@infos/shared').ConversationProjectionSnapshot): void {
-    compositor.mergeSnapshot(snapshot)
     if (snapshot.threadId !== threadId.value || snapshot.principalId !== agentId.value) {
       threadSnapshotCache.delete(snapshot.threadId)
       return
@@ -763,11 +790,21 @@ export const useThreadStore = defineStore('thread', () => {
       messages.value = []
       threadGeneration.value = snapshot.threadGeneration
     }
+    // 删除确认优先于在途的旧首页与历史补页。
+    if (!navigationTarget.value) {
+      loadGeneration++
+      isLoadingHistory.value = false
+    }
+    compositor.mergeSnapshot(snapshot, true)
     messages.value = mergeProjectionMessages(snapshot)
+    updateHistoryCursor(snapshot)
+    syncActiveThreadCache(snapshot, true)
+  }
+
+  function updateHistoryCursor(snapshot: import('@infos/shared').ConversationProjectionSnapshot): void {
     historyCursor.value = messages.value.find((message) => !message.executionRecord)?.id
     const formalCount = messages.value.filter((message) => !message.executionRecord).length
     hasMoreHistory.value = formalCount < (snapshot.totalMessages ?? formalCount)
-    syncActiveThreadCache(snapshot)
   }
 
   /** 应用实时 Surface 帧，并在 commit 时把临时消息原子归一为持久消息 Shell。 */
@@ -787,6 +824,16 @@ export const useThreadStore = defineStore('thread', () => {
         : frame.operation.type === 'surface.commit' || frame.operation.type === 'surface.publish' || frame.operation.type === 'surface.settled'
           ? frame.operation.snapshot
           : compositor.get(frame.surfaceId)
+    if ('snapshot' in frame.operation && owner?.threadId === threadId.value) {
+      const previous = threadSnapshotCache.get(owner.threadId)?.projection
+      if (previous?.threadGeneration === frame.operation.snapshot.threadGeneration && previous?.deletedMessageIds?.length) {
+        // 撤回前生成的迟到快照仍含已删消息，交给队列从最新历史恢复。
+        const removed = new Set(previous.deletedMessageIds)
+        if (frame.operation.snapshot.messages.some((message) => removed.has(message.messageId))) return
+      }
+    }
+    if ((frame.operation.type === 'surface.commit' || frame.operation.type === 'surface.settled') &&
+        owner?.threadId === threadId.value && owner.principalId === agentId.value && hasAppliedTerminal(frame.operationId)) return
     compositor.enqueue(frame)
     if (!owner || owner.threadId !== threadId.value || owner.principalId !== agentId.value) {
       if (
@@ -800,6 +847,7 @@ export const useThreadStore = defineStore('thread', () => {
       return
     }
     if (frame.operation.type === 'surface.open') {
+      terminalOperations.delete(messages.value)
       if (!streamingMessageId.value) return
       messages.value = messages.value.map((message) =>
         message.id === streamingMessageId.value
@@ -808,28 +856,32 @@ export const useThreadStore = defineStore('thread', () => {
       )
       return
     }
-    if (frame.operation.type === 'surface.publish' || frame.operation.type === 'surface.settled') {
+    if (frame.operation.type === 'surface.publish') {
       const shell = messages.value.find((message) => message.id === streamingMessageId.value)
       compositor.mergeSnapshot(frame.operation.snapshot)
-      messages.value = mergeProjectionMessages(frame.operation.snapshot)
-      if (frame.operation.type === 'surface.publish' && shell && !/^\d+$/.test(shell.id))
-        messages.value.push(shell)
+      const published = mergeProjectionMessages(frame.operation.snapshot)
+      messages.value = shell?.isStreaming ? [...published, shell] : published
       syncActiveThreadCache(frame.operation.snapshot)
       return
     }
-    if (frame.operation.type !== 'surface.commit') return
-    inheritStreamingRenderKey(frame.operation.message.messageId)
-    compositor.mergeSnapshot(frame.operation.snapshot)
-    messages.value = mergeProjectionMessages(frame.operation.snapshot)
-    const committedMessageId = frame.operation.message.messageId
-    if (ragFailureTrace.value) {
+    if (frame.operation.type === 'surface.fail') terminalOperations.delete(messages.value)
+    if (frame.operation.type !== 'surface.commit' && frame.operation.type !== 'surface.settled') return
+    const snapshot = frame.operation.snapshot
+    if (snapshot.threadGeneration !== undefined && snapshot.threadGeneration !== threadGeneration.value) return
+    const committedMessageId = frame.operation.type === 'surface.commit' ? frame.operation.message.messageId : undefined
+    if (committedMessageId) inheritStreamingRenderKey(committedMessageId)
+    compositor.mergeSnapshot(snapshot, true)
+    messages.value = mergeProjectionMessages(snapshot, true)
+    if (committedMessageId && ragFailureTrace.value) {
       const failure = { ...ragFailureTrace.value }
       messages.value = messages.value.map((message) =>
         message.id === committedMessageId ? { ...message, ragFailureTrace: failure } : message,
       )
     }
-    streamingMessageId.value = committedMessageId
-    syncActiveThreadCache(frame.operation.snapshot)
+    if (committedMessageId) streamingMessageId.value = committedMessageId
+    updateHistoryCursor(snapshot)
+    syncActiveThreadCache(snapshot, true)
+    terminalOperations.set(messages.value, frame.operationId)
   }
 
   function setRagProgress(message: string | null): void {
@@ -858,6 +910,7 @@ export const useThreadStore = defineStore('thread', () => {
       revision: (existing?.revision ?? 0) + 1,
       sequence: existing?.sequence ?? 0,
       state: 'failed',
+      processCollapsed: existing?.processCollapsed ?? (threadKind.value === 'main'),
       nodes: [
         ...(existing?.nodes.filter((node) => node.kind !== 'status' && node.kind !== 'error') ??
           []),
@@ -877,7 +930,7 @@ export const useThreadStore = defineStore('thread', () => {
   function finishStreaming() {
     compositor.flush()
     const list = messages.value
-    if (list.length) {
+    if (list.at(-1)?.isStreaming) {
       const last = list[list.length - 1]!
       const updated = { ...last, isStreaming: false }
       messages.value = [...list.slice(0, -1), updated]
@@ -939,11 +992,13 @@ export const useThreadStore = defineStore('thread', () => {
     const candidates = messages.value.filter(
       (message) => /^\d+$/.test(message.id) && message.role === reference.role,
     )
+    const samePair = reference.pairId ? candidates.filter((message) => message.pairId === reference.pairId) : []
     const target =
+      candidates.find((message) => reference.publicationId && message.publicationId === reference.publicationId) ??
       candidates.find(
         (message) => reference.surfaceId && message.surfaceId === reference.surfaceId,
       ) ??
-      candidates.find((message) => reference.pairId && message.pairId === reference.pairId) ??
+      (samePair.length === 1 ? samePair[0] : undefined) ??
       candidates
         .filter((message) => message.content === reference.content)
         .at(-1 - occurrenceFromEnd)
@@ -1072,6 +1127,29 @@ export const useThreadStore = defineStore('thread', () => {
     }
   }
 
+  function timelineWithQueue(queue?: ConversationQueueSnapshot) {
+    if (threadKind.value !== 'main') return messages.value
+    return mainConversationTimeline(messages.value, queue?.threadId === threadId.value ? queue : undefined,
+      threadGeneration.value)
+  }
+  const timelineMessages = computed(() => timelineWithQueue())
+
+  function onConversationRewound(event: Event) {
+    const detail = (event as CustomEvent<{
+      threadId: string
+      projection?: import('@infos/shared').ConversationProjectionSnapshot
+      deletedMessageIds?: string[]
+    }>).detail
+    if (!detail?.projection) {
+      if (detail?.threadId === threadId.value) void refreshCurrentThread()
+      return
+    }
+    applyProjection({
+      ...detail.projection,
+      deletedMessageIds: [...new Set([...(detail.projection.deletedMessageIds ?? []), ...(detail.deletedMessageIds ?? [])])],
+    })
+  }
+
   /** 是否正在生成 (便捷 getter) */
   const isGenerating = computed(() => generationState.value !== 'idle')
   const syncOnForeground = () => {
@@ -1093,6 +1171,7 @@ export const useThreadStore = defineStore('thread', () => {
     void loadThreadProjection(data.threadId, agentId.value)
   }
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    window.addEventListener('infos:conversation-rewound', onConversationRewound)
     window.addEventListener('focus', syncOnForeground)
     window.addEventListener('infos:thread-reset', onThreadReset)
     window.addEventListener('online', syncOnForeground)
@@ -1101,6 +1180,7 @@ export const useThreadStore = defineStore('thread', () => {
     window.addEventListener('infos:gateway-snapshot-required', syncOnForeground)
     document.addEventListener('visibilitychange', syncOnForeground)
     onScopeDispose(() => {
+      window.removeEventListener('infos:conversation-rewound', onConversationRewound)
       window.removeEventListener('focus', syncOnForeground)
       window.removeEventListener('infos:thread-reset', onThreadReset)
       window.removeEventListener('online', syncOnForeground)
@@ -1112,6 +1192,8 @@ export const useThreadStore = defineStore('thread', () => {
   }
 
   return {
+    timelineMessages,
+    timelineWithQueue,
     threadId,
     threadKind,
     canFork,
@@ -1142,6 +1224,7 @@ export const useThreadStore = defineStore('thread', () => {
     setMessages,
     applyProjection,
     applySurfaceFrame,
+    hasAppliedTerminal,
     setRagProgress,
     setRagFailure,
     finishStreaming,

@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import {
   closeSync,
   copyFileSync,
@@ -16,8 +16,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 
-export const TRIVIUM_VERSION = '0.9.0'
-export const TRIVIUM_FORMAT = 10
+export const TRIVIUM_VERSION = '0.9.2'
+export const TRIVIUM_FORMAT = 15
 export const TRIVIUM_BACKUP_DIRECTORY = '.store-upgrades'
 
 const suffixes = new Set([
@@ -44,6 +44,10 @@ const suffixes = new Set([
   '.publish.6',
   '.publish.7',
   '.publish.8',
+  '.publish.9',
+  '.idx',
+  '.qssd',
+  '.migration',
 ])
 
 /** 只识别指定数据库的文件组，不把同目录其他数据库或用户文档算作旁路文件。 */
@@ -52,6 +56,7 @@ export function isTriviumFile(fileName: string, baseName: string): boolean {
   const suffix = fileName.slice(baseName.length)
   return (
     suffixes.has(suffix) ||
+    /^\.qssd-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.tmp(?:\.lease)?$/i.test(suffix) ||
     /^\.pld\.\d+$/.test(suffix) ||
     (suffix.endsWith('.tmp') &&
       (suffixes.has(suffix.slice(0, -4)) || /^\.pld\.\d+\.tmp$/.test(suffix)))
@@ -97,7 +102,7 @@ export function assertManagedFilePath(dataRoot: string, target: string): void {
   let current = path.resolve(dataRoot)
   for (const component of ['', ...relative.split(path.sep)]) {
     current = path.join(current, component)
-    if (existsSync(current) && lstatSync(current).isSymbolicLink())
+    if (lstatSync(current, { throwIfNoEntry: false })?.isSymbolicLink())
       throw new Error(`数据库受管路径不能包含符号链接或目录联接：${current}`)
   }
 }
@@ -127,6 +132,11 @@ export function upgradeBackupRoots(dataRoot: string): string[] {
     .sort()
 }
 
+/** 切换记录只属于创建该备份的本机，外部快照不能指定本机发布意图。 */
+export function isTriviumUpgradePath(relative: string): boolean {
+  return /^(?:\.store-upgrades(?:\/|$)|(?:agent_[\w-]+\/(?:memory|social)|knowledge\/(?:facts|knowledge))\.tdb\.infos-upgrade-v\d+(?:[./]|$))/i.test(relative)
+}
+
 export function managedStoreBase(relativePath: string): string | null {
   const normalized = relativePath.replaceAll('\\', '/')
   const base =
@@ -137,7 +147,7 @@ export function managedStoreBase(relativePath: string): string | null {
 }
 
 /** 有界读取文件摘要；大库备份不把全部向量和正文再次加载进 JavaScript 堆。 */
-function digest(file: string): { size: number; sha256: string } {
+export function digest(file: string): { size: number; sha256: string } {
   const fd = openSync(file, 'r')
   const hash = createHash('sha256')
   const buffer = Buffer.allocUnsafe(1024 * 1024)
@@ -171,14 +181,26 @@ export function databaseFormat(databasePath: string): number | null {
   }
 }
 
-/** 调用方必须持有引擎的共享读锁；有待恢复 WAL 时不允许以不一致副本冒充升级备份。 */
+/** POSIX 上同步目录项；Windows 的目录句柄不能通过 Node 的 fsync 打开。 */
+export function syncDirectory(directory: string): void {
+  if (process.platform === 'win32') return
+  const fd = openSync(directory, 'r')
+  try {
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/** 启动租约内保存源文件组，包括上游恢复旧检查点时可能需要的临时制品。 */
 export function backupLegacyStore(dataRoot: string, databasePath: string, format: number): string {
-  const sourceFiles = triviumFiles(databasePath).filter((file) => !file.endsWith('.tmp'))
+  const sourceFiles = triviumFiles(databasePath)
   const inventory = sourceFiles.map((file) => ({ name: path.basename(file), ...digest(file) }))
   const fingerprint = createHash('sha256').update(JSON.stringify(inventory)).digest('hex')
   const destination = path.join(upgradeBackupPath(dataRoot, databasePath), fingerprint)
   assertManagedFilePath(dataRoot, destination)
   if (existsSync(destination)) {
+    assertManagedFilePath(dataRoot, path.join(destination, 'backup.json'))
     const manifest = JSON.parse(readFileSync(path.join(destination, 'backup.json'), 'utf8')) as {
       source: string
       format: number
@@ -192,8 +214,10 @@ export function backupLegacyStore(dataRoot: string, databasePath: string, format
       throw new Error('已有升级备份与旧数据库不匹配')
     for (const file of sourceFiles) {
       const entry = manifest.files.find((item) => item.name === path.basename(file))
-      const current = digest(file)
-      const saved = entry ? digest(path.join(destination, path.basename(file))) : undefined
+      const current = inventory.find((item) => item.name === path.basename(file))!
+      const archivedFile = path.join(destination, path.basename(file))
+      assertManagedFilePath(dataRoot, archivedFile)
+      const saved = entry ? digest(archivedFile) : undefined
       if (
         !entry ||
         !saved ||
@@ -206,9 +230,17 @@ export function backupLegacyStore(dataRoot: string, databasePath: string, format
     }
     return destination
   }
-  const staging = `${destination}.stage-${randomUUID()}`
-  managedRelative(dataRoot, staging)
-  mkdirSync(staging, { recursive: true })
+  // 启动租约内，同一来源使用固定暂存目录；中断后只回收本库已知的复制制品。
+  const staging = destination + '.copying'
+  assertManagedFilePath(dataRoot, staging)
+  if (existsSync(staging)) {
+    const expected = new Set([...inventory.map(item => item.name), 'backup.json'])
+    for (const entry of readdirSync(staging, { withFileTypes: true })) {
+      if (!entry.isFile() || !expected.has(entry.name)) throw new Error('TRIVIUM_BACKUP_STAGING_CONFLICT')
+      rmSync(path.join(staging, entry.name))
+    }
+  }
+  mkdirSync(staging, { recursive: true, mode: 0o700 })
   try {
     const files = sourceFiles.map((file) => {
       const name = path.basename(file)
@@ -226,7 +258,7 @@ export function backupLegacyStore(dataRoot: string, databasePath: string, format
         throw new Error(`数据库升级备份复制校验失败：${name}`)
       return copied
     })
-    const fd = openSync(path.join(staging, 'backup.json'), 'wx')
+    const fd = openSync(path.join(staging, 'backup.json'), 'wx', 0o600)
     try {
       writeFileSync(
         fd,
@@ -246,7 +278,12 @@ export function backupLegacyStore(dataRoot: string, databasePath: string, format
     } finally {
       closeSync(fd)
     }
+    syncDirectory(staging)
     renameSync(staging, destination)
+    for (let dir = path.resolve(destination, '..'); ; dir = path.dirname(dir)) {
+      syncDirectory(dir)
+      if (dir === path.resolve(dataRoot)) break
+    }
     return destination
   } finally {
     if (existsSync(staging)) rmSync(staging, { recursive: true, force: true })

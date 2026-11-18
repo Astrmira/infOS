@@ -85,8 +85,12 @@ export class AttachmentRepository {
   }
 
   async bind(ids: string[], threadId: string, messageId: number): Promise<number> {
+    return this.bindSync(ids, threadId, messageId)
+  }
+
+  bindSync(ids: string[], threadId: string, messageId: number): number {
     if (!ids.length) return 0
-    const result = await this.db
+    const result = this.db
       .update(messageAttachments)
       .set({
         messageId,
@@ -101,7 +105,7 @@ export class AttachmentRepository {
           isNull(messageAttachments.messageId),
         ),
       )
-    return result.changes
+    return result.run().changes
   }
 
   async softDeleteByMessageIds(

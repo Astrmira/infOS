@@ -56,6 +56,7 @@ export interface MentionCandidate {
 interface Props {
   queueEnabled?: boolean
   queuePending?: boolean
+  supplementBlocked?: boolean
   submissionBusy?: boolean
   draftRequest?: { text: string; revision: number }
   isSending?: boolean
@@ -107,6 +108,7 @@ const emit = defineEmits<{
     attachments: AttachmentInfo[],
     imageMode: 'auto' | 'native' | 'relay',
     complete: (success: boolean) => void,
+    nextTurn?: boolean,
   ]
   stop: []
   newThread: []
@@ -134,6 +136,8 @@ const { isMobile } = useMobileLayout()
 const inputText = ref('')
 const submitting = ref(false)
 const queueAction = computed(() => props.queueEnabled && (props.isSending || props.queuePending))
+const canSupplement = computed(() => props.queueEnabled && props.isSending && !props.supplementBlocked && props.channel === 'desktop' &&
+  threadStore.threadKind === 'main')
 const executionModeOptions = computed(() =>
   EXECUTION_MODE_OPTIONS.map((option) => ({
     ...option,
@@ -144,7 +148,7 @@ const executionModeOptions = computed(() =>
 const sendActionLabel = computed(() =>
   submitting.value || props.submissionBusy
     ? __t('ui.chat', '提交中…')
-    : queueAction.value
+    : canSupplement.value ? __t('ui.chat', '补充本轮') : queueAction.value
       ? __t('ui.chat', '加入队列')
       : __t('ui.chat', '发送'),
 )
@@ -967,7 +971,7 @@ function onKeydown(event: KeyboardEvent) {
     (!isMobile.value || event.ctrlKey || event.metaKey)
   ) {
     event.preventDefault()
-    send()
+    send(event.altKey && canSupplement.value)
   } else if (event.key === 'Escape') {
     commandOpen.value = false
     toolOpen.value = false
@@ -1427,7 +1431,7 @@ const mentionOverlayHtml = computed(() => {
   )
 })
 
-function send() {
+function send(nextTurn = false) {
   if (
     voiceBusy.value ||
     startingVoice.value ||
@@ -1512,6 +1516,7 @@ function send() {
       })
       nextTick(autoResize)
     },
+    nextTurn,
   )
 }
 
@@ -2158,7 +2163,7 @@ defineExpose({
             hasUploading ||
             (!inputText.trim() && !successfulAttachments.length)
           "
-          @click="send"
+          @click="send()"
         >
           <PixelIcon
             :name="submitting || submissionBusy ? 'refresh' : queueAction ? 'list' : 'send'"
@@ -2168,6 +2173,11 @@ defineExpose({
           />
           <span class="action-label">{{ sendActionLabel }}</span>
         </button>
+        <button v-if="canSupplement" type="button" class="send-btn"
+          :title="__t('ui.chat', '下一轮发送（Alt+Enter）')"
+          :disabled="disabled || voiceBusy || startingVoice || submitting || submissionBusy || modelSettingsBusy ||
+            skillSettingsBusy || modeSaving || hasUploading || (!inputText.trim() && !successfulAttachments.length)"
+          @click="send(true)">{{ __t('ui.chat', '下一轮') }}</button>
       </div>
     </div>
 

@@ -21,6 +21,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { prepareTriviumMigrator } from './prepare-trivium-migrator.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -389,6 +390,7 @@ function main() {
   }
 
   collectBundledRipgrep()
+  prepareTriviumMigrator()
   validateNativeRuntime()
 
   // electron-rebuild 需要目标 node_modules 的父目录存在依赖清单，

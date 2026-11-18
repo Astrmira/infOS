@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, or, sql } from 'drizzle-orm'
 import type { ConversationSource, ConversationWait, KernelExecutionDescriptor } from '@infos/shared'
 import type { DrizzleDb } from '../database'
 import {
+  backgroundTasks,
   conversationExecutions,
   conversationExpectations,
   kernelOutboxEvents,
@@ -161,6 +162,23 @@ export class ConversationRepository {
     return this.db.select().from(conversationExecutions).where(eq(conversationExecutions.id, id)).get()
   }
 
+  timelineGroup(id: string, threadId: string, generation: number) {
+    return this.db.select({ id: sql<string>`coalesce(json_extract(${conversationExecutions.metadataJson}, '$.timelineGroupId'), ${conversationExecutions.id})` })
+      .from(conversationExecutions).where(and(eq(conversationExecutions.id, id),
+        eq(conversationExecutions.threadId, threadId), eq(conversationExecutions.generation, generation))).get()?.id
+  }
+
+  /** 近期仍可补充的本线交办，只投影定位所需字段。 */
+  outstandingTasks(threadId: string, agentId: string, generation: number) {
+    return this.db.select({ id: backgroundTasks.id, title: backgroundTasks.title,
+      status: backgroundTasks.status, revision: backgroundTasks.revision }).from(backgroundTasks)
+      .where(and(eq(backgroundTasks.targetThreadId, threadId), eq(backgroundTasks.agentId, agentId),
+        sql`json_extract(${backgroundTasks.metadataJson}, '$.originThreadId') = ${threadId}`,
+        sql`json_extract(${backgroundTasks.metadataJson}, '$.targetThreadGeneration') = ${generation}`,
+        inArray(backgroundTasks.status, ['queued', 'running', 'paused', 'waiting', 'waiting_input', 'blocked'])))
+      .orderBy(desc(backgroundTasks.updatedAt), desc(backgroundTasks.id)).limit(8).all()
+  }
+
   consumeInputs(id: string, sources: ConversationSource[]): void {
     this.db.transaction((tx) => {
       const current = this.assertCurrent(id)
@@ -180,16 +198,44 @@ export class ConversationRepository {
     })
   }
 
+  appendInputSource(id: string, source: ConversationSource): void {
+    this.db.transaction((tx) => {
+      const execution = this.assertCurrent(id)
+      if (execution.sources.some((item) => item.messageId === source.messageId)) return
+      tx.update(conversationExecutions).set({
+        inputSourcesJson: JSON.stringify([...execution.sources, source]),
+      }).where(eq(conversationExecutions.id, id)).run()
+      this.assertCurrent(id)
+    })
+  }
+
   forProjection(threadId: string, generation: number, executionIds: string[], after?: string, before?: string) {
-    return this.db.select().from(conversationExecutions).where(and(
-      eq(conversationExecutions.threadId, threadId), eq(conversationExecutions.generation, generation),
-      or(inArray(conversationExecutions.id, executionIds), and(
-        sql`${conversationExecutions.status} != 'running'`,
-        after ? sql`${conversationExecutions.startedAt} >= ${after}` : undefined,
-        before ? sql`${conversationExecutions.startedAt} <= ${before}` : undefined,
-        sql`NOT EXISTS (SELECT 1 FROM thread_messages WHERE execution_id = ${conversationExecutions.id} AND role = 'assistant' AND status = 'active')`,
-      )),
-    )).orderBy(desc(conversationExecutions.startedAt)).limit(100).all()
+    const scope = and(eq(conversationExecutions.threadId, threadId), eq(conversationExecutions.generation, generation))
+    const standalone = this.db.select({ id: conversationExecutions.id }).from(conversationExecutions).where(and(
+      scope, sql`${conversationExecutions.status} != 'running'`,
+      after ? sql`${conversationExecutions.startedAt} >= ${after}` : undefined,
+      before ? sql`${conversationExecutions.startedAt} <= ${before}` : undefined,
+      // 正常执行的最后一条发言撤回后，只保留审计。失败与暂停还有独立的状态记录。
+      sql`NOT EXISTS (SELECT 1 FROM thread_messages WHERE execution_id = ${conversationExecutions.id}
+        AND role = 'assistant' AND (status = 'active' OR ${conversationExecutions.status} NOT IN ('failed', 'interrupted', 'paused')))`,
+    )).orderBy(desc(conversationExecutions.startedAt)).limit(100)
+    // 补充记录的分页上限不能截断本页正式消息对应的执行状态。
+    return this.db.select().from(conversationExecutions).where(and(scope, or(
+      inArray(conversationExecutions.id, executionIds), inArray(conversationExecutions.id, standalone),
+    ))).orderBy(desc(conversationExecutions.startedAt)).all()
+  }
+
+  /** 只撤下时间线上独立的执行记录，执行审计、等待事项及其来源消息继续保留。 */
+  hideHistoryRecord(threadId: string, generation: number, executionId: string): boolean {
+    const result = this.db.update(conversationExecutions).set({
+      metadataJson: sql`json_set(${conversationExecutions.metadataJson}, '$.historyRecordHidden', 1)`,
+    }).where(and(
+      eq(conversationExecutions.id, executionId),
+      eq(conversationExecutions.threadId, threadId),
+      eq(conversationExecutions.generation, generation),
+      sql`${conversationExecutions.status} != 'running'`,
+    )).run()
+    return result.changes > 0
   }
 
   recover(): void {
@@ -207,6 +253,8 @@ export class ConversationRepository {
     if (!runIds.length) return []
     return this.db.select({ id: threadMessages.id }).from(threadMessages).where(and(
       inArray(threadMessages.executionId, runIds), eq(threadMessages.role, 'assistant'), eq(threadMessages.status, 'active'),
+      // 本次执行可能先发表回执、之后才收到补话。较早的发言不受后来输入的重生成影响。
+      gt(threadMessages.id, messageId),
     )).all().map((row) => row.id)
   }
 
@@ -276,9 +324,13 @@ export class ConversationRepository {
     return replacements
   }
 
-  taskResultSource(threadId: string, taskId: string) {
-    return this.db.select({ id: threadMessages.id }).from(threadMessages).where(and(
+  taskResultSource(threadId: string, taskId: string, deliveryId?: string) {
+    if (deliveryId && !deliveryId.endsWith(':resume')) return undefined
+    return this.db.select({ id: threadMessages.id, revision: threadMessages.revision }).from(threadMessages).where(and(
       eq(threadMessages.threadId, threadId), eq(threadMessages.status, 'active'),
+      deliveryId?.endsWith(':resume')
+        ? sql`json_extract(${threadMessages.metadataJson}, '$.deliveryId') = ${deliveryId.slice(0, -7) + ':chat'}`
+        : undefined,
       sql`json_extract(${threadMessages.metadataJson}, '$.taskId') = ${taskId}`,
       sql`json_extract(${threadMessages.metadataJson}, '$.kind') IN ('background_task_result', 'application_result')`,
     )).orderBy(desc(threadMessages.id)).get()

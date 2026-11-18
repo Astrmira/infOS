@@ -493,6 +493,7 @@ export type {
 export * from './achievements'
 export type { SteamCloudSaveStatus } from './types/steamCloud.types'
 export * from './conversation'
+export * from './threadSurfaceSync'
 export * from './home'
 
 export * from './expression'

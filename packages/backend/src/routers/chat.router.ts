@@ -32,6 +32,7 @@ import { runChatStream } from '../services/conversation/chatStreamRunner'
 import { environmentEventsSchema } from '../services/conversation/environmentContext'
 import type { AppContext } from '../container'
 import { AppError } from '../lib/appError'
+import { ipcPayloadBytes } from '../lib/metrics'
 import { disposeExecutionOwner } from '../tools/productivityRuntimeHolder'
 import { resolveToolUserDescription, resolveToolUserLabel } from '../tools/toolUserLabels'
 import { isAdvancedTool } from '../tools/advancedTools'
@@ -183,8 +184,11 @@ export function createChatRouter(ctx: AppContext) {
     return c.json({ code: 'OK', data })
   })
   router.get('/queue/:threadId', async (c) => {
-    await queueIdentity(c.req.param('threadId'))
-    return c.json({ code: 'OK', data: ctx.conversationQueue.snapshot(c.req.param('threadId')) })
+    const thread = await queueIdentity(c.req.param('threadId'))
+    const queue = ctx.conversationQueue.snapshot(thread.id)
+    const running = queue.items.find(item => item.state === 'running')
+    const terminalOperationId = ctx.conversationProjection.currentQueueTerminal(thread, running?.id)
+    return c.json({ code: 'OK', data: { ...queue, terminalOperationId } })
   })
   router.get('/queue/:threadId/live', async (c) => {
     await queueIdentity(c.req.param('threadId'))
@@ -192,7 +196,10 @@ export function createChatRouter(ctx: AppContext) {
   })
   router.post(
     '/queue/:threadId',
-    zValidator('json', chatRequestSchema.extend({ clientMessageId: z.string().uuid() })),
+    zValidator('json', chatRequestSchema.extend({
+      clientMessageId: z.string().uuid(),
+      delivery: z.literal('next_turn').optional(),
+    })),
     async (c) => {
       const { clientMessageId, ...input } = c.req.valid('json')
       if (input.threadId !== c.req.param('threadId'))
@@ -360,13 +367,16 @@ export function createChatRouter(ctx: AppContext) {
       stream.onAbort(() => {
         detached = true
       })
-      const writeEvent = async (event: { event: string; data: string }) => {
+      const writeEvent = async (event: { event: string; data: object }) => {
         if (detached || stream.aborted) return
+        const data = JSON.stringify(event.data)
+        if (event.event === 'surface')
+          ipcPayloadBytes.observe({ carrier: 'surface', direction: 'outbound' }, Buffer.byteLength(data))
         let timer: ReturnType<typeof setTimeout> | undefined
         writing = true
         try {
           await Promise.race([
-            stream.writeSSE(event).catch(() => {
+            stream.writeSSE({ event: event.event, data }).catch(() => {
               detached = true
             }),
             new Promise<void>((resolve) => {
@@ -382,7 +392,7 @@ export function createChatRouter(ctx: AppContext) {
         }
       }
       const heartbeat = setInterval(() => {
-        if (!writing) void writeEvent({ event: 'heartbeat', data: '{}' })
+        if (!writing) void writeEvent({ event: 'heartbeat', data: {} })
       }, 15_000)
       heartbeat.unref?.()
       try {
@@ -1019,8 +1029,24 @@ export function createChatRouter(ctx: AppContext) {
   )
 
   /**
-   * DELETE /api/threads/:id/messages/:msgId — 软删除单条消息
+   * 撤下主会话内独立呈现的执行记录。
    */
+  router.delete('/threads/:id/execution-records/:executionId', historyMutation, async (c) => {
+    const threadId = c.req.param('id')
+    await assertThreadMutable(threadId)
+    const thread = await ctx.threadService.getThread(threadId)
+    const executionId = c.req.param('executionId')
+    if (thread?.threadKind !== 'main' ||
+        !ctx.threadService.conversations.hideHistoryRecord(threadId, thread.generation, executionId))
+      throw new AppError('NOT_FOUND', { message: __t('server.conversation', '交流执行不存在') })
+    ctx.conversationQueue.historyChanged(threadId)
+    ctx.conversationProjection.invalidate(threadId)
+    const snapshot = await ctx.conversationProjection.getSnapshot(threadId)
+    return c.json({ code: 'OK', message: __t('server.routers', '消息已删除'), data: {
+      ...snapshot, deletedMessageIds: [...(snapshot.deletedMessageIds ?? []), `execution:${executionId}`],
+    } })
+  })
+
   router.delete('/threads/:id/messages/:msgId', historyMutation, async (c) => {
     const threadId = c.req.param('id')
     ctx.conversationQueue.pause(threadId, true)

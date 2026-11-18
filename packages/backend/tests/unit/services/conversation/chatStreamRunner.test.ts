@@ -35,7 +35,7 @@ describe('队列准备失败的实时反馈', () => {
       },
       async (event) => {
         // 与持久队列的 Gateway 转发一致：普通 SSE error 不会传给 Surface 订阅者。
-        if (event.event === 'surface') frames.push(JSON.parse(event.data))
+        if (event.event === 'surface') frames.push(event.data)
       },
     )
     expect(outcome).toEqual({ success: false, error: '请选择可用模型' })

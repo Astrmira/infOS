@@ -57,18 +57,32 @@ import ResourceCard from '../resources/ResourceCard.vue'
 
 interface Props {
   surface: CompositorSurface
-  displayMode?: 'all' | 'content' | 'images'
+  displayMode?: 'all' | 'content' | 'images' | 'interactions'
 }
 
 const props = withDefaults(defineProps<Props>(), {
   displayMode: 'all',
 })
 const processExpanded = ref(false)
+watch([() => props.surface.surfaceId, () => props.surface.generation], () => {
+  processExpanded.value = false
+})
 const hasProcess = computed(() => props.surface.nodes.some((node) => {
   if (node.kind === 'markdown') return (node.props as MarkdownSurfaceProps).final !== true
   return !['approval', 'input', 'error', 'status', 'attachment'].includes(node.kind)
 }))
+const liveThought = computed(() => {
+  if (props.surface.state !== 'open') return undefined
+  for (let i = props.surface.nodes.length - 1; i >= 0; i--) {
+    const node = props.surface.nodes[i]!
+    if ((node.kind === 'thinking' || node.kind === 'native-reasoning') &&
+        (node.props as ThinkingSurfaceProps | NativeReasoningSurfaceProps).phase === 'preview') return node.nodeId
+  }
+  return undefined
+})
 const showNode = (node: SurfaceNode) => {
+  if (props.displayMode === 'interactions') return node.kind === 'approval' || node.kind === 'input'
+  if (node.kind === 'status' && liveThought.value && runState(statusProps(node)) === 'thinking') return false
   if (!props.surface.processCollapsed || processExpanded.value) return true
   if (node.kind === 'markdown') return (node.props as { final?: boolean }).final === true
   if (node.kind === 'status' && props.surface.state !== 'open') return (node.props as StatusSurfaceProps).state === 'paused'
@@ -326,7 +340,7 @@ function statusProps(node: SurfaceNode): StatusSurfaceProps {
 
 const pendingInteraction = computed(() => {
   if (props.surface.state !== 'open' || props.surface.suspended) return undefined
-  for (const surface of [props.surface, ...compositor.surfaces.values()]) {
+  for (const surface of [props.surface, ...compositor.interactionSurfaces()]) {
     if (
       surface.threadId !== props.surface.threadId ||
       surface.principalId !== props.surface.principalId ||
@@ -549,7 +563,7 @@ function errorMessage(node: SurfaceNode): string {
 <template>
   <div class="conversation-surface" :data-surface-id="surface.surfaceId">
     <button
-      v-if="surface.processCollapsed && hasProcess"
+      v-if="displayMode !== 'interactions' && surface.processCollapsed && hasProcess"
       type="button"
       class="surface-process-toggle traj-capsule traj-shell traj-shell--interactive"
       :class="{
@@ -710,7 +724,7 @@ function errorMessage(node: SurfaceNode): string {
             v-else-if="item.node.kind === 'thinking'"
             class="surface-thinking surface-thought-node"
             :class="{
-              'is-live': surface.state === 'open' && thinkingProps(item.node).phase === 'preview',
+              'is-live': item.node.nodeId === liveThought,
             }"
             :open="reasoningOpen[item.node.nodeId]"
             @toggle="
@@ -722,7 +736,7 @@ function errorMessage(node: SurfaceNode): string {
                 class="traj-node-glyph surface-thought__badge"
                 :class="{
                   'traj-node-glyph--live':
-                    surface.state === 'open' && thinkingProps(item.node).phase === 'preview',
+                    item.node.nodeId === liveThought,
                 }"
                 :style="{ '--ng-c': 'var(--ui-accent-primary)' }"
                 aria-hidden="true"
@@ -757,7 +771,7 @@ function errorMessage(node: SurfaceNode): string {
             <div class="surface-thinking__body surface-thought__body traj-recess-pane">
               <p v-if="thinkingProps(item.node).phase === 'preview'" class="surface-thinking__live">
                 {{ thinkingProps(item.node).source }}
-                <i class="surface-thinking__cursor" />
+                <i v-if="item.node.nodeId === liveThought" class="surface-thinking__cursor" />
               </p>
               <ChatRichText
                 v-else
@@ -772,7 +786,7 @@ function errorMessage(node: SurfaceNode): string {
             class="surface-native-reasoning surface-thought-node"
             :class="{
               'is-live':
-                surface.state === 'open' && reasoningProps(item.node).phase !== 'committed',
+                item.node.nodeId === liveThought,
             }"
             :open="reasoningOpen[item.node.nodeId]"
             @toggle="
@@ -784,7 +798,7 @@ function errorMessage(node: SurfaceNode): string {
                 class="traj-node-glyph surface-thought__badge"
                 :class="{
                   'traj-node-glyph--live':
-                    surface.state === 'open' && reasoningProps(item.node).phase !== 'committed',
+                    item.node.nodeId === liveThought,
                 }"
                 :style="{ '--ng-c': 'var(--ui-accent-purple)' }"
                 aria-hidden="true"
@@ -804,7 +818,7 @@ function errorMessage(node: SurfaceNode): string {
                 </span>
                 <span v-else class="surface-native-reasoning__meta">
                   {{
-                    surface.state === 'open' && reasoningProps(item.node).phase !== 'committed'
+                    item.node.nodeId === liveThought
                       ? __t('ui.compositor', '思考中')
                       : reasoningProps(item.node).turn
                         ? __t('ui.compositor', '第 {0} 轮', [reasoningProps(item.node).turn])

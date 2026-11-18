@@ -33,7 +33,7 @@ export async function runStartupTasks(ctx: AppContext): Promise<void> {
     runChatStream(ctx, input, async (event) => {
       if (event.event !== 'surface') return
       try {
-        await ctx.gatewayHub.pushSurface(JSON.parse(event.data))
+        await ctx.gatewayHub.pushSurface(event.data)
       } catch (error) {
         logger.warn(__t('logs.lifecycle', '队列消息观察推送失败，后台继续执行'), {
           error: String(error),

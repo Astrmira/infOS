@@ -26,7 +26,8 @@ import {
 import ConversationSurface from '../compositor/ConversationSurface.vue'
 import SurfaceTransition from '../motion/SurfaceTransition.vue'
 import MotionSkeleton from '../motion/MotionSkeleton.vue'
-import MessageBubble from './MessageBubble.vue'
+import ThreadMessageBubble from './ThreadMessageBubble.vue'
+import { continuesSpeaker } from '../../stores/mainConversationTimeline'
 import { isLocalOwnerMessage } from '../../lib/userMessageIdentity'
 import InputBar from './InputBar.vue'
 import ConversationQueue from './ConversationQueue.vue'
@@ -42,11 +43,14 @@ import CommandOverlay from './CommandOverlay.vue'
 import AgentWorkBadge from './AgentWorkBadge.vue'
 import ConversationRewindDialog from './ConversationRewindDialog.vue'
 import PixelIcon from '../pixel/PixelIcon.vue'
+import PDialog from '../pixel/PDialog.vue'
 import type { ChatMessage as BubbleMessage } from './MessageBubble.vue'
 import type { ActiveCommand } from './CommandOverlay.vue'
 import { useChatScroll, useMessageVisibility } from '../../composables'
 import { useChat } from '../../composables/chat/useChat'
 import { useConversationRewind } from '../../composables/chat/useConversationRewind'
+import { useChatVirtualList } from '../../composables/chat/useChatVirtualList'
+import { useMainReplyArrival } from '../../composables/chat/useMainReplyArrival'
 import {
   useThreadStore,
   useNotificationStore,
@@ -120,12 +124,10 @@ function observeInputArea() {
   })
   inputResizeObserver.observe(inputAreaRef.value)
 }
-const bubbleMessageCache = new WeakMap<object, BubbleMessage>()
 let scrollFrame: number | null = null
 
 // ── 对话管道 (F3: 真实 SSE 流) ──
 const {
-  messages: chatMessages,
   isGenerating,
   isLoadingHistory,
   historyError,
@@ -135,6 +137,8 @@ const {
 
 const threadStore = useThreadStore()
 const queue = useConversationQueue()
+const messages = computed(() => queue.hasPending.value || queue.snapshot.value.items.some(item => item.input.supplementTo)
+  ? threadStore.timelineWithQueue(queue.snapshot.value) : threadStore.timelineMessages)
 const inputBarRef = ref<InstanceType<typeof InputBar> | null>(null)
 const fileDrop = useFileDrop({
   enabled: () => !!inputBarRef.value && !props.switching && !threadStore.navigationTarget,
@@ -199,7 +203,7 @@ watch(
 )
 const resumingDesktop = ref(false)
 const desktopPause = computed(() => {
-  const last = chatMessages.value.at(-1)
+  const last = messages.value.at(-1)
   return last?.role === 'assistant' ? last.executionPause : undefined
 })
 async function resumeDesktopTask(input: { threadId?: string; callId: string }) {
@@ -293,7 +297,7 @@ let messageAudioAbort: AbortController | null = null
 let messageAudioSource: AudioBufferSourceNode | null = null
 let audioRequest = 0
 const interactionSurfaces = computed(() =>
-  [...compositor.surfaces.values()].filter(
+  compositor.interactionSurfaces().filter(
     (surface) =>
       surface.scopeId === `conversation:${threadStore.threadId || props.threadId}` &&
       !surface.messageId,
@@ -308,19 +312,6 @@ watch(
   () => restoreProjection(),
 )
 
-// ── 消息原始转写 ──
-function extractThinking(rawContent?: string | null): string | undefined {
-  if (!rawContent) return undefined
-  const blocks: string[] = []
-  const pattern = /<(innerVoice|selfMinding|think|thinking|thought)(?:\s[^>]*)?>\s*([\s\S]*?)\s*<\/\1>/gi
-  let match: RegExpExecArray | null
-  while ((match = pattern.exec(rawContent)) !== null) {
-    const content = match[2]?.trim()
-    if (content) blocks.push(content)
-  }
-  return blocks.length > 0 ? blocks.join('\n\n') : undefined
-}
-
 // 生成结束时通知外层刷新会话列表。
 watch(isGenerating, (generating, wasGenerating) => {
   if (!generating && wasGenerating) emit('completed')
@@ -331,42 +322,6 @@ watch(isGenerating, (generating, wasGenerating) => {
 const activeCommand = ref<ActiveCommand | null>(null)
 
 // ── 消息列表 ──
-
-/** 映射消息 Shell；所有可见富内容统一从 Compositor Surface 读取。 */
-const messages = computed<BubbleMessage[]>(() => {
-  return chatMessages.value.map((m) => {
-    const surface = m.surfaceId ? compositor.get(m.surfaceId) : undefined
-    const cached = bubbleMessageCache.get(m)
-    if (cached && cached.surface === surface) return cached
-    const hasThinkingSurface = surface?.nodes.some((node) => node.kind === 'thinking') ?? false
-    const mapped: BubbleMessage = {
-      id: m.id,
-      executionRecord: m.executionRecord,
-      role: m.role as 'user' | 'assistant' | 'system',
-      content: m.content ?? '',
-      thinkingContent:
-        m.role === 'assistant' && !hasThinkingSurface ? extractThinking(m.rawContent) : undefined,
-      timestamp: m.timestamp ? new Date(m.timestamp).getTime() : undefined,
-      outputTokens: m.outputTokens,
-      spokenReply: m.spokenReply,
-      senderId: m.senderId,
-      ragFailureTrace: m.ragFailureTrace,
-      surface,
-      imageTranscription: m.imageTranscription,
-    }
-    bubbleMessageCache.set(m, mapped)
-    return mapped
-  })
-})
-
-const INITIAL_RENDER_WINDOW = 24
-const WINDOW_STEP = 24
-const renderLimit = ref(INITIAL_RENDER_WINDOW)
-
-const visibleMessages = computed<BubbleMessage[]>(() => {
-  const all = messages.value
-  return all.length > renderLimit.value ? all.slice(-renderLimit.value) : all
-})
 
 const messageCount = computed(() => messages.value.length)
 
@@ -381,19 +336,24 @@ const { showScrollDown, scrollToBottom, isAtBottom, observeContent, unobserveCon
       focusedRequest === props.focusRequest.revision + ':' + props.focusRequest.messageId,
   )
 
-watch(
-  () => threadStore.threadId,
-  (next, previous) => {
-    if (next !== previous) renderLimit.value = INITIAL_RENDER_WINDOW
-  },
-)
-
-watch(messageCount, (nextLen, prevLen) => {
-  if (nextLen > prevLen && !isAtBottom.value && renderLimit.value < nextLen) {
-    renderLimit.value = Math.min(nextLen, renderLimit.value + (nextLen - prevLen))
-  }
+const { virtualizer, rows: virtualRows, bottomSpace, measureRow } = useChatVirtualList({
+  container: containerRef,
+  messages,
+  scope: () => `${props.agentId}:${threadStore.threadId}`,
+  renderKey: (id) => String(threadStore.renderKey(id)),
+  generating: isGenerating,
+  playingMessage: playingMsgId,
+  following: isAtBottom,
+  scrollToBottom,
 })
 
+useMainReplyArrival(
+  containerRef,
+  () => threadStore.threadKind === 'main' && !props.switching && !threadStore.navigationTarget
+    ? `${props.agentId}:${threadStore.threadId}:${threadStore.threadGeneration}`
+    : undefined,
+  messages,
+)
 const hasUnseenMessages = useUnseenMessages(messages, isAtBottom)
 let focusingMessage = false
 let focusedRequest = ''
@@ -408,7 +368,9 @@ async function focusRequestedMessage(): Promise<void> {
   if (focusedRequest === key) return
   focusingMessage = true
   isAtBottom.value = false
-  const stillRequested = () => !disposed && props.focusRequest === target
+  const ownerThread = threadStore.threadId
+  const stillRequested = () =>
+    !disposed && props.focusRequest === target && threadStore.threadId === ownerThread
   try {
     while (
       stillRequested() &&
@@ -419,14 +381,14 @@ async function focusRequestedMessage(): Promise<void> {
       if (!added) break
     }
     const targetIdx = messages.value.findIndex((message) => message.id === target.messageId)
-    if (targetIdx !== -1) {
-      const neededFromEnd = messages.value.length - targetIdx + 4
-      if (neededFromEnd > renderLimit.value) {
-        renderLimit.value = Math.min(messages.value.length, neededFromEnd)
-      }
-    }
     await nextTick()
     if (!stillRequested()) return
+    if (targetIdx !== -1) {
+      virtualizer.value.scrollToIndex(targetIdx, { align: 'center' })
+      await nextTick()
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      if (!stillRequested()) return
+    }
     const element = [
       ...(containerRef.value?.querySelectorAll<HTMLElement>('[data-message-id]') ?? []),
     ].find((item) => item.dataset.messageId === target.messageId)
@@ -491,48 +453,10 @@ function onBubbleUnmounted(event: unknown) {
   unobserveContent(element)
 }
 
-let expandingWindow = false
-async function expandWindowWithAnchor(): Promise<void> {
-  const container = containerRef.value
-  if (!container || expandingWindow || renderLimit.value >= messages.value.length) return
-  expandingWindow = true
-  const previousHeight = container.scrollHeight
-  const previousTop = container.scrollTop
-  const anchor = [...container.querySelectorAll<HTMLElement>('[data-message-id]')].find(
-    (element) => element.offsetTop + element.offsetHeight >= previousTop,
-  )
-  const anchorOffset = anchor ? anchor.offsetTop - previousTop : 0
-  try {
-    renderLimit.value = Math.min(messages.value.length, renderLimit.value + WINDOW_STEP)
-    await nextTick()
-    if (disposed) return
-    if (anchor?.isConnected) container.scrollTop = anchor.offsetTop - anchorOffset
-    else container.scrollTop = previousTop + container.scrollHeight - previousHeight
-  } finally {
-    expandingWindow = false
-  }
-}
-
 async function loadOlderWithAnchor(): Promise<void> {
-  const container = containerRef.value
-  if (!container || !threadStore.hasMoreHistory || threadStore.isLoadingOlderHistory) return
-  const previousHeight = container.scrollHeight
-  const previousTop = container.scrollTop
-  const ownerThread = threadStore.threadId
-  const visibleBefore = Math.min(renderLimit.value, messages.value.length)
-  const anchor = [...container.querySelectorAll<HTMLElement>('[data-message-id]')].find(
-    (element) => element.offsetTop + element.offsetHeight >= previousTop,
-  )
-  const anchorOffset = anchor ? anchor.offsetTop - previousTop : 0
-  const added = await threadStore.loadOlderMessages()
-  if (!added || ownerThread !== threadStore.threadId || disposed) return
-  renderLimit.value = visibleBefore + Math.min(WINDOW_STEP, added)
-  const userMoved = Math.abs(container.scrollTop - previousTop) > 2
-  await nextTick()
-  if (userMoved) return
-  // 原消息作为锚点，避免尾部同步增长被误计为头部新增历史的高度。
-  if (anchor?.isConnected) container.scrollTop = anchor.offsetTop - anchorOffset
-  else container.scrollTop = previousTop + container.scrollHeight - previousHeight
+  if (!containerRef.value || !threadStore.hasMoreHistory || threadStore.isLoadingOlderHistory) return
+  // TanStack 按稳定消息身份维护补页锚点，等待期间以用户的实际阅读位置为准。
+  await threadStore.loadOlderMessages()
 }
 
 function handleMessageScroll(): void {
@@ -540,12 +464,9 @@ function handleMessageScroll(): void {
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = null
     const container = containerRef.value
-    if (container?.scrollTop !== undefined && container.scrollTop < 320) {
-      if (renderLimit.value < messages.value.length) {
-        void expandWindowWithAnchor()
-      } else {
-        void loadOlderWithAnchor()
-      }
+    if (container && container.scrollTop < 320 && !focusingMessage &&
+      !isLoadingHistory.value && !props.switching && !threadStore.navigationTarget) {
+      void loadOlderWithAnchor()
     }
   })
 }
@@ -563,6 +484,7 @@ async function handleSend(
   attachments: AttachmentInfo[],
   imageMode: 'auto' | 'native' | 'relay',
   complete: (success: boolean) => void,
+  nextTurn = false,
 ) {
   if (props.switching || threadStore.navigationTarget) {
     complete(false)
@@ -606,6 +528,7 @@ async function handleSend(
       threadId: requestThreadId,
       agentId: requestAgentId,
       content: text,
+      ...(nextTurn ? { delivery: 'next_turn' as const } : {}),
       attachmentIds,
       imageMode,
       workspaceContext,
@@ -797,7 +720,10 @@ async function saveEdit(regenerate = false) {
             )
             return
           }
-          if (result.projection) threadStore.applyProjection(result.projection)
+          if (result.projection) threadStore.applyProjection({
+            ...result.projection,
+            deletedMessageIds: [...(result.projection.deletedMessageIds ?? []), ...result.deletedMessageIds.map(String)],
+          })
           void chatSend(
             input.content,
             attachments.map((attachment) => attachment.id),
@@ -852,49 +778,48 @@ function clearClosedEditDraft() {
   if (!editingMessage.value) editText.value = ''
 }
 
-/**
- * 级联删除对话对，并在后端确认后精确更新本地 UI。
- * 临时 msg_* ID 表示消息尚未完成服务端回灌，删除前先刷新并定位真实数据库 ID。
- */
+const recordToDelete = ref<{ threadId: string; executionId: string } | null>(null)
+const deletingRecord = ref(false)
+
+async function deleteExecutionRecord() {
+  const target = recordToDelete.value
+  if (!target || deletingRecord.value) return
+  deletingRecord.value = true
+  try {
+    const { data } = await chatApi.deleteExecutionRecord(target.threadId, target.executionId)
+    if (!data) throw new Error(__t('ui.chat', '删除失败，请稍后重试'))
+    window.dispatchEvent(new CustomEvent('infos:conversation-rewound', {
+      detail: { threadId: target.threadId, projection: data, deletedMessageIds: [`execution:${target.executionId}`] },
+    }))
+    recordToDelete.value = null
+  } catch (error) {
+    notif.toast(error instanceof Error ? error.message : __t('ui.chat', '删除失败，请稍后重试'), { type: 'error' })
+  } finally {
+    deletingRecord.value = false
+  }
+}
+
 async function handleDeletePair(id: string) {
-  let target = threadStore.messages.find((message) => message.id === id)
-  if (!target || !threadStore.threadId) return
+  const original = threadStore.messages.find((message) => message.id === id)
+  const threadId = threadStore.threadId
+  if (!original || !threadId || isGenerating.value) return
+  if (original.executionRecord && original.executionId && id === `execution:${original.executionId}`) {
+    recordToDelete.value = { threadId, executionId: original.executionId }
+    return
+  }
 
   try {
-    if (!/^\d+$/.test(target.id)) {
-      const snapshot = target
-      const snapshotIndex = threadStore.messages.findIndex((message) => message.id === snapshot.id)
-      const precedingUser =
-        snapshotIndex > 0
-          ? threadStore.messages
-              .slice(0, snapshotIndex)
-              .reverse()
-              .find((message) => message.role === 'user')
-          : undefined
-      await threadStore.refreshCurrentThread(props.agentId)
-      const candidates = threadStore.messages.filter((message) => message.role === snapshot.role)
-      target =
-        candidates.find((message) => message.content === snapshot.content) ??
-        (snapshot.role === 'assistant' && precedingUser
-          ? threadStore.messages.find(
-              (message) => message.role === 'user' && message.content === precedingUser.content,
-            )
-          : undefined)
-      if (!target || !/^\d+$/.test(target.id)) {
-        throw new Error('消息尚未完成服务端同步，请稍后重试')
-      }
-    }
-
+    const target = await threadStore.resolvePersistedMessage(id)
+    if (threadStore.threadId !== threadId) return
     await rewind.open({
-      threadId: threadStore.threadId,
+      threadId,
       messageId: Number(target.id),
       onSuccess: async (result) => {
-        if (!result.projection) throw new Error('未能恢复会话记录，请刷新')
-        threadStore.applyProjection(result.projection)
+        if (!result.projection) throw new Error(__t('ui.chat', '删除失败，请稍后重试'))
         window.dispatchEvent(
           new CustomEvent('infos:conversation-rewound', {
             detail: {
-              threadId: threadStore.threadId,
+              threadId,
               deletedMessageIds: result.deletedMessageIds.map(String),
               projection: result.projection,
             },
@@ -1027,17 +952,6 @@ function restoreProjection(): void {
   if (!props.switching) void threadStore.refreshCurrentThread(props.agentId)
 }
 
-function handleConversationRewound(event: Event): void {
-  const detail = (
-    event as CustomEvent<{
-      threadId?: string
-      projection?: import('@infos/shared').ConversationProjectionSnapshot
-    }>
-  ).detail
-  if (!detail?.threadId || detail.threadId !== threadStore.threadId) return
-  if (detail.projection) threadStore.applyProjection(detail.projection)
-  else restoreProjection()
-}
 
 onMounted(() => {
   observeInputArea()
@@ -1049,7 +963,7 @@ onMounted(() => {
     else removeSpeechAction = remove
   })
   window.addEventListener('online', restoreProjection)
-  window.addEventListener('infos:conversation-rewound', handleConversationRewound)
+
   if (!props.focusRequest) scrollToBottom(false)
 })
 
@@ -1070,7 +984,7 @@ onUnmounted(() => {
   if (scrollFrame !== null) cancelAnimationFrame(scrollFrame)
   scrollFrame = null
   window.removeEventListener('online', restoreProjection)
-  window.removeEventListener('infos:conversation-rewound', handleConversationRewound)
+
 })
 </script>
 
@@ -1122,57 +1036,80 @@ onUnmounted(() => {
           :label="__t('ui.chat', '正在同步历史聊天记录...')"
         />
 
-        <div v-else-if="historyError" class="chat-history-state chat-history-error">
+        <div
+          v-else-if="historyError"
+          class="chat-history-state chat-history-error"
+          :class="{ 'chat-history-overlay': messages.length > 0 }"
+        >
           <PixelIcon name="alert" size="sm" />
           <span>{{ __t('ui.chat', '历史记录同步失败：') }}{{ historyError }}</span>
         </div>
 
-        <div v-if="threadStore.isLoadingOlderHistory" class="chat-history-state">
+        <div v-if="threadStore.isLoadingOlderHistory" class="chat-history-state chat-history-older">
           <PixelIcon name="refresh" size="sm" animation="spin" />
           <span>{{ __t('ui.chat', '正在加载更早消息...') }}</span>
         </div>
 
-        <MessageBubble
-          v-for="msg in visibleMessages"
-          :key="threadStore.renderKey(msg.id)"
-          v-memo="[
-            msg,
-            msg.surface?.revision,
-            playingMsgId === msg.id,
-            isLoadingAudio,
-            isGenerating,
-            forkingMessageId,
-            switching,
-            threadStore.navigationTarget,
-            threadStore.ragProgressMessage,
-            threadStore.ragFailureTrace,
-          ]"
-          :message="msg"
-          :is-owner-message="isLocalOwnerMessage({ role: msg.role, channel: threadStore.channel })"
-          :agent-id="agentId"
-          :agent-name="agentName"
-          :agent-avatar-url="agentAvatarUrl"
-          :allow-mutations="!isGenerating && !msg.executionRecord"
-          :delete-action-label="threadStore.threadKind === 'main' ? __t('ui.chat', '删除消息') : __t('ui.chat', '删除对话对')"
-          :allow-fork="threadStore.canFork && !isGenerating && !forkingMessageId && !switching && !threadStore.navigationTarget"
-          :progress-label="threadStore.ragProgressMessage ?? ''"
-          :rag-failure="
-            msg.ragFailureTrace ??
-            (isGenerating && msg === messages[messages.length - 1]
-              ? threadStore.ragFailureTrace
-              : null)
-          "
-          :is-streaming="
-            isGenerating && msg === messages[messages.length - 1] && msg.role === 'assistant'
-          "
-          @edit="handleEdit"
-          @delete-pair="handleDeletePair"
-          @fork="handleFork"
-          @copy="handleCopy"
-          @tts-play="handleTtsPlay"
-          @vue:mounted="onBubbleMounted"
-          @vue:unmounted="onBubbleUnmounted"
-        />
+        <div
+          v-if="messages.length"
+          class="chat-message-list"
+          :class="{ 'chat-message-list--main': threadStore.threadKind === 'main' }"
+          :style="{ paddingBottom: `${bottomSpace}px` }"
+        >
+          <div
+            v-for="{ message: msg, key, index, gapBefore } in virtualRows"
+            :key="key"
+            v-memo="[
+              msg, index, gapBefore, messages[index - 1]?.id,
+              index < messages.length - 2,
+              playingMsgId === msg.id, isLoadingAudio, isGenerating, forkingMessageId,
+              switching, threadStore.navigationTarget,
+              threadStore.ragProgressMessage, threadStore.ragFailureTrace,
+              threadStore.threadKind, threadStore.channel, agentId, agentName, agentAvatarUrl,
+            ]"
+            :ref="measureRow"
+            :data-index="index"
+            :data-chat-key="key"
+            class="chat-message-row"
+            :class="{
+              'chat-message-row--history': index < messages.length - 2,
+              'chat-message-row--continued': threadStore.threadKind === 'main' && continuesSpeaker(msg, messages[index - 1]),
+            }"
+            :style="{ marginTop: `${gapBefore}px` }"
+          >
+            <ThreadMessageBubble
+              :shell="msg"
+              :is-owner-message="isLocalOwnerMessage({ role: msg.role, channel: threadStore.channel })"
+              :playing-msg-id="playingMsgId"
+              :is-loading-audio="isLoadingAudio"
+              :agent-id="agentId"
+              :agent-name="agentName"
+              :agent-avatar-url="agentAvatarUrl"
+              :main-waiting="threadStore.threadKind === 'main' && Boolean(msg.executionPending || (isGenerating && msg.isStreaming))"
+              :allow-mutations="!isGenerating && !msg.queuePreview && !msg.executionPending && (!msg.executionRecord || msg.id === 'execution:' + msg.executionId)"
+              :mutation-actions="msg.executionRecord ? ['delete'] : undefined"
+              :delete-action-label="threadStore.threadKind === 'main' ? __t('ui.chat', '删除消息') : __t('ui.chat', '删除对话对')"
+              :allow-fork="threadStore.canFork && !isGenerating && !forkingMessageId && !switching && !threadStore.navigationTarget"
+              :progress-label="threadStore.ragProgressMessage ?? ''"
+              :rag-failure="
+                msg.ragFailureTrace ??
+                (isGenerating && msg === messages[messages.length - 1]
+                  ? threadStore.ragFailureTrace
+                  : null)
+              "
+              :is-streaming="
+                isGenerating && !!msg.isStreaming && msg.role === 'assistant'
+              "
+              @edit="handleEdit"
+              @delete-pair="handleDeletePair"
+              @fork="handleFork"
+              @copy="handleCopy"
+              @tts-play="handleTtsPlay"
+              @vue:mounted="onBubbleMounted"
+              @vue:unmounted="onBubbleUnmounted"
+            />
+          </div>
+        </div>
       </div>
       <!-- 按钮定位在消息视口内，输入栏或队列增高时也不会遮挡输入。 -->
       <Transition name="scroll-down">
@@ -1195,6 +1132,7 @@ onUnmounted(() => {
         v-for="surface in interactionSurfaces"
         :key="surface.surfaceId"
         :surface="surface"
+        display-mode="interactions"
       />
     </div>
 
@@ -1273,6 +1211,8 @@ onUnmounted(() => {
         :agent-avatar-url="agentAvatarUrl"
         :queue-enabled="true"
         :queue-pending="queue.hasPending.value"
+        :supplement-blocked="queue.snapshot.value.paused || queue.snapshot.value.items.some(item =>
+          item.input.regeneration || (item.state === 'queued' && (item.immediate || !item.input.supplementTo)))"
         :submission-busy="queue.changing.value || restoringQueueDraft"
         :disabled="switching || !!threadStore.navigationTarget"
         :draft-request="draftRequest"
@@ -1350,6 +1290,16 @@ onUnmounted(() => {
         </div>
       </Transition>
     </Teleport>
+    <PDialog
+      :model-value="Boolean(recordToDelete)"
+      :title="__t('ui.chat', '撤回这条消息？')"
+      :confirm-text="__t('ui.chat', '撤回')"
+      confirm-variant="danger"
+      :loading="deletingRecord"
+      :auto-close="false"
+      @update:model-value="(open) => { if (!open && !deletingRecord) recordToDelete = null }"
+      @confirm="deleteExecutionRecord"
+    />
     <ConversationRewindDialog
       v-model="rewind.visible.value"
       :preview="rewind.preview.value"
@@ -1424,10 +1374,33 @@ onUnmounted(() => {
   z-index: 1;
   height: 100%;
   overflow-y: auto;
-  padding: 24px 28px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  padding: 0 28px;
+  overflow-anchor: none;
+}
+.chat-message-list {
+  display: flow-root;
+  position: relative;
+  width: 100%;
+}
+.chat-message-row {
+  /* 已挂载的行参与普通布局，正文或轨迹展开时立即把下一条推开。 */
+  width: 100%;
+  display: flow-root;
+}
+.chat-message-row--continued :deep(.agent-portrait),
+.chat-message-row--continued :deep(.user-avatar) {
+  visibility: hidden;
+}
+.chat-message-row--continued :deep(.msg-assistant-name) {
+  display: none;
+}
+.chat-history-older,
+.chat-history-overlay {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
 }
 
 .chat-approvals {

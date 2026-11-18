@@ -7,9 +7,7 @@ import { t as __t } from '../../i18n/index'
  * 负责组织该界面的响应式状态、用户交互与领域数据展示。
  * 副作用在组件生命周期内建立并清理，避免跨页面残留监听器或异步状态。
  */
-import { computed } from 'vue'
-
-const props = defineProps<{
+defineProps<{
   name: string
   args: string
   result?: string
@@ -17,17 +15,6 @@ const props = defineProps<{
   durationMs?: number
 }>()
 const emit = defineEmits<{ close: [] }>()
-
-const formattedArgs = computed(() => formatJson(props.args))
-const formattedResult = computed(() => formatJson(props.result ?? ''))
-
-function formatJson(value: string): string {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    return value
-  }
-}
 </script>
 
 <template>
@@ -77,14 +64,14 @@ function formatJson(value: string): string {
             <h4>{{ __t('ui.tools', '调用参数') }}</h4>
             <span>REQUEST</span>
           </div>
-          <pre>{{ formattedArgs || '{}' }}</pre>
+          <pre>{{ args }}</pre>
         </section>
         <section>
           <div class="ttd-section-title">
             <h4>{{ __t('ui.tools', '返回结果') }}</h4>
             <span>RESPONSE</span>
           </div>
-          <pre :class="{ 'is-error': isError }">{{ formattedResult || '等待结果…' }}</pre>
+          <pre :class="{ 'is-error': isError }">{{ result ?? __t('ui.tools', '等待结果') }}</pre>
         </section>
       </div>
     </aside>

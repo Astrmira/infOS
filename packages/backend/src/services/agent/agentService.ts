@@ -97,6 +97,7 @@ export interface AgentServiceDeps {
 }
 
 export interface CompiledRunParams {
+  readSupplements?: () => Promise<ChatMessage[]>
   sceneRoomId?: string
   sceneSourceMessageId?: number
   workContextBase?: ChatMessage[]
@@ -312,6 +313,7 @@ export class AgentService {
         : undefined
 
     const events = runReActLoop({
+      readSupplements: params.readSupplements,
       packageHooks: perceptionHooks(this.deps.packageHooks),
       onTimeline: (blocks, calls, rawText) => {
         params.onContentBlocks?.(blocks)

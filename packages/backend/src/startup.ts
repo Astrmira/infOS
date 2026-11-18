@@ -30,7 +30,7 @@ import { DistributedSyncService } from './services/distributed/distributedSyncSe
 import { BackupService } from './services/backup/backupService'
 import { BACKUP_STATE, recoverBackupRestore } from './services/backup/backupStorage'
 import { readBackupRowFile } from './services/backup/backupArchive'
-import type { ImportPolicy } from '@infos/shared'
+import { DAEMON_STORE_UPGRADE, type ImportPolicy } from '@infos/shared'
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -41,6 +41,7 @@ import { setLocale, getAutomaticLocale } from './lib/i18n'
 import { LANGUAGE_CONFIG_KEY } from '@infos/shared/i18n'
 import { acquireDaemonLease, retryStartupIo, verifyDataDirectory } from './lib/startupStorage'
 import { ResourceVersions } from '@infos/shared/resource-versions'
+import { migrateTriviumStores } from './repositories/triviumMigration'
 
 // ─────────────────────────────────────────────
 // 类型定义
@@ -111,9 +112,15 @@ export async function startServer(options: StartServerOptions): Promise<void> {
   registerProcessGuards()
 
   // 3. 在数据库打开前应用已校验的完整同步快照。
+  const onActivity = (active: boolean) => {
+    if (process.connected) process.send?.({ type: DAEMON_STORE_UPGRADE, active })
+  }
   await recoverBackupRestore(getDataDir())
+  // 先完成中断的文件组切换，避免把半组新旧文件保存为恢复点。
+  await migrateTriviumStores(lease.dataDirectory, { recoverOnly: true, onActivity })
   await BackupService.applyPending(getDataDir())
   await DistributedSyncService.applyPending(getDataDir())
+  await migrateTriviumStores(lease.dataDirectory, { onActivity })
 
   // 完整数据同步完成后再切换资源，避免新版本被待应用的同步快照覆盖。
   // 此时仍持有实例锁，数据库与第三方代码尚未加载。

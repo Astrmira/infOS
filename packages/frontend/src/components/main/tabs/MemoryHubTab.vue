@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { t as __t } from '../../../i18n/index'
-import { confirmTabLeave, useMainNav, type MemorySubTab } from '../../../composables/main/useMainNav'
-import { redirectTabRequest, useDetachedPanels } from '../../../composables/shell/useDetachedPanels'
-import NavDetachMenu from '../../shell/NavDetachMenu.vue'
+import { useMainNav, type MemorySubTab } from '../../../composables/main/useMainNav'
+import HubWorkspace, { type HubTab } from './HubWorkspace.vue'
 import MainTabLoading from '../MainTabLoading.vue'
-import { PixelIcon } from '../../pixel'
 import MemoriesTab from '../../dashboard/tabs/MemoriesTab.vue'
 
 /**
@@ -31,84 +29,40 @@ const LogsTab = defineAsyncComponent({
 })
 
 const { memorySubTab } = useMainNav()
-const shell = useDetachedPanels()
-const detachMenu = ref<InstanceType<typeof NavDetachMenu> | null>(null)
 
-const tabs = computed<Array<{ id: MemorySubTab; label: string; icon: string; detachPageId: string }>>(
-  () => [
-    {
-      id: 'memories',
-      label: __t('ui.navigation', '核心记忆'),
-      icon: 'brain',
-      detachPageId: 'memories',
-    },
-    {
-      id: 'knowledge',
-      label: __t('ui.navigation', '知识库'),
-      icon: 'database',
-      detachPageId: 'knowledge',
-    },
-    {
-      id: 'logs',
-      label: __t('ui.navigation', '对话日志'),
-      icon: 'chat',
-      detachPageId: 'logs',
-    },
-  ],
-)
-
-async function selectSubTab(tabId: MemorySubTab, detachPageId: string): Promise<void> {
-  if (redirectTabRequest(detachPageId)) return
-  if (memorySubTab.value === tabId) return
-  if (!(await confirmTabLeave())) return
-  memorySubTab.value = tabId
-}
+const tabs = computed<HubTab<MemorySubTab>[]>(() => [
+  {
+    id: 'memories',
+    label: __t('ui.navigation', '核心记忆'),
+    icon: 'brain',
+    detachPageId: 'memories',
+  },
+  {
+    id: 'knowledge',
+    label: __t('ui.navigation', '知识库'),
+    icon: 'database',
+    detachPageId: 'knowledge',
+  },
+  {
+    id: 'logs',
+    label: __t('ui.navigation', '对话日志'),
+    icon: 'chat',
+    detachPageId: 'logs',
+  },
+])
 </script>
 
 <template>
-  <div class="hub-workspace">
-    <header class="hub-header">
-      <div class="hub-brand">
-        <PixelIcon name="brain" size="sm" class="hub-brand-icon" />
-        <h1 class="hub-brand-title">{{ __t('ui.navigation', '记忆馆') }}</h1>
-      </div>
-
-      <nav class="hub-tabs" :aria-label="__t('ui.navigation', '记忆馆分区')">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          type="button"
-          class="hub-tab-btn"
-          :class="{ 'is-active': memorySubTab === tab.id }"
-          :aria-current="memorySubTab === tab.id ? 'page' : undefined"
-          :data-onboarding-nav="tab.detachPageId"
-          @click="selectSubTab(tab.id, tab.detachPageId)"
-          @contextmenu="detachMenu?.open($event, tab.detachPageId)"
-        >
-          <PixelIcon :name="tab.icon" size="xs" />
-          <span>{{ tab.label }}</span>
-          <PixelIcon
-            v-if="shell.isDetached(tab.detachPageId)"
-            name="external-link"
-            size="xs"
-            class="hub-tab-detached"
-            :title="__t('ui.desktop-shell', '已摘出到桌面')"
-          />
-        </button>
-      </nav>
-    </header>
-
-    <div
-      class="hub-stage settings-scrollbar"
-      :class="{ 'hub-stage--full': memorySubTab === 'logs' }"
-    >
-      <MemoriesTab v-if="memorySubTab === 'memories'" />
-      <KnowledgeTab v-else-if="memorySubTab === 'knowledge'" />
-      <LogsTab v-else-if="memorySubTab === 'logs'" />
-    </div>
-
-    <NavDetachMenu ref="detachMenu" />
-  </div>
+  <HubWorkspace
+    v-model="memorySubTab"
+    icon="brain"
+    :title="__t('ui.navigation', '记忆馆')"
+    :navigation-label="__t('ui.navigation', '记忆馆分区')"
+    :tabs="tabs"
+    :full-height="memorySubTab === 'logs'"
+  >
+    <MemoriesTab v-if="memorySubTab === 'memories'" />
+    <KnowledgeTab v-else-if="memorySubTab === 'knowledge'" />
+    <LogsTab v-else-if="memorySubTab === 'logs'" />
+  </HubWorkspace>
 </template>
-
-<style scoped src="./hub-workspace.css"></style>

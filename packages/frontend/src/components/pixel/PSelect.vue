@@ -5,13 +5,13 @@ import { t as __t } from '../../i18n/index'
  * PSelect — 像素风下拉选择器
  *
  * - CSS 变量色值 (取代硬编码 sky-400)
- * - useEventListener 管理点击外部关闭
+ * - 与输入栏面板共用浮层的关闭、焦点归还和定位监听
  * - 列表传送到 body 并按可用空间定位，不会被滚动容器或视口底边裁掉
  * - TypeScript strict
  */
-import { ref, computed, nextTick, onBeforeUnmount, onDeactivated, useId, watch } from 'vue'
+import { ref, computed, nextTick, useId, watch } from 'vue'
 import PixelIcon from './PixelIcon.vue'
-import { useEventListener } from '../../composables'
+import { useAnchoredPopup } from '../../composables/ui/useAnchoredPopup'
 import { useSelectKeyboard } from '../../composables/ui/useSelectKeyboard'
 import {
   collectClipRects,
@@ -64,8 +64,12 @@ const listId = `p-select-${useId()}`
 function updateDropdownPosition(): void {
   const trigger = triggerRef.value
   const dropdown = dropdownRef.value
-  if (!trigger || !dropdown) return
+  if (!isOpen.value || !trigger || !dropdown) return
   const rect = trigger.getBoundingClientRect()
+  if (!isAnchorVisible(rect, collectClipRects(trigger))) {
+    closeDropdown()
+    return
+  }
   const placed = computeDropdownPlacement({
     anchor: rect,
     // scrollHeight 不含边框，也不受 max-height 影响，加上边框才是完整高度。
@@ -90,34 +94,13 @@ function updateDropdownPosition(): void {
   }
 }
 
-function closeDropdown(): void {
-  isOpen.value = false
-}
-
 function openDropdown(): void {
-  if (props.disabled) return
+  if (!show()) return
   const selected = props.options.findIndex(
     (option) => option.value === props.modelValue && !option.disabled,
   )
   activeIndex.value = selected >= 0 ? selected : props.options.findIndex((o) => !o.disabled)
-  isOpen.value = true
-  void nextTick(() => {
-    updateDropdownPosition()
-    revealActiveOption()
-  })
-}
-
-/** 容器滚动或窗口缩放时跟随触发器；触发器滚出可见区域后才关闭。 */
-function handleViewportChange(event?: Event): void {
-  if (!isOpen.value) return
-  if (event?.target instanceof Node && dropdownRef.value?.contains(event.target)) return
-  const trigger = triggerRef.value
-  if (!trigger) return
-  if (!isAnchorVisible(trigger.getBoundingClientRect(), collectClipRects(trigger))) {
-    closeDropdown()
-    return
-  }
-  updateDropdownPosition()
+  void nextTick(revealActiveOption)
 }
 
 const selectedOption = computed(() => props.options.find((opt) => opt.value === props.modelValue))
@@ -131,10 +114,20 @@ function selectOption(option: SelectOption) {
   if (option.disabled) return
   emit('update:modelValue', option.value)
   emit('change', option.value)
-  isOpen.value = false
+  closeDropdown()
 }
 
-const { activeIndex, revealActiveOption, handleTriggerKeydown } = useSelectKeyboard({
+const { show, close: closeDropdown } = useAnchoredPopup({
+  open: isOpen,
+  trigger: triggerRef,
+  panel: dropdownRef,
+  wrapper: containerRef,
+  disabled: () => props.disabled,
+  updatePosition: updateDropdownPosition,
+  onOpenKeydown: (event) => handleOpenKeydown(event),
+})
+
+const { activeIndex, revealActiveOption, handleTriggerKeydown, handleOpenKeydown } = useSelectKeyboard({
   items: () => props.options,
   isOpen,
   triggerRef,
@@ -145,37 +138,14 @@ const { activeIndex, revealActiveOption, handleTriggerKeydown } = useSelectKeybo
   select: (index) => selectOption(props.options[index]!),
 })
 
-// 点击外部关闭
-useEventListener(document as unknown as EventTarget, 'click', (e: Event) => {
-  const target = e.target as Node
-  if (
-    containerRef.value &&
-    !containerRef.value.contains(target) &&
-    !dropdownRef.value?.contains(target)
-  ) {
-    closeDropdown()
-  }
-})
-useEventListener(window, 'resize', handleViewportChange)
-if (window.visualViewport) useEventListener(window.visualViewport, 'resize', handleViewportChange)
-useEventListener(document, 'scroll', handleViewportChange, { capture: true, passive: true })
-
 // 选项异步加载完时高度会变，重新量一次。
 watch(
   () => props.options,
   () => {
-    if (isOpen.value) void nextTick(updateDropdownPosition)
+    if (isOpen.value) updateDropdownPosition()
   },
+  { flush: 'post' },
 )
-watch(
-  () => props.disabled,
-  (disabled) => {
-    if (disabled) closeDropdown()
-  },
-)
-// 列表不在原组件树的 DOM 里，KeepAlive 切走时不会跟着隐藏，要主动关。
-onDeactivated(closeDropdown)
-onBeforeUnmount(closeDropdown)
 </script>
 
 <template>

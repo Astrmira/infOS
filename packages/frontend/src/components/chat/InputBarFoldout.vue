@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, ref, useId, watch } from 'vue'
+import { flip, offset, shift, size, useFloating } from '@floating-ui/vue'
 import type { CSSProperties } from 'vue'
 import { t } from '../../i18n'
+import { useAnchoredPopup } from '../../composables/ui/useAnchoredPopup'
 import PixelIcon from '../pixel/PixelIcon.vue'
 import { focusFoldoutOption, isReachableFoldoutButton } from './inputFoldoutFocus'
 
@@ -40,17 +42,51 @@ const id = `input-foldout-${useId()}`
 const open = ref(false)
 const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
-const position = ref<CSSProperties>({ visibility: 'hidden' })
 const material = ref<CSSProperties>({})
+const pendingFocus = ref<boolean>()
+const { floatingStyles, isPositioned, placement, update } = useFloating(trigger, panel, {
+  open,
+  strategy: 'fixed',
+  placement: 'top-start',
+  transform: false,
+  middleware: computed(() => [
+    offset(9),
+    flip({ padding: 12, fallbackPlacements: ['bottom-start'] }),
+    shift({ padding: 12 }),
+    size({
+      padding: 12,
+      apply({ availableWidth, availableHeight, elements }) {
+        Object.assign(elements.floating.style, {
+          width: `${Math.max(0, Math.min(props.width, availableWidth))}px`,
+          maxHeight: `${Math.max(0, availableHeight)}px`,
+        })
+      },
+    }),
+  ]),
+})
 
-function close(restoreFocus = false): void {
-  open.value = false
-  if (restoreFocus) trigger.value?.focus()
-}
+const { show, close } = useAnchoredPopup({
+  open,
+  trigger,
+  panel,
+  disabled: () => props.disabled === true,
+  updatePosition: update,
+})
+
+// update 发起异步定位，isPositioned 才表示结果已经可以用于显示和焦点。
+watch([open, isPositioned, pendingFocus], async ([expanded, positioned, last], _previous, onCleanup) => {
+  if (!expanded || !positioned || last === undefined) return
+  let cancelled = false
+  onCleanup(() => { cancelled = true })
+  await nextTick()
+  if (cancelled || !open.value || !isPositioned.value) return
+  pendingFocus.value = undefined
+  focusFoldoutOption(buttons(), last, panel.value)
+}, { flush: 'post' })
 
 /** Teleport 会离开自定义壁纸作用域，把当前输入台的材质变量带到浮层。 */
-function place(): void {
-  if (!open.value || !trigger.value || !panel.value) return
+function syncMaterial(): void {
+  if (!trigger.value) return
   const style = getComputedStyle(trigger.value)
   const variables: Record<string, string> = {}
   for (const name of [
@@ -64,23 +100,6 @@ function place(): void {
     if (value) variables[name] = value
   }
   material.value = variables
-  const rect = trigger.value.getBoundingClientRect()
-  const margin = 12
-  const gap = 9
-  const width = Math.max(0, Math.min(props.width, window.innerWidth - margin * 2))
-  const above = Math.max(0, rect.top - margin - gap)
-  const below = Math.max(0, window.innerHeight - rect.bottom - margin - gap)
-  const upwards = above >= Math.min(panel.value.scrollHeight, 360) || above >= below
-  position.value = {
-    left: `${Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin))}px`,
-    width: `${width}px`,
-    maxHeight: `${upwards ? above : below}px`,
-    ...(upwards
-      ? { bottom: `${window.innerHeight - rect.top + gap}px` }
-      : { top: `${rect.bottom + gap}px` }),
-    transformOrigin: upwards ? 'left bottom' : 'left top',
-    visibility: 'visible',
-  }
 }
 
 function buttons(): HTMLButtonElement[] {
@@ -89,41 +108,29 @@ function buttons(): HTMLButtonElement[] {
   ).filter(isReachableFoldoutButton)
 }
 
-async function expand(last = false): Promise<void> {
-  if (props.disabled) return
-  open.value = true
+function expand(last = false): void {
+  if (!show()) return
+  syncMaterial()
+  pendingFocus.value = last
   emit('open')
-  await nextTick()
-  if (!open.value || !trigger.value) return
-  place()
-  // 定位会把首次打开的面板从 visibility:hidden 改为可见，等样式落地后再选焦点。
-  await nextTick()
-  if (!open.value || !trigger.value) return
-  focusFoldoutOption(buttons(), last, panel.value)
 }
 
 function toggle(): void {
   if (open.value) close()
-  else void expand()
+  else expand()
 }
 
 function onTriggerKeydown(event: KeyboardEvent): void {
   if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return
   event.preventDefault()
-  void expand(event.key === 'ArrowUp')
+  expand(event.key === 'ArrowUp')
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (!open.value) return
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    event.stopPropagation()
-    close(true)
-    return
-  }
+function onPanelKeydown(event: KeyboardEvent): void {
   if (
+    !open.value ||
+    event.defaultPrevented ||
     !props.arrowNavigation ||
-    !panel.value?.contains(event.target as Node) ||
     !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
   )
     return
@@ -140,51 +147,25 @@ function onKeydown(event: KeyboardEvent): void {
   items[next]?.focus()
 }
 
-function outside(event: Event): void {
-  if (!open.value || !(event.target instanceof Node)) return
-  if (!trigger.value?.contains(event.target) && !panel.value?.contains(event.target)) close()
-}
-
-function scroll(event: Event): void {
-  if (event.target instanceof Node && panel.value?.contains(event.target)) return
-  close()
-}
-
 function otherOpened(event: Event): void {
-  if ((event as CustomEvent<string>).detail !== id) close()
+  // 生活经历等独立入口向窗口发互斥通知。锚定面板之间的父子关系由公共逻辑处理。
+  if (event.target === window && (event as CustomEvent<string>).detail !== id) close()
 }
 
-watch(open, (value) => {
-  if (value) window.dispatchEvent(new CustomEvent('infos:input-foldout-open', { detail: id }))
-  else emit('close')
+watch(open, (value, _previous, onCleanup) => {
+  if (value) {
+    trigger.value?.dispatchEvent(new CustomEvent('infos:input-foldout-open', { bubbles: true, detail: id }))
+    window.addEventListener('infos:input-foldout-open', otherOpened)
+    onCleanup(() => window.removeEventListener('infos:input-foldout-open', otherOpened))
+  } else {
+    pendingFocus.value = undefined
+    emit('close')
+  }
 })
 watch(
   () => props.scopeKey,
   () => close(),
 )
-watch(
-  () => props.disabled,
-  (disabled) => {
-    if (disabled) close()
-  },
-)
-onMounted(() => {
-  document.addEventListener('pointerdown', outside)
-  document.addEventListener('focusin', outside)
-  document.addEventListener('keydown', onKeydown)
-  document.addEventListener('scroll', scroll, true)
-  window.addEventListener('resize', place)
-  window.addEventListener('infos:input-foldout-open', otherOpened)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', outside)
-  document.removeEventListener('focusin', outside)
-  document.removeEventListener('keydown', onKeydown)
-  document.removeEventListener('scroll', scroll, true)
-  window.removeEventListener('resize', place)
-  window.removeEventListener('infos:input-foldout-open', otherOpened)
-})
-onDeactivated(() => close())
 defineExpose({ close })
 </script>
 
@@ -232,10 +213,15 @@ defineExpose({ close })
           :id="id"
           ref="panel"
           class="input-foldout-panel"
+          @keydown="onPanelKeydown"
           role="dialog"
           tabindex="-1"
           :aria-label="title"
-          :style="[material, position, { '--foldout-accent': accent }]"
+          :style="[material, floatingStyles, {
+            '--foldout-accent': accent,
+            visibility: isPositioned ? 'visible' : 'hidden',
+            transformOrigin: placement.startsWith('top') ? 'left bottom' : 'left top',
+          }]"
         >
           <header class="input-foldout-panel__head">
             <span>

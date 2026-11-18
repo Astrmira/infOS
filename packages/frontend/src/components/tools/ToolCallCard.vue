@@ -29,6 +29,7 @@ import { parseToolSearchResult, toolSearchSummary } from '../../lib/toolSearchRe
 import type { ToolCallView } from './toolCallView'
 import { useFileMutationPreview } from '../../composables/tools/useFileMutationPreview'
 import ToolCardEdit from './renderers/ToolCardEdit.vue'
+import ToolCardGeneric from './renderers/ToolCardGeneric.vue'
 import ToolCardImage from './renderers/ToolCardImage.vue'
 import { toolTaskTarget } from './toolTaskTarget'
 import { requestTaskNavigation } from '../../composables/main/useTaskNavigation'
@@ -935,7 +936,7 @@ watch(drawerOpen, (value) => {
       <!-- 专用检查器（Read / Search / Terminal / Web / Generic） -->
       <component
         :is="renderer"
-        v-else
+        v-else-if="renderer !== ToolCardGeneric || (open && active)"
         :args="tool.args"
         :result="tool.result"
         :is-error="tool.isError"

@@ -182,6 +182,20 @@ throw new AppError('NOT_FOUND', { message: t('errors.backend', '目标会话不�
 
 ## 9. AIOS Thread、SSE 与能力契约
 
+队列和 SSE 共用 `runChatStream`。执行器交付类型化事件，SSE 路由编码事件数据，Gateway 直接把 Surface 对象编码进 WebSocket 信封。Surface 字节统计复用这两处生成的 JSON 字符串。
+
+WebSocket 客户端可在 `hello.features` 声明 `thread-surface-sync-v1`。服务端在 `hello_ack.features` 确认后，客户端通过 `gateway.watch_thread` 发送 `{ threadId, watching }`。订阅随连接释放，重连时重新登记。该连接只接收所观察 Thread 的实时会话帧；后台回复提醒仍按原有通知受众投递。旧客户端使用原有完整帧。
+
+同一连接首次收到某个 Thread 的历史投影时，`surface` 推送携带 `frame`。后续推送可携带 `delta`，其 `baseOperationId` 指向上次投影帧。消息与 Surface 列表按新页面顺序排列，未变化的记录使用 ID，新增和修改的记录使用完整对象。分页字段与撤回墓碑取自新页面。切换投影归属、会话代次或重新订阅时从完整帧开始。客户端遇到基线缺失时重新观察该 Thread，并通过 HTTP 恢复当前状态。编解码入口见 `packages/shared/src/threadSurfaceSync.ts`。
+
+入队、领取、暂停、调序和结算等变更触发 `conversation_queue_changed`，其中只含 `threadId`。观察端收到通知后读取队列接口，多个紧邻的通知可以合并。持久通知的重放仍通过 `gateway.subscribe` 和游标完成。
+
+`GET /api/chat/queue/:threadId` 可返回 `data.terminalOperationId`，对应当前历史首页最近一次队列终态帧的 `operationId`。服务端核对投影缓存、会话代次、消息计数和最后消息时间。客户端已应用同一终态时可省去结算后的历史请求，缺少标识时沿用历史恢复流程。
+
+`POST /api/chat/queue/:threadId` 继续使用客户端生成的 UUID `clientMessageId`。主会话执行期间默认补充本轮，可传 `delivery: "next_turn"` 单独排队。返回的队列项可带服务端填写的 `input.supplementTo`，指向目标主会话执行。客户端可用该字段在同一发言者下预览用户正文，按正式消息的 `publicationId` 接替预览。任务事件沿宿主投递路径录入。
+
+主会话消息投影可带 `timelineGroupId`。补话错过当前执行时，它标明后续消息在前端沿用的原气泡组。`executionId` 和消息游标仍指向实际执行与持久历史位置。
+
 交互 API 的领域边界以 [A09_AIOS_ARCHITECTURE](./A09_AIOS_ARCHITECTURE.md#10-api-与流式契约) 为准：后端从 `threadId` 推导 `agentId`、`channel` 和上下文策略，客户端仅提交当前输入。主侧会话的领域契约见 [主侧会话与角色持续状态](./B26_MAIN_SIDE_THREADS.md)，核心生命周期入口包括 `POST /api/chat/threads/latest`（兼容返回唯一主线）、`POST /api/chat/threads`（创建侧线）、`POST /api/chat/threads/:id/reset`（清空主线）、`GET /api/chat/threads/:id/experiences`（亲历来源）和 `POST /api/chat/threads/:id/fork`（侧线检查点复制）；Thread 响应携带主侧类型、代次与操作能力。
 
 - `ThreadChannel` 仅包含 `desktop`、`group`；前者由主 Agent Compiler 处理，后者专属于 Stronghold。
@@ -190,7 +204,9 @@ throw new AppError('NOT_FOUND', { message: t('errors.backend', '目标会话不�
 - `done` 是流式成功结束的显式事件，前端收到 EOF 但缺少 `done` 时按异常截断处理。
 - Provider 节点的能力协议与 SSE 业务流分离，能力调用消息的类型统一由 `@infos/shared` 定义。
 
-主线交流按独立消息、逻辑执行和待回应事项持久化，完整来源及恢复合同见[主侧会话参考](./B26_MAIN_SIDE_THREADS.md)。Projection 消息提供可选 `publicationId`、`executionId`、`sourceMessages`，独立过程记录标记 `executionRecord`。`surface.publish` 同步执行中的正式发言，`surface.settled` 结算含零条发言的执行。
+主线交流按独立消息、逻辑执行和待回应事项持久化，完整来源及恢复合同见[主侧会话参考](./B26_MAIN_SIDE_THREADS.md)。Projection 消息提供可选 `publicationId`、`executionId`、`sourceMessages`，独立过程记录标记 `executionRecord`。`surface.publish` 同步执行中的正式发言。`executionPending: true` 标记运行中的主线发言，时间线在恢复连接时也按此字段暂存。`surface.commit` 或 `surface.settled` 携带结算快照，客户端按快照一次呈现本次回复。
+
+`DELETE /api/chat/threads/:id/execution-records/:executionId` 撤下主线独立过程记录，返回最新投影及形如 `execution:<executionId>` 的 `deletedMessageIds`。执行审计、等待事项和正式消息继续保留。
 
 `rewind-preview / rewind` 接受 `preserveInputAttachments` 和 `restoreFiles`。主线预检返回 `scope` 与明确的 `messageIds`，普通撤回处理指定消息，重新生成按输入的消费关系定位回复，文件恢复单独选择。侧线继续返回既有分支回滚清单。
 

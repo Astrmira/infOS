@@ -87,6 +87,7 @@ export class ThreadModelService {
   ): Promise<ModelConfig | null> {
     if (explicitModelId !== undefined) return this.roles.resolveById(explicitModelId)
     const thread = await this.thread(threadId)
+    if (thread.purpose === 'background_task') return this.roles.resolveBackgroundTask(agentId)
     if (thread.channel !== 'desktop' || (thread.purpose ?? 'conversation') !== 'conversation')
       return this.roles.resolveAgent(agentId)
     const config =

@@ -19,27 +19,19 @@ export function useOptimisticTurn(snapshot: Ref<ConversationQueueSnapshot>) {
   /** 已被服务端接收的这一轮：队列项 ID 与两条乐观消息。 */
   let optimistic: (OptimisticTurn & { id: string }) | null = null
 
-  /** 发送时插入、还没接上实时画面的「正在思考」占位。 */
-  function pendingPlaceholder() {
-    if (!optimistic || optimistic.threadId !== threads.threadId) return undefined
-    const id = optimistic.assistantId
-    return threads.messages.find(
-      (message) =>
-        message.id === id &&
-        message.isStreaming &&
-        !message.surfaceId &&
-        threads.streamingMessageId === id,
-    )
-  }
-
   /**
    * 实时画面出现时让占位接手，返回是否已接手（接手后不再另插一条实时消息）。
-   * 传入 surfaceId 时同时把画面挂到占位上；不传则交给 applySurfaceFrame 处理。
+   * 轮询已经接上的同一画面直接复用。
    */
-  function adopt(surfaceId?: string): boolean {
-    const placeholder = pendingPlaceholder()
+  function adopt(surfaceId: string): boolean {
+    // 实时通知、队列轮询和发送确认可能以任意顺序到达，按当前占位与画面身份接替。
+    const placeholder = threads.messages.find((message) =>
+      message.isStreaming && (message.surfaceId === surfaceId ||
+        (!message.surfaceId && message.id === threads.streamingMessageId)),
+    )
     if (!placeholder) return false
-    if (surfaceId)
+    threads.streamingMessageId = placeholder.id
+    if (!placeholder.surfaceId)
       threads.messages = threads.messages.map((message) =>
         message.id === placeholder.id ? { ...message, surfaceId } : message,
       )

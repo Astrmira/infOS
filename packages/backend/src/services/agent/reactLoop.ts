@@ -560,6 +560,7 @@ export interface CancelChecker {
  * @yields 流式文本片段 / SSE 事件 (Thinking 块已过滤)
  */
 export async function* runReActLoop(params: {
+  readSupplements?: () => Promise<ChatMessage[]>
   workContextBase?: ChatMessage[]
   packageHooks?: import('../../packages/packageAgentFlow').PackageFlowEmitter
   onExecutionMessages?: (messages: ChatMessage[]) => void
@@ -659,8 +660,12 @@ export async function* runReActLoop(params: {
 > {
   const { llmService, modelConfig, messages, source, toolExecutor } = params
   const executionMessages: ChatMessage[] = []
-  const publishedMessages: ChatMessage[] = []
+  const conversationUpdates: ChatMessage[] = []
   const workContextBase = params.workContextBase ?? messages.slice()
+  const includeSupplements = (inputs: ChatMessage[]) => {
+    messages.push(...inputs)
+    conversationUpdates.push(...inputs)
+  }
   const appendMessage = (message: ChatMessage): void => {
     messages.push(message)
     if (params.onExecutionMessages) {
@@ -810,6 +815,10 @@ export async function* runReActLoop(params: {
         break
       }
 
+      // 在上一批工具结果全部写入后读取补话，保持工具调用与回传相邻。
+      if (params.readSupplements) {
+        includeSupplements(await params.readSupplements())
+      }
       logger.debug(
         __t('logs.agent', 'ReAct 第 {0} 轮开始 (messages={1}, tools={2})', [
           turn + 1,
@@ -1789,7 +1798,11 @@ export async function* runReActLoop(params: {
         tokenCounter.countTokens(visibleOutput()) > modelConfig.maxTokens
       )
         outputTruncated = true
-      if (!hasToolCalls && !outputTruncated) params.onSpokenReply?.(spokenFilter.value)
+      // 正文尚未交付时到达的补话可直接合答；丢开的草稿仅保留在执行过程里。
+      const lateInputs = !hasToolCalls && !outputTruncated && turn + 1 < maxTurns &&
+        !params.signal?.aborted && !params.cancelChecker?.isHandoffRequested?.(controlSessionId)
+        ? await params.readSupplements?.() : undefined
+      if (!hasToolCalls && !outputTruncated && !lateInputs?.length) params.onSpokenReply?.(spokenFilter.value)
       for (const thinking of completedThinking) {
         contentBlocks.push({
           blockId: thinking.blockId,
@@ -1801,7 +1814,7 @@ export async function* runReActLoop(params: {
         })
       }
       if (narrationStarted) {
-        const phase = hasToolCalls || outputTruncated ? 'progress' : 'final'
+        const phase = hasToolCalls || outputTruncated || lateInputs?.length ? 'progress' : 'final'
         contentBlocks.push({
           blockId: narrationBlockId,
           sequence: ++blockSequence,
@@ -1979,6 +1992,10 @@ export async function* runReActLoop(params: {
 
       // ── 无工具调用 → 正常结束 ──
       if (!hasToolCalls) {
+        if (lateInputs?.length) {
+          includeSupplements(lateInputs)
+          continue
+        }
         appendMessage({
           role: 'assistant',
           content: turnText || null,
@@ -2799,11 +2816,13 @@ export async function* runReActLoop(params: {
         }
         if (!result.isError && result.metadata?.conversationMessage) {
           const publication = result.metadata.conversationMessage as { content: string }
-          publishedMessages.push({ role: 'assistant', content: publication.content })
+          conversationUpdates.push({ role: 'assistant', content: publication.content })
           hasVisibleReply = true
           yield { event: 'conversation_message', data: result.metadata.conversationMessage as { messageId: number; content: string } }
         }
         if (result.shouldTerminate) {
+          // 交办回执可直接交付；同批还有其他调用时，先让它们按原顺序返回。
+          if (fnName === 'manage_task' && collectedCalls.length > 1) continue
           // finish_task.reply始终作为独立最终交付；仅与本轮已显示正文完全重复时去重。
           if (fnName === 'finish_task') {
             const parsed = splitSpokenReply(typeof fnArgs.reply === 'string' ? fnArgs.reply : '')
@@ -2846,7 +2865,7 @@ export async function* runReActLoop(params: {
           !message.cacheControl?.key?.startsWith('infos.work.'))
         const notebook: ChatMessage[] = notebookAfterClear ? [{ role: 'user', content: notebookAfterClear,
           cacheControl: { kind: 'snapshot', key: `context-region:notebook:${params.agentId}` } }] : []
-        messages.splice(0, messages.length, ...structuredClone(base), ...publishedMessages, ...notebook, ...batch)
+        messages.splice(0, messages.length, ...structuredClone(base), ...conversationUpdates, ...notebook, ...batch)
       }
 
       if (params.cancelChecker?.isHandoffRequested?.(controlSessionId)) {
@@ -2923,7 +2942,6 @@ export async function* runReActLoop(params: {
       }
 
       if (shouldTerminate) {
-        logger.info(__t('logs.agent', 'ReAct 循环由 finish_task 终止'))
         break
       }
       if (source === 'desktop' && turn + 1 === maxTurns) {

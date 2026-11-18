@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { expandProjection, projectionBaseline, THREAD_SURFACE_SYNC } from '@infos/shared'
+import type { ConversationMessageProjection, ConversationProjectionSnapshot, DeltaFrame, SurfaceFrame, SurfaceId } from '@infos/shared'
 import type { KernelNodeDescriptor, KernelNodeId } from '@infos/shared'
 import { NodeRegistry } from '../../../../src/kernel/nodeRegistry'
 import { GatewayHub } from '../../../../src/services/gateway/gatewayHub'
@@ -29,6 +31,76 @@ function message(type: 'hello' | 'request' | 'heartbeat', payload: Record<string
 }
 
 describe('Gateway 多节点闭环', () => {
+  it('按观察范围交付实时帧，旧连接收到完整历史，重新观察先交付全量', async () => {
+    const hub = new GatewayHub(new NodeRegistry())
+    const modern = vi.fn<(data: string) => void>()
+    const legacy = vi.fn<(data: string) => void>()
+    hub.registerNode('modern', modern)
+    hub.registerNode('legacy', legacy)
+    await hub.handleMessage(message('hello', { nodeId: 'new', features: [THREAD_SURFACE_SYNC] }), 'modern')
+    await hub.handleMessage(message('hello', { nodeId: 'old' }), 'legacy')
+    const watch = (watching: boolean) => hub.handleMessage(message('request', {
+      action: 'gateway.watch_thread', threadId: 't', watching,
+    }), 'modern')
+    await watch(true)
+    modern.mockClear()
+    legacy.mockClear()
+    const row = (messageId: string, content: string): ConversationMessageProjection => ({
+      messageId, content, threadId: 't', role: 'assistant', revision: 1, imageTranscription: false,
+      status: 'completed', timestamp: '2026-11-18T00:00:00Z', contentBlocks: [], toolCalls: [], attachments: [],
+    })
+    const page: ConversationProjectionSnapshot = {
+      protocolVersion: 1, threadId: 't', threadGeneration: 1, principalId: 'pero', revision: 7, generatedAt: '2026-11-18',
+      messages: [row('1', '移出窗口'), row('2', '未改动的正文'), row('3', '编辑前')],
+      surfaces: [{ surfaceId: 'approval' as SurfaceId, generation: 'g', threadId: 't', principalId: 'pero',
+        revision: 1, sequence: 1, state: 'open', nodes: [] }],
+    }
+    const initial: SurfaceFrame = {
+      protocolVersion: 1, threadId: 't', generation: 'g', revision: 1, sequence: 1, surfaceId: 'live' as SurfaceId,
+      operationId: 'first', operation: { type: 'surface.publish', snapshot: page },
+    }
+    const final: SurfaceFrame = { ...initial, operationId: 'second', sequence: 2, operation: {
+      type: 'surface.settled', snapshot: { ...page, deletedMessageIds: ['99'], beforeCursor: '2',
+        messages: [row('2', '未改动的正文'), row('3', '已编辑'), row('4', '新回复')],
+        surfaces: [{ ...page.surfaces[0]!, state: 'committed' }] },
+    } }
+    await hub.pushSurface({ ...initial, threadId: 'elsewhere', operation: { type: 'surface.dispose' } })
+    await hub.pushQueueChanged('elsewhere')
+    expect(modern.mock.calls).toEqual([])
+    expect(legacy.mock.calls).toHaveLength(1)
+    await hub.pushSurface(initial)
+    await hub.pushSurface(final)
+    await hub.pushQueueChanged('t')
+    const [full, compact, hint] = modern.mock.calls.map(([data]) => JSON.parse(data).payload)
+    expect(full.frame).toEqual(initial)
+    const delta: DeltaFrame = compact.delta
+    expect(delta.operation.snapshot.messages[0]).toBe('2')
+    expect(modern.mock.calls[1]![0]).not.toContain('未改动的正文')
+    expect(expandProjection(delta, projectionBaseline(full.frame))).toEqual(final)
+    const missing = { ...delta, operation: { ...delta.operation,
+      snapshot: { ...delta.operation.snapshot, messages: ['unknown-id'] } } }
+    expect(() => expandProjection(missing, projectionBaseline(full.frame))).toThrow('SURFACE_DELTA_REFERENCE_INVALID')
+    expect(hint).toEqual({ action: 'conversation_queue_changed', threadId: 't' })
+    expect(legacy.mock.calls.map(([data]) => JSON.parse(data).payload.frame.operationId)).toEqual(['first', 'first', 'second'])
+
+    const commit: SurfaceFrame = { ...initial, operationId: 'commit', operation: {
+      type: 'surface.commit', snapshot: page, message: page.messages[0]!, surface: page.surfaces[0]!,
+    } }
+    await hub.pushSurface(commit)
+    expect(expandProjection(JSON.parse(modern.mock.lastCall![0]).payload.delta, projectionBaseline(final))).toEqual(commit)
+
+    const reset: SurfaceFrame = { ...initial, operationId: 'reset',
+      operation: { type: 'surface.publish', snapshot: { ...page, threadGeneration: 2 } } }
+    await hub.pushSurface(reset)
+    expect(JSON.parse(modern.mock.lastCall![0]).payload.frame).toEqual(reset)
+    await watch(false)
+    modern.mockClear()
+    await hub.pushSurface(final)
+    expect(modern.mock.calls).toEqual([])
+    await watch(true)
+    await hub.pushSurface(final)
+    expect(JSON.parse(modern.mock.lastCall![0]).payload.frame).toEqual(final)
+  })
   it('切换当前角色后，只接收该角色的回复就绪提示且无需重建连接', async () => {
     const registry = new NodeRegistry()
     const send = vi.fn()

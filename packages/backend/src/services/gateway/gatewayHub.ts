@@ -24,12 +24,18 @@ import { t as __t } from '../../lib/i18n'
  */
 
 import { timingSafeEqual } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 import {
+  THREAD_SURFACE_SYNC,
+  compactProjection,
+  projectionBaseline,
   GATEWAY_ACTION_CATALOG,
   negotiateKernelProtocol,
   validateVersionedMessage,
 } from '@infos/shared'
 import type {
+  ProjectionBaseline,
+  SurfaceFrame,
   CataloguedGatewayAction,
   DeliveryAudience,
   KernelInputSeat,
@@ -45,8 +51,16 @@ import type { GatewayEnvelope } from './types'
 import { createEnvelope } from './types'
 import { DurableGatewayStream } from './durableGatewayStream'
 import { createLogger } from '../../lib/logger'
+import { ipcPayloadBytes } from '../../lib/metrics'
 
 const logger = createLogger('GatewayHub')
+
+function encodeDelivery(envelope: GatewayEnvelope): string {
+  const data = JSON.stringify(envelope)
+  if (envelope.payload.action === 'surface')
+    ipcPayloadBytes.observe({ carrier: 'surface', direction: 'outbound' }, Buffer.byteLength(data))
+  return data
+}
 
 // ─────────────────────────────────────────────
 // 常量
@@ -70,6 +84,7 @@ interface GatewayNode {
   generation?: number
   principalId?: string
   subscriptions: Set<string>
+  watchedThreads?: Map<string, ProjectionBaseline | undefined>
   authenticated: boolean
   /** HTTP 升级已经验证的凭据，可供浏览器无令牌的 hello 复用。 */
   transportAuthenticated?: boolean
@@ -466,6 +481,19 @@ export class GatewayHub {
           await this.handleSubscribe(envelope, node)
           break
         }
+        if (envelope.payload.action === 'gateway.watch_thread') {
+          const { threadId, watching } = envelope.payload
+          const watches = node.watchedThreads
+          if (!watches || typeof threadId !== 'string' || !threadId.trim() || threadId.length > 512 ||
+              typeof watching !== 'boolean' || (watching && !watches.has(threadId) && watches.size >= 64)) {
+            await this.sendTransportError(envelope.id, node.id, 'GATEWAY_SUBSCRIPTION_INVALID')
+          } else {
+            if (watching) watches.set(threadId, undefined)
+            else watches.delete(threadId)
+            await this.sendRpcValue(envelope.id, node.id, { threadId, watching })
+          }
+          break
+        }
         if (envelope.payload.action === 'input_seat.acquire') {
           await this.handleInputSeatAcquire(envelope, node)
           break
@@ -511,7 +539,7 @@ export class GatewayHub {
 
   /** 广播 (排除发送者) */
   async broadcast(envelope: GatewayEnvelope, excludeNodeId?: string): Promise<void> {
-    const data = JSON.stringify(envelope)
+    const data = encodeDelivery(envelope)
     for (const [nodeId, node] of this.nodes) {
       if (nodeId === excludeNodeId || !node.authenticated || node.notificationOnly) continue
       try {
@@ -524,7 +552,7 @@ export class GatewayHub {
 
   /** 按 Audience 投递业务消息。 */
   async deliver(envelope: GatewayEnvelope): Promise<void> {
-    const data = JSON.stringify(envelope)
+    const data = encodeDelivery(envelope)
     for (const node of this.nodes.values()) {
       if (
         !node.authenticated ||
@@ -591,7 +619,9 @@ export class GatewayHub {
       if (!streamId) throw new Error(`GATEWAY_DURABLE_STREAM_REQUIRED: ${action}`)
       envelope = this.durableStreams.append(streamId, envelope)
     }
-    await this.deliver(envelope)
+    if (action === 'surface' && audience.type === 'thread_subscribers' && payload.frame)
+      await this.deliverThreadFrame(envelope, audience.threadId, payload.frame as SurfaceFrame)
+    else await this.deliver(envelope)
     return envelope
   }
 
@@ -603,8 +633,52 @@ export class GatewayHub {
   }
 
   /** 推送统一 Internal Surface 帧。 */
-  async pushSurface(frame: import('@infos/shared').SurfaceFrame): Promise<void> {
-    await this.broadcast(createEnvelope('push', { action: 'surface', frame }))
+  async pushSurface(frame: SurfaceFrame): Promise<void> {
+    const threadId = frame.threadId ?? (frame.operation.type === 'surface.open' ? frame.operation.threadId : undefined)
+    const envelope = createEnvelope('push', { action: 'surface', frame })
+    if (threadId) await this.deliverThreadFrame(envelope, threadId, frame)
+    else await this.broadcast(envelope)
+  }
+
+  async pushQueueChanged(threadId: string): Promise<void> {
+    await this.deliverThreadFrame(createEnvelope('push', { action: 'conversation_queue_changed', threadId }), threadId)
+  }
+
+  private async deliverThreadFrame(envelope: GatewayEnvelope, threadId: string, frame?: SurfaceFrame): Promise<void> {
+    const next = frame && projectionBaseline(frame)
+    const variants = next && new Map<ProjectionBaseline, string>()
+    const sends: Promise<void>[] = []
+    let full: string | undefined
+    for (const node of this.nodes.values()) {
+      if (!node.authenticated || node.notificationOnly) continue
+      const watches = node.watchedThreads
+      if (watches && !watches.has(threadId)) continue
+      if (!watches && (!frame || (envelope.audience && !this.matchesAudience(node, envelope.audience)))) continue
+      const base = watches?.get(threadId)
+      let data = base && variants?.get(base)
+      if (data === undefined && variants && base && frame) {
+        const delta = compactProjection(frame, base, isDeepStrictEqual)
+        if (delta) data = encodeDelivery({ ...envelope, payload: { action: 'surface', delta } })
+      }
+      if (data === undefined) {
+        full ??= encodeDelivery(envelope)
+        data = full
+      }
+      if (base) variants?.set(base, data)
+      if (next) watches?.set(threadId, next)
+      // 同一轮先按顺序向所有套接字写入，再等待异步发送，避免慢连接改变其他客户端的帧序。
+      sends.push(this.sendThreadData(node, threadId, data))
+    }
+    await Promise.all(sends)
+  }
+
+  private async sendThreadData(node: GatewayNode, threadId: string, data: string): Promise<void> {
+    try {
+      await node.send(data)
+    } catch (err) {
+      if (node.watchedThreads?.has(threadId)) node.watchedThreads.set(threadId, undefined)
+      logger.warn(__t('logs.gateway', '发送至 {0} 失败', [node.id]), { error: err })
+    }
   }
 
   /** 推送任务进度 (B6-4) */
@@ -801,6 +875,8 @@ export class GatewayHub {
     }
     node.authenticated = true
     node.notificationOnly = notificationOnly
+    node.watchedThreads = !notificationOnly && Array.isArray(envelope.payload.features) &&
+      envelope.payload.features.includes(THREAD_SURFACE_SYNC) ? new Map() : undefined
     node.deviceName = String(envelope.payload.deviceName ?? '') || undefined
 
     const supportedVersions = Array.isArray(envelope.payload.supportedVersions)
@@ -818,6 +894,7 @@ export class GatewayHub {
           ? ['notifications-v1']
           : [
               'surface-v1',
+              ...(node.watchedThreads ? [THREAD_SURFACE_SYNC] : []),
               'audience-v1',
               'cursor-v1',
               'input-seat-v1',

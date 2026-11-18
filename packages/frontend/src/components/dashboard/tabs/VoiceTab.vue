@@ -7,15 +7,13 @@ import { t as __t } from '../../../i18n/index'
  * TTS (语音合成) + ASR (语音识别) 配置面板。
  * F3: 已对接 configApi 读写。
  */
-import { ref, computed, onMounted, watch } from 'vue'
-import { PixelIcon, PInput, PSelect, PSlider, PSwitch, PButton, PCard } from '../../pixel'
+import { ref, onMounted, watch } from 'vue'
+import { PixelIcon, PInput, PSelect, PSlider, PSwitch, PCard } from '../../pixel'
 import { configApi } from '../../../api/modules/configApi'
 import TtsSettings from '../../voice/TtsSettings.vue'
 import { modelApi } from '../../../api/modules/modelApi'
 import { useDashboardContext } from '../../../composables/dashboard'
-import BrandIcon from '../../brands/BrandIcon.vue'
-import BrandSelect from '../../brands/BrandSelect.vue'
-import { resolveModelBrand } from '../../../lib/modelBrands'
+import RemoteModelField from '../RemoteModelField.vue'
 
 const ctx = useDashboardContext()
 
@@ -31,13 +29,6 @@ const asrSensitivity = ref(0.7)
 /** ASR 获取远程模型列表 */
 const isFetchingAsrModels = ref(false)
 const remoteAsrModels = ref<string[]>([])
-const asrModelChoices = computed(() =>
-  remoteAsrModels.value.map((modelId) => ({
-    label: modelId,
-    value: modelId,
-    brand: resolveModelBrand(modelId),
-  })),
-)
 
 async function fetchRemoteAsrModels() {
   if (!asrApiBase.value && !asrApiKey.value) return
@@ -167,10 +158,10 @@ onMounted(loadVoiceConfig)
               <PixelIcon name="mic" size="sm" />
             </div>
             <div>
-              <h3 class="text-base font-black text-slate-800 font-pixel">
+              <h3 class="text-base font-black text-[var(--ui-text-primary)] font-pixel">
                 {{ __t('ui.settings', '语音识别 ASR') }}
               </h3>
-              <p class="text-xs text-slate-400 mt-0.5">
+              <p class="text-xs text-[var(--ui-text-tertiary)] mt-0.5">
                 {{ __t('ui.settings', '用语音与助手对话') }}
               </p>
             </div>
@@ -183,58 +174,39 @@ onMounted(loadVoiceConfig)
             <!-- API Base -->
             <div class="flex flex-col gap-1.5">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 API Base
               </label>
               <PInput v-model="asrApiBase" placeholder="https://api.siliconflow.cn/v1" />
-              <p class="text-[10px] text-slate-400 italic">
+              <p class="text-[10px] text-[var(--ui-text-tertiary)] italic">
                 {{ __t('ui.settings', '* 任何兼容 /audio/transcriptions 的接口均可') }}
               </p>
             </div>
             <!-- API Key -->
             <div class="flex flex-col gap-1.5">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 API Key
               </label>
               <PInput v-model="asrApiKey" type="password" placeholder="sk-..." />
             </div>
             <!-- 模型 + 获取列表 -->
-            <div class="flex flex-col gap-1.5 col-span-2">
-              <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel flex items-center justify-between"
-              >
-                {{ __t('ui.settings', '模型') }}
-                <PButton
-                  variant="ghost"
-                  size="sm"
-                  :loading="isFetchingAsrModels"
-                  @click="fetchRemoteAsrModels"
-                >
-                  <PixelIcon name="refresh" size="xs" />
-                  {{ __t('ui.settings', '获取模型列表') }}
-                </PButton>
-              </label>
-              <BrandSelect
-                v-if="remoteAsrModels.length > 0"
-                v-model="asrModel"
-                :options="asrModelChoices"
-                :placeholder="__t('ui.settings', '从列表中选择...')"
-              />
-              <div v-else class="asr-model-input">
-                <BrandIcon :brand="resolveModelBrand(asrModel)" size="sm" />
-                <PInput
-                  v-model="asrModel"
-                  :placeholder="__t('ui.settings', '例如: FunAudioLLM/SenseVoiceSmall')"
-                />
-              </div>
-            </div>
+            <RemoteModelField
+              v-model="asrModel"
+              class="col-span-2"
+              brand-in-input
+              :label="__t('ui.settings', '模型')"
+              :model-ids="remoteAsrModels"
+              :loading="isFetchingAsrModels"
+              :placeholder="__t('ui.settings', '例如: FunAudioLLM/SenseVoiceSmall')"
+              @refresh="fetchRemoteAsrModels"
+            />
             <!-- 识别语言 -->
             <div class="flex flex-col gap-1.5">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 {{ __t('ui.settings', '识别语言') }}
               </label>
@@ -243,19 +215,19 @@ onMounted(loadVoiceConfig)
             <!-- 唤醒词 -->
             <div class="flex flex-col gap-1.5">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 {{ __t('ui.settings', '唤醒词') }}
               </label>
               <PInput v-model="wakeWord" :placeholder="__t('ui.settings', '例如: 佩洛')" />
-              <p class="text-[10px] text-slate-400 italic">
+              <p class="text-[10px] text-[var(--ui-text-tertiary)] italic">
                 {{ __t('ui.settings', '说出唤醒词后开始语音输入') }}
               </p>
             </div>
             <!-- 灵敏度 -->
             <div class="flex flex-col gap-1.5 col-span-2">
               <label
-                class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 {{ __t('ui.settings', '灵敏度 (') }}{{ (asrSensitivity * 100).toFixed(0) }}%)
               </label>
@@ -276,16 +248,6 @@ onMounted(loadVoiceConfig)
 </template>
 
 <style scoped>
-.asr-model-input {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-.asr-model-input > :last-child {
-  flex: 1;
-  min-width: 0;
-}
 .voice-sections > * {
   flex-shrink: 0;
 }

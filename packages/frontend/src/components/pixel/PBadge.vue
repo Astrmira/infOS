@@ -4,7 +4,7 @@
  */
 
 interface Props {
-  variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger'
+  variant?: 'default' | 'primary' | 'purple' | 'success' | 'warning' | 'danger'
   size?: 'sm' | 'md'
   /** 是否为点标记（无内容） */
   dot?: boolean
@@ -56,6 +56,11 @@ withDefaults(defineProps<Props>(), {
   background: var(--ui-accent-sky-soft);
   color: var(--ui-accent-sky);
   border-color: var(--ui-accent-sky);
+}
+.p-badge-purple {
+  background: var(--ui-accent-purple-soft);
+  color: var(--ui-accent-purple);
+  border-color: var(--ui-accent-purple);
 }
 .p-badge-success {
   background: var(--ui-success-soft);

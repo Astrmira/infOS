@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { ipcPayloadBytes, performanceEventsTotal, performanceLatencySeconds } from '../lib/metrics'
+import { performanceEventsTotal, performanceLatencySeconds } from '../lib/metrics'
 import type { FileWritePreviewBaseline } from '@infos/shared'
 import type {
   SurfaceFrame,
@@ -524,10 +524,6 @@ export class ConversationSurfaceSession {
       )
     }
     performanceEventsTotal.inc({ metric: 'surface_frame', outcome: operation.type })
-    ipcPayloadBytes.observe(
-      { carrier: 'surface', direction: 'outbound' },
-      Buffer.byteLength(JSON.stringify(frame)),
-    )
     return frame
   }
 }

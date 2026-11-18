@@ -5,7 +5,7 @@ import type {
   KernelEventEnvelope,
   SurfaceDescriptor,
 } from '@infos/shared'
-import type { ThreadService } from '../services/thread/threadService'
+import type { ThreadInfo, ThreadService } from '../services/thread/threadService'
 import type { ApprovalService } from '../services/execution/approvalService'
 import type { AgentInputService } from '../services/execution/agentInputService'
 import type { AttachmentService } from '../services/attachment/attachmentService'
@@ -16,9 +16,16 @@ import { parseAutomaticApproval } from '@infos/shared'
 
 interface CachedProjection {
   snapshot: ConversationProjectionSnapshot
+  terminal?: { queueId: string; operationId: string }
   dirty: boolean
   /** 构建时 Thread 的消息计数与最后消息时间；用户消息落盘不发提交事件，靠它发现缓存过期。 */
   stamp: string
+}
+
+type ProjectionThread = Pick<ThreadInfo, 'id' | 'generation' | 'messageCount' | 'lastMessageAt'>
+
+function historyStamp(thread: ProjectionThread): string {
+  return `${thread.messageCount}:${thread.lastMessageAt ?? ''}`
 }
 
 /**
@@ -28,6 +35,7 @@ interface CachedProjection {
  */
 export class ConversationProjectionService {
   private readonly cache = new Map<string, CachedProjection>()
+  private readonly builds = new Map<string, symbol>()
   private readonly processedEvents = new Set<string>()
   private readonly surfaceProjector = new ConversationSurfaceProjector()
 
@@ -46,8 +54,7 @@ export class ConversationProjectionService {
     if (event.type !== 'conversation.message.committed' && event.type !== 'conversation.execution.settled') return
     const payload = event.payload as { threadId?: string }
     if (!payload.threadId) return
-    const cached = this.cache.get(payload.threadId)
-    if (cached) cached.dirty = true
+    this.invalidate(payload.threadId)
   }
 
   async getSnapshot(
@@ -57,34 +64,54 @@ export class ConversationProjectionService {
     const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 60))
     const beforeMessageId = options.beforeCursor ? Number(options.beforeCursor) : undefined
     const useCache = beforeMessageId === undefined && pageSize === 60
-    const cached = useCache ? this.cache.get(threadId) : undefined
-
     const thread = await this.threadService.getThread(threadId)
     if (!thread) throw new Error(`Conversation Projection 找不到 Thread: ${threadId}`)
     // 用户消息在回合开始时就已落盘，但只有回复提交才会发失效事件；
     // 计数或最后消息时间变化说明缓存已落后，否则第二轮起快照会缺少刚发出的消息。
-    const stamp = `${thread.messageCount}:${thread.lastMessageAt ?? ''}`
+    const cached = useCache ? this.cache.get(threadId) : undefined
+    const stamp = historyStamp(thread)
     if (cached && !cached.dirty && cached.stamp === stamp && cached.snapshot.threadGeneration === thread.generation) return cached.snapshot
+    if (!useCache) return this.buildSnapshot(thread, pageSize, beforeMessageId)
+    const ticket = Symbol()
+    this.builds.set(threadId, ticket)
+    try {
+      const snapshot = await this.buildSnapshot(thread, pageSize)
+      // 历史变更或新的读取可能已发生，被取代的读取只回复原请求。
+      if (this.builds.get(threadId) === ticket) this.cache.set(threadId, { snapshot, dirty: false, stamp })
+      return snapshot
+    } finally {
+      if (this.builds.get(threadId) === ticket) this.builds.delete(threadId)
+    }
+  }
+
+  private async buildSnapshot(thread: ThreadInfo, pageSize: number, beforeMessageId?: number): Promise<ConversationProjectionSnapshot> {
+    const threadId = thread.id
     const result = await this.threadService.listMessages({
       threadId,
       beforeMessageId: Number.isSafeInteger(beforeMessageId) ? beforeMessageId : undefined,
       pageSize,
     })
     const ordered = [...result.items].reverse()
+    const displayExecution = (message: typeof ordered[number]) => message.executionId ??
+      (message.role === 'user' && message.publicationId?.endsWith(':input') ? message.publicationId.slice(0, -6) : undefined)
     const executions = thread.threadKind === 'main'
       ? this.threadService.conversations.forProjection(threadId, thread.generation,
-          ordered.flatMap((message) => message.executionId ? [message.executionId] : []),
+          [...new Set(ordered.flatMap((message) => displayExecution(message) ?? []))],
           ordered[0]?.timestamp ? new Date(ordered[0].timestamp).toISOString() : undefined,
           beforeMessageId && ordered.at(-1)?.timestamp ? new Date(ordered.at(-1)!.timestamp).toISOString() : undefined)
       : []
+    const pendingExecutions = new Set(executions.filter((run) => run.status === 'running').map((run) => run.id))
     const traces = new Map<number, Record<string, unknown>>()
+    const timelineGroups = new Map<string, string>()
     const publications = new Map(executions.map((execution) =>
       [execution.id, this.threadService.conversations.publications(execution.id)]))
     const processPositions = new Map<string, number>()
     const separateProcess = (status: string) => ['failed', 'interrupted', 'paused'].includes(status)
     for (const execution of executions) {
+      const metadata = JSON.parse(execution.metadataJson)
+      if (typeof metadata.timelineGroupId === 'string') timelineGroups.set(execution.id, metadata.timelineGroupId)
       const last = publications.get(execution.id)?.at(-1)
-      if (last && !separateProcess(execution.status)) traces.set(last.id, { ...JSON.parse(execution.metadataJson),
+      if (last && !separateProcess(execution.status)) traces.set(last.id, { ...metadata,
         kernelExecutionId: execution.kernelExecutionId, settled: execution.completedAt !== null })
     }
     const attachments = await this.attachmentService.listForMessages(
@@ -112,6 +139,8 @@ export class ConversationProjectionService {
         pairId: message.pairId,
         publicationId: message.publicationId,
         executionId: message.executionId,
+        timelineGroupId: timelineGroups.get(displayExecution(message) ?? ''),
+        executionPending: message.role === 'assistant' && message.executionId && pendingExecutions.has(message.executionId) ? true : undefined,
         sourceMessages: this.parseSourceMessages(message.metadataJson),
         senderId: message.senderId,
         agentId: message.agentId,
@@ -141,6 +170,7 @@ export class ConversationProjectionService {
       if (last && !separateProcess(execution.status)) continue
       const metadata = execution.metadataJson
       const details = JSON.parse(metadata)
+      if (details.historyRecordHidden || (!last && !separateProcess(execution.status) && details.publicationRevisions?.length)) continue
       if (!separateProcess(execution.status) && !details.contentBlocks?.length && !details.toolCalls?.length) continue
       const sources = JSON.parse(execution.inputSourcesJson) as import('@infos/shared').ConversationSource[]
       const previous = ordered.filter((message) => new Date(message.timestamp).getTime() <= new Date(execution.startedAt).getTime()).at(-1)?.id ?? 0
@@ -270,13 +300,29 @@ export class ConversationProjectionService {
       beforeCursor: ordered[0] ? String(ordered[0].id) : undefined,
     }
     await this.threadService.assertGeneration(threadId, thread.generation)
-    if (useCache) this.cache.set(threadId, { snapshot, dirty: false, stamp })
     return snapshot
   }
 
   invalidate(threadId: string): void {
+    this.builds.delete(threadId)
     const cached = this.cache.get(threadId)
     if (cached) cached.dirty = true
+  }
+
+  recordQueueTerminal(snapshot: ConversationProjectionSnapshot, queueId: string, operationId: string): void {
+    const cached = this.cache.get(snapshot.threadId)
+    if (cached?.snapshot === snapshot) cached.terminal = { queueId, operationId }
+  }
+
+  currentQueueTerminal(
+    thread: ProjectionThread,
+    runningId?: string,
+  ): string | undefined {
+    const cached = this.cache.get(thread.id)
+    if (cached?.terminal && !cached.dirty && cached.snapshot.threadGeneration === thread.generation &&
+        cached.stamp === historyStamp(thread) &&
+        (!runningId || cached.terminal.queueId === runningId))
+      return cached.terminal.operationId
   }
 
   private parseSpokenReply(metadataJson: string): string | undefined {
