@@ -521,7 +521,9 @@ Electron 的 `web.page/observeFrame` 提供独立的只读 JPEG 采集，不进�
 
 会话发现包含当前 Thread 及向该对话交付结果的后台任务；子任务按真实父任务链核对归属（最多 8 层，遇环停止），隔离其他对话或渠道任务。小窗默认跟随最近使用的浏览器会话，用户手动选择后锁定所选；任务详情通过任务专属 Thread 复用同一旁观组件并保留抽屉内键盘焦点边界。
 
-前端 `packages/frontend/src/components/chat/BrowserObserver.vue` 在当前对话发现会话，展开时按约 750 毫秒间隔串行请求最新画面（受采集与传输耗时影响）。拖动、八方向调整大小及缩放只作用于观看端矩形并保持等比留边；收起、页面隐藏、切换对话或组件停用时取消请求并停止取帧。手动选择按服务器、角色、Thread 和任务写入当前窗口的 `sessionStorage`（最多 128 项），在组件重挂载与节点重连后仍优先于 Agent 的重复展开意图；存储禁用时退回组件内状态。节点离线或传输失败显示暂停并重试，页面关闭显示关闭状态。纯 Web 客户端可观看已连接 Electron 节点的画面。
+前端 `BrowserObserver.vue` 在当前对话发现会话，展开时按约 750 毫秒间隔串行请求最新画面。收起、关闭旁观、页面隐藏、切换对话或组件停用时取消画面请求。对话采用可拖动的浮窗，收起后保留右下角入口。任务详情把画面和收起入口嵌在抽屉内。关闭旁观会移除画面和收起入口，对话输入栏和任务详情均可重新打开旁观。
+
+`browserObserverVisibility.ts` 按服务器、角色和正在观看的 Thread 记录关闭选择，因此相关任务切换或节点重连后浮窗仍保持关闭。展开与收起沿用各浏览器会话的角色、Thread 和任务键。选择在当前客户端窗口内共享，并写入 `sessionStorage`（最多 128 项）。存储不可用时保留窗口内存状态。拖动和缩放只作用于观看端，关闭旁观也只影响观看端。节点离线或传输失败时显示暂停并重试，纯 Web 客户端同样可观看已连接 Electron 节点的画面。
 
 源码入口：`electron/main/services/browserRuntime.ts`、`packages/backend/src/capabilities/browserToolRuntime.ts`、`packages/backend/src/routers/browserObserver.router.ts`、`packages/frontend/src/components/chat/BrowserObserver.vue`。
 

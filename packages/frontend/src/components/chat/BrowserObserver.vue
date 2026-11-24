@@ -12,8 +12,10 @@ import {
 } from 'vue'
 import type { BrowserObserverFrame, BrowserObserverSession } from '@infos/shared'
 import { browserObserverApi } from '../../api/modules/browserObserverApi'
-import { getWebServerOrigin } from '../../api/transport'
 import { t } from '../../i18n'
+import { PButton, PixelIcon } from '../pixel'
+import '../../assets/aux-window.css'
+import { observerDisplay, setObserverDisplay, type ObserverDisplay } from './browserObserverVisibility'
 
 const props = withDefaults(
   defineProps<{
@@ -31,37 +33,11 @@ const mainVisible = inject('infos:main-surface-visible', ref(true))
 const sessions = ref<BrowserObserverSession[]>([])
 const selectedId = ref('')
 const selectedManually = ref(false)
-const visibilityStorageKey = 'infos.browserObserver.visibility'
-function savedVisibility(): Map<string, boolean> {
-  try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(visibilityStorageKey) ?? '[]')
-    if (Array.isArray(value))
-      return new Map(
-        value
-          .filter(
-            (entry): entry is [string, boolean] =>
-              Array.isArray(entry) &&
-              entry.length === 2 &&
-              typeof entry[0] === 'string' &&
-              typeof entry[1] === 'boolean',
-          )
-          .slice(-128),
-      )
-  } catch {
-    /* 存储不可用时只保留窗口内状态。 */
-  }
-  return new Map()
-}
-const manualVisibility = reactive(savedVisibility())
-const visibilityKey = (session: BrowserObserverSession) =>
-  JSON.stringify([getWebServerOrigin(), session.agentId, session.threadId, session.taskId ?? null])
 const selected = computed(
   () => sessions.value.find((item) => item.id === selectedId.value) ?? sessions.value[0],
 )
-const visible = computed(
-  () =>
-    !!selected.value &&
-    (manualVisibility.get(visibilityKey(selected.value)) ?? selected.value.requestedVisible),
+const display = computed(() =>
+  selected.value && observerDisplay(props.agentId, props.threadId, selected.value),
 )
 const running = computed(
   () =>
@@ -73,6 +49,7 @@ const running = computed(
 )
 const frame = ref<BrowserObserverFrame>({ state: 'waiting' })
 const image = ref('')
+const live = computed(() => selected.value?.available && frame.value.state === 'live')
 const rect = reactive({ x: 0, y: 0, width: 440, height: 320 })
 const viewport = reactive({ width: 1024, height: 768 })
 let positioned = false
@@ -111,17 +88,10 @@ function scale(factor: number) {
   rect.height *= factor
   clampRect()
 }
-function setVisible(value: boolean) {
+function setDisplay(value: ObserverDisplay) {
   if (!selected.value) return
-  const key = visibilityKey(selected.value)
-  manualVisibility.delete(key)
-  manualVisibility.set(key, value)
-  while (manualVisibility.size > 128) manualVisibility.delete(manualVisibility.keys().next().value!)
-  try {
-    sessionStorage.setItem(visibilityStorageKey, JSON.stringify([...manualVisibility]))
-  } catch {
-    /* 存储不可用时只保留窗口内状态。 */
-  }
+  stopGesture?.()
+  setObserverDisplay(props.agentId, props.threadId, selected.value, value)
 }
 
 /** 拖动与缩放只更新观看端矩形，没有向浏览器发送尺寸或输入的入口。 */
@@ -203,13 +173,13 @@ watch(
 )
 
 watch(
-  [running, visible, () => selected.value?.id, () => selected.value?.available],
+  [running, display, () => selected.value?.id, () => selected.value?.available],
   () => {
     stopFrames?.()
     const session = selected.value
     image.value = ''
     frame.value = { state: 'waiting' }
-    if (!running.value || !visible.value || !session?.available) return
+    if (!running.value || display.value !== 'expanded' || !session?.available) return
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     stopFrames = () => {
@@ -264,57 +234,82 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <PButton
+    v-if="running && display === 'closed'"
+    type="button"
+    variant="ghost"
+    size="sm"
+    :title="t('ui.browser-observer', '查看浏览器')"
+    :aria-label="t('ui.browser-observer', '查看浏览器')"
+    @click="setDisplay('expanded')"
+  >
+    <PixelIcon name="globe" size="xs" aria-hidden="true" />
+    <span v-if="embedded">{{ t('ui.browser-observer', '查看浏览器') }}</span>
+  </PButton>
   <Teleport to="body" :disabled="embedded">
-    <template v-if="running && selected">
-      <button
-        v-if="!visible"
-        type="button"
-        class="browser-observer-launcher"
-        @click="setVisible(true)"
+    <template v-if="running && selected && display !== 'closed'">
+      <div
+        v-if="display === 'collapsed'"
+        class="browser-observer-dock"
+        :class="{ 'is-embedded': embedded }"
       >
-        {{ t('ui.browser-observer', '查看浏览器') }}
-      </button>
+        <button type="button" class="browser-observer-launcher" @click="setDisplay('expanded')">
+          <span class="aux-mark"><PixelIcon name="globe" size="sm" aria-hidden="true" /></span>
+          {{ t('ui.browser-observer', '查看浏览器') }}
+        </button>
+        <button
+          type="button"
+          class="aux-button aux-button--close"
+          :title="t('ui.browser-observer', '关闭浏览器旁观')"
+          :aria-label="t('ui.browser-observer', '关闭浏览器旁观')"
+          @click="setDisplay('closed')"
+        >
+          <PixelIcon name="close" size="xs" aria-hidden="true" />
+        </button>
+      </div>
       <section
         v-else
         class="browser-observer"
+        :class="{ 'is-embedded': embedded }"
         role="region"
         :aria-label="t('ui.browser-observer', '浏览器旁观小窗')"
         :style="{
-          left: `${rect.x}px`,
-          top: `${rect.y}px`,
+          left: embedded ? undefined : `${rect.x}px`,
+          top: embedded ? undefined : `${rect.y}px`,
           width: `${rect.width}px`,
           height: `${rect.height}px`,
         }"
       >
-        <header class="browser-observer-header" @pointerdown="startGesture($event)">
-          <strong>{{ t('ui.browser-observer', '浏览器旁观') }}</strong>
-          <button
-            type="button"
-            :title="t('ui.browser-observer', '缩小小窗')"
-            :aria-label="t('ui.browser-observer', '缩小小窗')"
-            @click="scale(0.8)"
-          >
-            −
-          </button>
-          <button
-            type="button"
-            :title="t('ui.browser-observer', '放大小窗')"
-            :aria-label="t('ui.browser-observer', '放大小窗')"
-            @click="scale(1.25)"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            :title="t('ui.browser-observer', '收起小窗')"
-            :aria-label="t('ui.browser-observer', '收起小窗')"
-            @click="setVisible(false)"
-          >
-            ×
-          </button>
+        <header
+          class="aux-bar browser-observer-header"
+          @pointerdown="!embedded && startGesture($event)"
+        >
+          <span class="aux-mark"><PixelIcon name="globe" size="sm" aria-hidden="true" /></span>
+          <strong class="aux-title">{{ t('ui.browser-observer', '浏览器旁观') }}</strong>
+          <div class="aux-controls">
+            <button
+              type="button"
+              class="aux-button"
+              :title="t('ui.browser-observer', '收起小窗')"
+              :aria-label="t('ui.browser-observer', '收起小窗')"
+              @click="setDisplay('collapsed')"
+            >
+              <PixelIcon name="chevron-down" size="sm" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="aux-button aux-button--close"
+              :title="t('ui.browser-observer', '关闭浏览器旁观')"
+              :aria-label="t('ui.browser-observer', '关闭浏览器旁观')"
+              @click="setDisplay('closed')"
+            >
+              <PixelIcon name="close" size="sm" aria-hidden="true" />
+            </button>
+          </div>
         </header>
         <div class="browser-observer-source">
-          <span>{{ agentName || agentId }}</span>
+          <PixelIcon name="user" size="xs" aria-hidden="true" />
+          <span :title="agentName || agentId">{{ agentName || agentId }}</span>
           <select
             v-if="sessions.length > 1"
             v-model="selectedId"
@@ -333,30 +328,50 @@ onBeforeUnmount(() => {
             {{ t('ui.browser-observer', '任务 {0}', [selected.taskId]) }}
           </span>
         </div>
-        <div
-          class="browser-observer-screen"
-          :class="{ 'is-paused': frame.state !== 'live' || !selected.available }"
-        >
+        <div class="browser-observer-screen" :class="{ 'is-paused': !live }">
           <img
             v-if="image"
             :src="image"
             :alt="t('ui.browser-observer', 'Agent 浏览器的只读画面')"
             draggable="false"
           />
-          <span
-            v-if="frame.state !== 'live' || !selected.available"
-            class="browser-observer-overlay"
-            role="status"
-          >
+          <span v-if="!live" class="browser-observer-overlay" role="status">
+            <PixelIcon
+              :name="frame.state === 'closed' ? 'globe' : 'clock'"
+              size="lg"
+              aria-hidden="true"
+            />
             {{ status }}
           </span>
         </div>
         <footer>
-          <span :title="frame.url">{{ frame.title || status }}</span>
-          <small>{{ t('ui.browser-observer', '只读') }}</small>
+          <span class="browser-observer-readonly" :class="{ 'is-live': live }">
+            {{ t('ui.browser-observer', '只读') }}
+          </span>
+          <span class="browser-observer-page" :title="frame.url">{{ frame.title || frame.url }}</span>
+          <div class="aux-controls">
+            <button
+              type="button"
+              class="aux-button"
+              :title="t('ui.browser-observer', '缩小小窗')"
+              :aria-label="t('ui.browser-observer', '缩小小窗')"
+              @click="scale(0.8)"
+            >
+              <PixelIcon name="minus" size="sm" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="aux-button"
+              :title="t('ui.browser-observer', '放大小窗')"
+              :aria-label="t('ui.browser-observer', '放大小窗')"
+              @click="scale(1.25)"
+            >
+              <PixelIcon name="plus" size="sm" aria-hidden="true" />
+            </button>
+          </div>
         </footer>
         <span
-          v-for="direction in ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']"
+          v-for="direction in embedded ? [] : ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']"
           :key="direction"
           class="browser-observer-resize"
           :class="`resize-${direction}`"
@@ -370,74 +385,90 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .browser-observer,
-.browser-observer-launcher {
+.browser-observer-dock {
+  --aux-accent: var(--ui-accent-sky);
   position: fixed;
   z-index: 900;
+  box-sizing: border-box;
   color: var(--ui-text-primary);
   background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border-strong);
-  box-shadow: 4px 4px 0 rgb(0 0 0 / 25%);
-  font: 12px/1.5 var(--ui-font-pixel);
+  box-shadow: var(--ui-shadow-lg);
+  font: 12px/1.45 var(--ui-font-sans);
 }
 .browser-observer {
   display: flex;
   flex-direction: column;
 }
-.browser-observer-launcher {
+.browser-observer-dock {
+  display: inline-flex;
+  align-items: center;
   right: 24px;
   bottom: 96px;
-  padding: 8px 12px;
-  cursor: pointer;
+  padding-right: 2px;
 }
-.browser-observer-header {
+.browser-observer-launcher {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  background: var(--ui-bg-surface-soft);
-  cursor: move;
-  touch-action: none;
-  user-select: none;
-}
-.browser-observer-header strong {
-  flex: 1;
-}
-.browser-observer-header button {
-  min-width: 28px;
-  min-height: 28px;
-  color: inherit;
+  gap: 9px;
+  height: 34px;
+  padding: 0 12px 0 0;
+  border: 0;
+  border-right: 1px solid var(--ui-border-subtle);
   background: transparent;
-  border: 1px solid var(--ui-border-default);
+  color: var(--ui-text-primary);
+  font: 600 12px var(--ui-font-sans);
   cursor: pointer;
 }
-.browser-observer-header button:hover {
+.browser-observer-launcher:hover {
   background: var(--ui-bg-hover);
 }
+.browser-observer-launcher:focus-visible,
+.browser-observer-source select:focus-visible {
+  outline: 2px solid var(--aux-accent);
+  outline-offset: -2px;
+}
+.browser-observer-header {
+  cursor: grab;
+  touch-action: none;
+}
+.browser-observer-header:active { cursor: grabbing; }
 .browser-observer-source {
   display: flex;
-  gap: 8px;
   align-items: center;
+  gap: 6px;
+  min-width: 0;
   min-height: 28px;
-  padding: 0 8px;
+  padding: 0 10px;
+  color: var(--ui-text-secondary);
 }
-.browser-observer-source span {
+.browser-observer-source span,
+.browser-observer-page {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.browser-observer-source select,
+.browser-observer-source span + span {
+  margin-left: auto;
+  max-width: 60%;
+}
 .browser-observer-source select {
   min-width: 0;
-  flex: 1;
-  color: inherit;
-  background: var(--ui-bg-surface);
+  padding: 2px 4px;
   border: 1px solid var(--ui-border-default);
+  border-radius: 0;
+  color: inherit;
+  background: var(--ui-bg-surface-soft);
+  font: inherit;
 }
 .browser-observer-screen {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #111;
+  background: var(--ui-bg-canvas);
+  border-block: 1px solid var(--ui-border-subtle);
 }
 .browser-observer-screen img {
   display: block;
@@ -447,33 +478,58 @@ onBeforeUnmount(() => {
   pointer-events: none;
   user-select: none;
 }
-.browser-observer-screen.is-paused img {
-  opacity: 0.35;
-}
+.browser-observer-screen.is-paused img { opacity: .16; }
 .browser-observer-overlay {
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
-  padding: 12px;
-  text-align: center;
-  color: #eee;
-  background: rgb(0 0 0 / 25%);
-}
-footer {
-  display: flex;
+  place-content: center;
+  justify-items: center;
   gap: 8px;
-  justify-content: space-between;
-  padding: 4px 8px;
-}
-footer span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-footer small {
-  flex-shrink: 0;
+  padding: 8px;
   color: var(--ui-text-secondary);
+  background: color-mix(in srgb, var(--ui-bg-canvas) 72%, transparent);
+  text-align: center;
+}
+.browser-observer-overlay .pixel-icon { color: var(--aux-accent); }
+footer {
+  --aux-button-size: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 2px 10px;
+}
+.browser-observer:not(.is-embedded) footer { padding-inline-end: 12px; }
+.browser-observer-readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+}
+.browser-observer-readonly::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--ui-text-tertiary);
+}
+.browser-observer-readonly.is-live::before { background: var(--ui-success); }
+.browser-observer-page {
+  flex: 1;
+  color: var(--ui-text-secondary);
+}
+.browser-observer.is-embedded,
+.browser-observer-dock.is-embedded {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  max-width: 100%;
+  box-shadow: none;
+}
+.is-embedded .browser-observer-header {
+  touch-action: auto;
+  cursor: default;
 }
 .browser-observer-resize {
   position: absolute;
@@ -526,6 +582,16 @@ footer small {
   right: -3px;
   bottom: -3px;
   cursor: nwse-resize;
+}
+.resize-se::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--ui-text-tertiary);
+  border-bottom: 2px solid var(--ui-text-tertiary);
 }
 .resize-sw {
   left: -3px;

@@ -9,7 +9,7 @@
  *              - `toast(message)`：以卡片名称为标题发出 infOS 桌面通知（正文限长、限频，不用 `alert`）；
  *                `close()`：关闭本卡片（未收藏的进最近关闭）；`togglePin()`：切换置顶，只能由用户点击触发。
  *              - 标题栏放在封闭的 Shadow DOM 中（名称、收藏、置顶、关闭），只响应真实的用户点击；
- *                关闭按钮平时调淡，鼠标移到卡片上时完全显示；
+ *                收藏与置顶状态在标题栏常显；
  *                卡片脚本移除它时自动放回；宿主元素的定位与显示用内联 `!important` 写入，
  *                页面样式（含 `!important`）覆盖不了，被改写时恢复。
  *              - 页面仍可能用全屏遮罩挡住标题栏，所以另有不依赖卡片页面的关闭方式：
@@ -25,6 +25,10 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { cardHome } from './cardHome'
 import { showCardError, installCardDiagnostics } from './cardDiagnostics'
 import { installCardKit } from './cardKit'
+import uiTokens from '../../packages/frontend/src/assets/ui-tokens.css?raw'
+import windowChrome from '../../packages/frontend/src/assets/aux-window.css?raw'
+import { windowIconPaths } from '../../packages/frontend/src/components/pixel/windowIconPaths'
+import cardChrome from './cardChrome.css?raw'
 import {
   DESKTOP_CARD_CHANNELS,
   DESKTOP_CARD_LIMITS,
@@ -130,25 +134,6 @@ interface CardInfo {
   }
 }
 
-const BAR_STYLE = `
-.bar { box-sizing: border-box; height: 100%; display: flex; align-items: center; gap: 4px;
-  padding: 0 4px 0 8px; font: 12px/1 system-ui, sans-serif; color: #fff;
-  background: rgba(20, 20, 28, 0.72); opacity: .88; transition: opacity .15s, background .3s;
-  -webkit-app-region: drag; user-select: none; }
-:host(:hover) .bar { opacity: 1; }
-.grip { font-size:16px; opacity:.7; letter-spacing:-3px; margin-right:5px; }
-.bar.updated { background: rgba(98, 78, 140, .9); }
-button:active { transform: scale(.9); }
-@media(prefers-reduced-motion:reduce){*{transition:none!important;transform:none!important}}
-.name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-button { all: unset; -webkit-app-region: no-drag; width: 20px; height: 20px; border-radius: 4px;
-  display: grid; place-items: center; cursor: pointer; font-size: 13px; color: #fff; }
-button:hover { background: rgba(255, 255, 255, 0.18); }
-button[aria-pressed='true'] { color: #ffd166; }
-.close { opacity: .45; transition: opacity .15s; }
-.bar.hover .close, .close:hover, .close:focus-visible { opacity: 1; }
-`
-
 /** 宿主元素的内联样式（`!important`）：页面样式表即使带 `!important` 也覆盖不了内联的 `!important`。 */
 const HOST_STYLE: ReadonlyArray<[string, string]> = [
   ['all', 'initial'],
@@ -174,28 +159,50 @@ function styleHost(host: HTMLElement): void {
   for (const [name, value] of HOST_STYLE) host.style.setProperty(name, value, 'important')
 }
 
+function icon(name: keyof typeof windowIconPaths): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('aria-hidden', 'true')
+  const path = document.createElementNS(ns, 'path')
+  path.setAttribute('d', windowIconPaths[name])
+  svg.append(path)
+  return svg
+}
+
 function installBar(): void {
   installCardKit()
   const host = document.createElement('infos-card-bar')
   styleHost(host)
   const expected = host.style.cssText
   const root = host.attachShadow({ mode: 'closed' })
-  const setDiagnosticLabels = installCardDiagnostics(root, () => {
+  const shell = document.createElement('div')
+  shell.className = 'card-shell'
+  const theme = window.matchMedia('(prefers-color-scheme: dark)')
+  const syncTheme = () => {
+    shell.dataset.theme = theme.matches ? 'dark' : 'light'
+  }
+  syncTheme()
+  theme.addEventListener('change', syncTheme)
+  const setDiagnosticLabels = installCardDiagnostics(shell, () => {
     void ipcRenderer.invoke(DESKTOP_CARD_CHANNELS.control, 'reload').catch(showCardError)
   })
   const style = document.createElement('style')
-  style.textContent = BAR_STYLE
+  style.textContent = [uiTokens, windowChrome, cardChrome].join('\n')
   const bar = document.createElement('div')
-  bar.className = 'bar'
+  bar.className = 'aux-bar'
   const name = document.createElement('span')
-  name.className = 'name'
+  name.className = 'aux-title'
   const grip = document.createElement('span')
-  grip.className = 'grip'
-  grip.textContent = '⠿'
-  grip.setAttribute('aria-hidden', 'true')
-  const button = (text: string, action: 'save' | 'pin' | 'close') => {
+  grip.className = 'aux-mark'
+  grip.append(icon('panels'))
+  const controls = document.createElement('div')
+  controls.className = 'aux-controls'
+  const button = (action: 'save' | 'pin' | 'close') => {
     const element = document.createElement('button')
-    element.textContent = text
+    element.type = 'button'
+    element.className = action === 'close' ? 'aux-button aux-button--close' : 'aux-button'
+    element.append(icon(action === 'save' ? 'star' : action))
     element.addEventListener('click', (event) => {
       // 卡片脚本合成的点击无效。
       if (!event.isTrusted) return
@@ -203,23 +210,28 @@ function installBar(): void {
     })
     return element
   }
-  const save = button('★', 'save')
-  const pin = button('↥', 'pin')
-  const close = button('✕', 'close')
-  close.className = 'close'
-  bar.append(grip, name, save, pin, close)
-  root.append(style, bar)
+  const save = button('save')
+  const pin = button('pin')
+  const close = button('close')
+  controls.append(save, pin, close)
+  bar.append(grip, name, controls)
+  shell.prepend(bar)
+  root.append(style, shell)
 
   let homeStarted = false
   const apply = (info: CardInfo) => {
     setDiagnosticLabels(info.labels)
     bar.title = info.labels.drag
     name.textContent = info.name
+    name.title = info.name
     save.title = info.saved ? info.labels.unsave : info.labels.save
+    save.setAttribute('aria-label', save.title)
     save.setAttribute('aria-pressed', String(info.saved))
     pin.title = info.labels.pin
+    pin.setAttribute('aria-label', pin.title)
     pin.setAttribute('aria-pressed', String(info.alwaysOnTop))
     close.title = info.labels.close
+    close.setAttribute('aria-label', close.title)
     if (info.homeBound && !homeStarted) {
       homeStarted = true
       cardHome.start(showCardError)
@@ -230,20 +242,6 @@ function installBar(): void {
     .invoke(DESKTOP_CARD_CHANNELS.info)
     .then((info: CardInfo) => apply(info))
     .catch(() => undefined)
-
-  // 鼠标在卡片上时完全显示关闭按钮。不完全隐藏：标题栏是系统拖动区，鼠标经过时页面收不到事件，
-  // 完全隐藏的话从内容移向标题栏的途中按钮会消失。隔离环境的捕获监听先于卡片脚本，卡片拦不住。
-  window.addEventListener('pointermove', () => bar.classList.add('hover'), {
-    capture: true,
-    passive: true,
-  })
-  window.addEventListener(
-    'mouseout',
-    (event) => {
-      if (!event.relatedTarget) bar.classList.remove('hover')
-    },
-    { capture: true, passive: true },
-  )
 
   let feedback: number | undefined
   const pulse = () => {

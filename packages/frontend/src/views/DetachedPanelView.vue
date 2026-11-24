@@ -33,6 +33,7 @@ import { useAgentStore, useNotificationStore } from '../stores'
 import { useTaskCenterStore } from '../stores/taskCenterStore'
 import MainTabLoading from '../components/main/MainTabLoading.vue'
 import { PDialog, PixelIcon } from '../components/pixel'
+import '../assets/aux-window.css'
 
 defineOptions({ name: 'DetachedPanelView' })
 
@@ -167,13 +168,13 @@ async function close(): Promise<void> {
 
 <template>
   <div class="main-view-root detached-panel">
-    <header class="detached-panel__bar">
-      <span class="detached-panel__title font-pixel">{{ title }}</span>
-      <div v-if="showControls" class="detached-panel__actions">
+    <header class="aux-bar detached-panel__bar">
+      <span class="aux-mark"><PixelIcon name="panels" size="sm" aria-hidden="true" /></span>
+      <span class="aux-title" :title="title">{{ title }}</span>
+      <div v-if="showControls" class="aux-controls">
         <button
           type="button"
-          class="detached-panel__btn"
-          :class="{ 'detached-panel__btn--active': alwaysOnTop }"
+          class="aux-button"
           :aria-pressed="alwaysOnTop"
           :title="
             alwaysOnTop ? __t('ui.desktop-shell', '取消置顶') : __t('ui.desktop-shell', '置顶')
@@ -184,7 +185,7 @@ async function close(): Promise<void> {
           :disabled="busy"
           @click="toggleTop"
         >
-          <PixelIcon name="map-pin" size="xs" />
+          <PixelIcon name="pin" size="sm" aria-hidden="true" />
         </button>
         <label
           class="detached-panel__opacity"
@@ -203,23 +204,23 @@ async function close(): Promise<void> {
         </label>
         <button
           type="button"
-          class="detached-panel__btn"
+          class="aux-button"
           :title="__t('ui.desktop-shell', '合回主窗口')"
           :aria-label="__t('ui.desktop-shell', '合回主窗口')"
           :disabled="busy"
           @click="attach"
         >
-          <PixelIcon name="minimize" size="xs" />
+          <PixelIcon name="minimize" size="sm" aria-hidden="true" />
         </button>
         <button
           type="button"
-          class="detached-panel__btn detached-panel__btn--danger"
+          class="aux-button aux-button--close"
           :title="__t('ui.desktop-shell', '关闭')"
           :aria-label="__t('ui.desktop-shell', '关闭')"
           :disabled="busy"
           @click="close"
         >
-          <PixelIcon name="close" size="xs" />
+          <PixelIcon name="close" size="sm" aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -261,6 +262,7 @@ async function close(): Promise<void> {
 
 <style scoped>
 .detached-panel {
+  --aux-accent: var(--ui-accent-purple);
   position: relative;
   isolation: isolate;
   display: flex;
@@ -273,81 +275,23 @@ async function close(): Promise<void> {
   font-family: var(--ui-font-sans);
 }
 
-/* 细标题栏：整条可拖动窗口，按钮区除外。 */
 .detached-panel__bar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 6px 0 12px;
-  background: var(--ui-bg-sidebar);
-  border-bottom: 1px solid var(--ui-border-subtle);
   -webkit-app-region: drag;
-  user-select: none;
-}
-
-.detached-panel__title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ui-text-secondary);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.detached-panel__actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  -webkit-app-region: no-drag;
-}
-
-.detached-panel__btn {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 24px;
-  border: none;
-  border-radius: var(--ui-radius-xs);
-  background: transparent;
-  color: var(--ui-text-tertiary);
-  cursor: pointer;
-  transition: all var(--ui-duration-fast);
-}
-
-.detached-panel__btn:hover:not(:disabled) {
-  background: var(--ui-bg-hover);
-  color: var(--ui-text-primary);
-}
-
-.detached-panel__btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.detached-panel__btn--active {
-  color: var(--ui-accent-primary);
-}
-
-.detached-panel__btn--danger:hover:not(:disabled) {
-  color: var(--ui-danger);
 }
 
 .detached-panel__opacity {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 4px;
-  color: var(--ui-text-tertiary);
+  gap: 6px;
+  padding: 0 9px;
+  margin-right: 3px;
+  border-inline: 1px solid var(--ui-border-subtle);
+  color: var(--ui-text-secondary);
 }
 
 .detached-panel__opacity input {
   width: 64px;
-  accent-color: var(--ui-accent-primary);
+  accent-color: var(--aux-accent);
   cursor: pointer;
 }
 

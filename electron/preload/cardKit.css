@@ -1,0 +1,58 @@
+.infos-kit {
+  color-scheme: light dark;
+  --card-ink: light-dark(#121723, #f2f3f7);
+  --card-muted: light-dark(#475266, #a9afbd);
+  --card-accent: light-dark(#6940b4, #bb9fff);
+  --card-surface: light-dark(rgb(245 247 252 / 96%), rgb(24 27 36 / 96%));
+  --card-panel: light-dark(#fff, #1c1f2a);
+  --card-line: color-mix(in srgb, var(--card-ink) 18%, transparent);
+  box-sizing: border-box;
+  min-height: 100vh;
+  margin: 0;
+  padding: 40px 16px 16px;
+  background: var(--card-surface);
+  color: var(--card-ink);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+.infos-kit * { box-sizing: border-box; }
+.infos-kit :is(h1, h2, p) { margin: 0; }
+.infos-kit h1 { font-size: 18px; }
+.infos-kit h2 { font-size: 14px; }
+.infos-kit small { color: var(--card-muted); }
+.infos-kit .card-panel {
+  padding: 12px;
+  border: 1px solid var(--card-line);
+  background: var(--card-panel);
+}
+.infos-kit .card-stack { display: grid; gap: 12px; }
+.infos-kit .card-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.infos-kit .card-stat { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.infos-kit .card-badge {
+  border-inline-start: 2px solid var(--card-accent);
+  padding: 2px 6px;
+  color: var(--card-accent);
+  background: color-mix(in srgb, var(--card-accent) 10%, var(--card-panel));
+  font-size: 11px;
+}
+.infos-kit .card-button,
+.infos-kit input,
+.infos-kit textarea {
+  border: 1px solid var(--card-line);
+  border-radius: 0;
+  padding: 6px 9px;
+  background: var(--card-panel);
+  color: var(--card-ink);
+  font: inherit;
+  -webkit-app-region: no-drag;
+}
+.infos-kit .card-button {
+  border-color: var(--card-accent);
+  color: var(--card-accent);
+  cursor: pointer;
+}
+.infos-kit .card-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--card-accent) 12%, var(--card-panel));
+}
+.infos-kit .card-button:disabled { opacity: .55; cursor: default; }
+.infos-kit progress { width: 100%; height: 8px; accent-color: var(--card-accent); }
+.infos-kit :focus-visible { outline: 2px solid var(--card-accent); outline-offset: 2px; }

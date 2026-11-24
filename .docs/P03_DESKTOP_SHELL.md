@@ -37,6 +37,8 @@ Agent 通过以下内置工具操作外壳。工具白名单、执行模式与�
 
 每张卡片使用独立内存 Session 和 `infos-card://<ID>/` 地址。主进程限定资源读取范围、导航、窗口创建和权限请求，页面使用专用 preload 的 `infosCard` 接口。主题与外观由宿主注入，卡片数据交互经 `HomeCardBridge` 核对卡片、角色及会话归属。
 
+卡片顶部 26 像素属于宿主。卡片 preload 在封闭的 Shadow DOM 中绘制可拖动标题栏、收藏、置顶和关闭按钮，与摘出面板和浏览器旁观窗复用 `packages/frontend/src/assets/aux-window.css`。标题栏跟随 Electron 深浅色。角色提供的 HTML 自行布局，可选用 `.infos-kit` 正文组件。
+
 卡片消息先进入 Home 的持久记录，再通过会话队列投递。局部更新携带 revision，冲突时由调用方读取新状态后重试。主线发言继续使用独立消息与 Execution 合同。
 
 ## 预制件与桌面层

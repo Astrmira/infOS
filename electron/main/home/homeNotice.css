@@ -1,0 +1,52 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: transparent;
+  color: var(--ui-text-primary);
+  font: 13px/1.45 var(--ui-font-sans);
+  user-select: none;
+}
+#list { display: grid; gap: 6px; padding: 5px; }
+.card {
+  --notice-accent: var(--ui-warning);
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border-default);
+  border-inline-start: 3px solid var(--notice-accent);
+  background: var(--ui-bg-surface);
+  box-shadow: var(--ui-shadow-sm);
+  overflow-wrap: anywhere;
+}
+.activity { --notice-accent: var(--ui-accent-sky); cursor: pointer; }
+.activity.failed { --notice-accent: var(--ui-danger); }
+.title { display: flex; align-items: baseline; gap: 10px; font-size: 14px; font-weight: 650; }
+.title > :first-child { flex: 1; min-width: 0; }
+.activity .title::after {
+  content: '';
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border: solid var(--ui-text-secondary);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+.activity[data-expanded='true'] .title::after { transform: rotate(225deg); }
+.time { color: var(--ui-text-secondary); font: 12px var(--ui-font-mono); }
+.line, .reason { margin-top: 3px; color: var(--ui-text-secondary); font-size: 12px; }
+.reason { padding-inline-start: 8px; border-inline-start: 1px solid var(--ui-border-strong); }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+button {
+  padding: 4px 10px;
+  border: 1px solid var(--ui-border-default);
+  background: var(--ui-bg-surface-soft);
+  color: var(--ui-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+button.primary { color: var(--ui-accent-purple); background: var(--ui-accent-purple-soft); }
+button.danger, .error { color: var(--ui-danger); }
+button:hover:enabled { border-color: currentColor; }
+button:focus-visible { outline: 2px solid var(--ui-focus-color); }
+button:disabled { opacity: .55; cursor: default; }
+.error { margin-top: 5px; font-size: 12px; }
+.review { margin-top: 8px; padding: 8px; background: var(--ui-bg-surface-soft); border-block: 1px solid var(--ui-border-default); }

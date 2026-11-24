@@ -29,6 +29,7 @@
  * @usage <PixelIcon name="heart" size="md" />
  */
 import { computed } from 'vue'
+import { windowIconPaths } from './windowIconPaths'
 
 interface Props {
   /** 图标名 */
@@ -82,6 +83,7 @@ const iconFill = computed(() => (FILLED_ICONS.has(props.name) ? 'currentColor' :
 // 图标路径字典 (24×24 viewBox, 线性风格)
 // ─────────────────────────────────────────────
 const icons: Record<string, string> = {
+  ...windowIconPaths,
   // ── 导航 & 布局 ──
   home: 'M3 9.5L12 3l9 6.5V20a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9.5z M9 22V12h6v10',
   menu: 'M4 6h16 M4 12h16 M4 18h16',
@@ -94,7 +96,6 @@ const icons: Record<string, string> = {
   // ── 状态 & 形状 ──
   heart:
     'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z',
-  star: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
   skill: 'M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z',
   sparkle:
     'M12 3v2 M12 19v2 M5.64 5.64l1.41 1.41 M16.95 16.95l1.41 1.41 M3 12h2 M19 12h2 M5.64 18.36l1.41-1.41 M16.95 7.05l1.41-1.41',
@@ -102,7 +103,6 @@ const icons: Record<string, string> = {
   moon: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z',
   circle: 'M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10z',
   check: 'M20 6L9 17l-5-5',
-  close: 'M18 6L6 18 M6 6l12 12',
   plus: 'M12 5v14 M5 12h14',
   minus: 'M5 12h14',
   info: 'M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10z M12 16v-4 M12 8h.01',

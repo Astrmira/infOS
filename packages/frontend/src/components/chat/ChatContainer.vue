@@ -1003,12 +1003,6 @@ onUnmounted(() => {
       <strong>{{ __t('ui.attachments', '松开以上传文件') }}</strong>
       <span>{{ __t('ui.attachments', '支持多文件，上传后可按需读取') }}</span>
     </div>
-    <BrowserObserver
-      :agent-id="agentId"
-      :agent-name="agentName"
-      :thread-id="threadStore.threadId || threadId"
-      :active="!switching"
-    />
     <!-- M05-B1: 角色工作状态徽章（后台任务进行中提示，点击跳转任务中心） -->
     <PackageSlot region="chat.header" />
     <div class="chat-work-badge">
@@ -1222,7 +1216,16 @@ onUnmounted(() => {
         @stop="handleStop"
         @new-thread="handleNewThread"
         @draft-consumed="emit('draftConsumed')"
-      />
+      >
+        <template #session-tools>
+          <BrowserObserver
+            :agent-id="agentId"
+            :agent-name="agentName"
+            :thread-id="threadStore.threadId || threadId"
+            :active="!switching"
+          />
+        </template>
+      </InputBar>
     </div>
 
     <!-- 编辑对话框 -->

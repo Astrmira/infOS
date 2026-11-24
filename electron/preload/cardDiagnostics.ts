@@ -20,21 +20,19 @@ window.addEventListener('error', (event) => showCardError(event.message || 'HOME
 window.addEventListener('unhandledrejection', (event) => showCardError(event.reason))
 
 export function installCardDiagnostics(
-  root: ShadowRoot,
+  shell: HTMLElement,
   retry: () => void,
 ): (value: CardDiagnosticLabels) => void {
   const panel = document.createElement('section')
   panel.setAttribute('role', 'alert')
-  panel.style.cssText =
-    'position:fixed;top:32px;left:8px;right:8px;max-height:65vh;overflow:auto;padding:12px;box-sizing:border-box;border:1px solid #ae819d;border-radius:8px;background:#302833;color:#fff;font:12px/1.5 system-ui;-webkit-app-region:no-drag;box-shadow:0 4px 20px #0005'
+  panel.className = 'card-diagnostic'
   const heading = document.createElement('strong'),
     detail = document.createElement('pre')
-  detail.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;margin:8px 0'
   const reload = document.createElement('button'),
     dismiss = document.createElement('button')
-  for (const button of [reload, dismiss])
-    button.style.cssText =
-      'display:inline-block;width:auto;height:auto;font:inherit;border:1px solid #ffffff55;background:#ffffff18;color:white;padding:5px 8px;border-radius:5px;margin-right:6px;cursor:pointer'
+  const actions = document.createElement('div')
+  actions.className = 'card-diagnostic__actions'
+  actions.append(reload, dismiss)
   reload.addEventListener('click', (event) => {
     if (event.isTrusted) retry()
   })
@@ -42,8 +40,8 @@ export function installCardDiagnostics(
     pending = ''
     panel.hidden = true
   })
-  panel.append(heading, detail, reload, dismiss)
-  root.append(panel)
+  panel.append(heading, detail, actions)
+  shell.append(panel)
   render = () => {
     panel.hidden = !pending || !labels
     if (!labels) return

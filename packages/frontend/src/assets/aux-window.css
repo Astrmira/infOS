@@ -1,0 +1,74 @@
+/* 旁观窗、摘出面板与沙箱卡片共用标题栏。各窗口自行处理拖动。 */
+.aux-bar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  min-width: 0;
+  box-sizing: border-box;
+  gap: 8px;
+  height: var(--aux-height, 36px);
+  padding: 0 3px 0 0;
+  border-bottom: 1px solid var(--ui-border-default);
+  background: var(--ui-bg-surface-soft);
+  color: var(--ui-text-primary);
+  user-select: none;
+}
+.aux-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  align-self: stretch;
+  width: var(--aux-height, 36px);
+  background: color-mix(in srgb, var(--aux-accent) 10%, transparent);
+  box-shadow: inset 0 2px var(--aux-accent);
+  color: var(--aux-accent);
+}
+.aux-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font: 600 13px/1.3 var(--ui-font-sans, system-ui, sans-serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aux-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+.aux-button {
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--aux-button-size, 30px);
+  height: var(--aux-button-size, 30px);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.aux-button:hover:enabled {
+  color: var(--ui-text-primary);
+  background: var(--ui-bg-hover);
+}
+.aux-button[aria-pressed='true'] {
+  color: var(--aux-accent);
+  box-shadow: inset 0 -2px currentColor;
+}
+.aux-button--close:hover:enabled {
+  background: var(--ui-danger-soft);
+  color: var(--ui-danger);
+}
+.aux-button:focus-visible {
+  outline: 2px solid var(--aux-accent);
+  outline-offset: -2px;
+}
+.aux-button:disabled {
+  color: var(--ui-text-disabled);
+  cursor: default;
+}

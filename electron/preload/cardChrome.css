@@ -1,0 +1,62 @@
+.card-shell {
+  --aux-height: 26px;
+  --aux-button-size: 24px;
+  --aux-accent: var(--ui-accent-purple);
+  font: 12px/1.45 system-ui, sans-serif;
+}
+.card-shell .aux-bar {
+  gap: 6px;
+  -webkit-app-region: drag;
+}
+.card-shell .aux-title { font-size: 12px; }
+.card-shell svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.card-shell .aux-bar.updated .aux-mark {
+  background: var(--aux-accent);
+  color: var(--ui-bg-surface);
+}
+.card-shell .aux-button[aria-pressed='true'] svg { fill: var(--ui-accent-purple-soft); }
+@media (max-width: 180px) {
+  .card-shell .aux-bar { gap: 3px; }
+  .card-shell .aux-mark { width: 8px; }
+  .card-shell .aux-mark svg { display: none; }
+}
+.card-diagnostic {
+  position: fixed;
+  inset: 30px 4px auto;
+  max-height: calc(100vh - 34px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid var(--ui-border-default);
+  border-inline-start: 3px solid var(--ui-danger);
+  box-shadow: var(--ui-shadow-md);
+  background: var(--ui-bg-surface);
+  color: var(--ui-text-primary);
+  -webkit-app-region: no-drag;
+}
+.card-diagnostic pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  margin: 5px 0 9px;
+  color: var(--ui-text-secondary);
+}
+.card-diagnostic__actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.card-diagnostic button {
+  border: 1px solid var(--ui-border-default);
+  background: var(--ui-bg-surface-soft);
+  color: var(--ui-text-primary);
+  padding: 3px 7px;
+  font: inherit;
+  cursor: pointer;
+}
+.card-diagnostic button:hover { border-color: var(--aux-accent); }
+.card-diagnostic button:focus-visible { outline: 2px solid var(--aux-accent); }
