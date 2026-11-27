@@ -410,8 +410,8 @@ onUnmounted(() => {
   --sa-accent-dim: rgba(167, 139, 250, 0.4);
   --sa-accent-bg: rgba(167, 139, 250, 0.1);
   --sa-text: #c8ccd4;
-  --sa-text-bright: var(--text-primary, #e2e8f0);
-  --sa-text-dim: var(--text-muted, #4a5568);
+  --sa-text-bright: #e2e8f0;
+  --sa-text-dim: #4a5568;
   --sa-text-subtle: #374151;
   --sa-success: var(--emerald-face, #34d399);
   --sa-error: var(--color-red-400, #f87171);

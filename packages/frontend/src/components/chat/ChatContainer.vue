@@ -1315,7 +1315,7 @@ onUnmounted(() => {
 
 <style scoped>
 :deep(.pet-message-focus) {
-  border-radius: 8px;
+  border-radius: var(--ui-radius-sm);
   outline: 1px solid var(--ui-accent-purple);
   outline-offset: 5px;
   background: var(--ui-accent-purple-soft);
@@ -1339,13 +1339,13 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  border: 2px solid var(--ui-accent-cyan);
-  border-radius: 0;
+  border: 2px solid var(--ui-accent-sky);
+  border-radius: var(--ui-radius-none);
   background: color-mix(in srgb, var(--ui-bg-surface) 92%, transparent);
-  color: var(--ui-accent-cyan);
+  color: var(--ui-accent-sky);
   box-shadow:
     4px 4px 0 var(--ui-border-default),
-    inset 0 0 0 4px color-mix(in srgb, var(--ui-accent-cyan) 10%, transparent);
+    inset 0 0 0 4px color-mix(in srgb, var(--ui-accent-sky) 10%, transparent);
 }
 .chat-file-drop strong {
   font-family: var(--ui-font-pixel);
@@ -1449,7 +1449,7 @@ onUnmounted(() => {
 }
 .work-material-chip {
   border: 1px solid var(--ui-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-xs);
   background: var(--ui-bg-hover);
   padding: 4px 7px;
   display: inline-flex;
@@ -1499,7 +1499,7 @@ onUnmounted(() => {
 }
 
 .chat-history-error {
-  background: var(--ui-accent-red-soft);
+  background: var(--ui-danger-soft);
   color: var(--ui-danger);
   border-color: var(--ui-danger);
 }

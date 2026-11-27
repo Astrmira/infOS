@@ -485,7 +485,7 @@ onMounted(() => void refresh())
 .distributed-hero h1,
 .card-heading h2 {
   margin: 0;
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
 }
 .distributed-hero h1 {
   font-size: 27px;
@@ -515,7 +515,7 @@ onMounted(() => void refresh())
   border: 1px solid var(--ui-border-default);
   background: var(--dash-panel-soft);
   color: var(--ui-text-secondary);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 10px;
 }
 .mode-badge.local {
@@ -637,7 +637,7 @@ onMounted(() => void refresh())
   gap: 3px;
 }
 .server-copy strong {
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 12px;
 }
 .server-actions,
@@ -662,13 +662,13 @@ onMounted(() => void refresh())
   background: color-mix(in srgb, var(--ui-accent-purple) 8%, transparent);
 }
 .invite-ticket span {
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 9px;
   color: var(--ui-text-tertiary);
 }
 .invite-ticket strong {
   margin: 7px;
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 22px;
   letter-spacing: 0.14em;
   color: var(--ui-accent-purple);

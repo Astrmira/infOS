@@ -153,7 +153,7 @@
   --font-sans:
     'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', system-ui, 'Zpix',
     'DotGothic16', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  --font-pixel: 'Zpix', 'DotGothic16', monospace;
+  --font-pixel: var(--ui-font-pixel);
 
   /* ── 圆角 (像素风一般不用, 备用) ── */
   --radius-sm: 2px;

@@ -551,7 +551,7 @@ const { setTab } = useMainNav()
   gap: 6px;
   padding: 9px 18px;
   cursor: pointer;
-  font-family: var(--font-pixel), monospace;
+  font-family: var(--ui-font-pixel);
   font-size: 13px;
   font-weight: 900;
   transition:
@@ -730,7 +730,7 @@ const { setTab } = useMainNav()
   margin-top: 16px;
   margin-bottom: 14px;
   padding: 9px 12px;
-  font-family: var(--font-pixel), monospace;
+  font-family: var(--ui-font-pixel);
   font-size: 13px;
   font-weight: 700;
   color: var(--rz-text);

@@ -2161,7 +2161,7 @@ html:not([data-mobile]) .workspace-copilot:not(.workspace-copilot--collapsed) {
   height: 28px;
   place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-xs);
   background: transparent;
   color: #64748b;
   cursor: pointer;
@@ -2188,7 +2188,7 @@ html:not([data-mobile]) .workspace-copilot:not(.workspace-copilot--collapsed) {
   padding: 0 3px;
   place-items: center;
   border: 2px solid var(--ui-bg-surface-soft);
-  border-radius: 9px;
+  border-radius: var(--ui-radius-full);
   background: var(--ui-danger);
   color: white;
   font: 800 8px var(--ui-font-sans);
@@ -2344,7 +2344,7 @@ html:not([data-mobile]) .workspace-copilot:not(.workspace-copilot--collapsed) {
   height: 17px;
   padding: 0 4px;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--ui-radius-full);
   background: var(--ui-warning);
   color: var(--ui-text-inverse);
   font-size: 8px;

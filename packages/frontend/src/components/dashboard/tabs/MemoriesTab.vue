@@ -779,7 +779,7 @@ export default { name: 'MemoriesTab' }
   display: flex;
   flex-direction: column;
   padding: 14px;
-  background: var(--ui-bg-primary);
+  background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border-default);
 }
 
@@ -788,9 +788,9 @@ export default { name: 'MemoriesTab' }
   display: flex;
   flex-direction: column;
   padding: 14px;
-  background: var(--ui-bg-primary);
+  background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border-default);
-  border-top: 3px solid var(--ui-accent-purple, #8b5cf6);
+  border-top: 3px solid var(--ui-accent-purple);
 }
 
 @media (max-width: 1100px) {

@@ -20,10 +20,10 @@ const { setTab } = useMainNav()
 <template>
   <div v-if="enabled" class="desktop-cards">
     <div>
-      <label class="text-xs font-bold text-slate-500">
+      <label class="text-xs font-bold text-[var(--ui-text-secondary)]">
         {{ __t('ui.desktop-shell', '桌面卡片') }}
       </label>
-      <p class="text-[10px] text-slate-400">
+      <p class="text-[10px] text-[var(--ui-text-tertiary)]">
         {{
           __t('ui.desktop-shell', '打开、收藏、改名、删除和找回最近关闭的卡片，都在「卡片」页。')
         }}

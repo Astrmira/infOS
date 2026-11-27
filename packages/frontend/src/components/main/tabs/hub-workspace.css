@@ -41,7 +41,7 @@
   padding: 4px;
   border: 1px solid color-mix(in srgb, var(--ui-accent-primary) 32%, var(--ui-border-default));
   border-left: 2px solid var(--ui-accent-primary);
-  border-radius: 2px;
+  border-radius: var(--ui-radius-xxs);
   background: var(--ui-accent-primary-soft);
   color: var(--ui-accent-primary);
 }
@@ -69,7 +69,7 @@
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--ui-border-default);
-  border-radius: 2px;
+  border-radius: var(--ui-radius-xxs);
   background: color-mix(in srgb, var(--ui-bg-canvas) 62%, var(--ui-bg-surface-soft));
 }
 

@@ -661,7 +661,7 @@ onBeforeUnmount(unbindWindowListeners)
   max-width: 280px;
   padding: 8px 10px;
   pointer-events: none;
-  background: var(--ui-bg-primary, #fff);
+  background: var(--ui-bg-surface);
   border: 1px solid #8b5cf6;
   box-shadow: 3px 3px 0 rgba(139, 92, 246, 0.15);
   z-index: 10;

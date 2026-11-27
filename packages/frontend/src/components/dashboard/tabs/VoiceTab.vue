@@ -151,8 +151,8 @@ onMounted(loadVoiceConfig)
           <div class="flex items-center gap-4">
             <div
               :class="[
-                'w-12 h-12 flex items-center justify-center text-white flex-shrink-0',
-                asrEnabled ? 'bg-emerald-500' : 'bg-slate-400',
+                'w-12 h-12 flex items-center justify-center text-[var(--ui-text-inverse)] flex-shrink-0',
+                asrEnabled ? 'bg-[var(--ui-success)]' : 'bg-[var(--ui-text-disabled)]',
               ]"
             >
               <PixelIcon name="mic" size="sm" />

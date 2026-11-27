@@ -101,7 +101,7 @@
   border: 1px solid var(--ui-accent-sky);
   background: var(--dash-panel-bg);
   color: var(--ui-text-primary);
-  font: 12px var(--font-pixel);
+  font: 12px var(--ui-font-pixel);
   pointer-events: none;
 }
 .user-avatar-crop__zoom {
@@ -125,7 +125,7 @@
   margin-top: 8px;
 }
 .user-avatar-crop__samples h3 {
-  font: 700 12px var(--font-pixel);
+  font: 700 12px var(--ui-font-pixel);
   margin: 0 0 16px;
   color: var(--ui-text-secondary);
 }

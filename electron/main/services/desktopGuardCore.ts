@@ -77,6 +77,7 @@ export class DesktopGuard {
   private revision = 0
   private fileSnapshot = ''
   private degraded = false
+  private generation = 0
   private readonly threadGrants = new Map<string, Set<string>>()
   private readonly plans = new Map<string, { programs: Set<string>; expiresAt: number }>()
   private readonly onceGrants = new Map<string, number>()
@@ -108,11 +109,11 @@ export class DesktopGuard {
       !known &&
       !fs.existsSync(acceptedFile) &&
       !fs.existsSync(file) &&
-      !this.loaded &&
-      !this.deps.signer.hasKey?.()
+      !fs.existsSync(this.confirmationFile()) &&
+      !this.degraded
     if (!stored && !firstUse) this.fileIssues.push({ code: 'BASELINE_INVALID', field: 'accepted' })
     // 用户确认过这一版就不再问：确认记录带签名存盘，只对这一版内容有效，重启后还算数。
-    const confirmed = !!stored && (known?.confirmed === true || this.readConfirmation(stored))
+    const confirmed = !!stored && this.readConfirmation(stored)
     if (stored && !confirmed)
       this.fileIssues.push({ code: 'BASELINE_INVALID', field: 'accepted.confirmation' })
     if (stored) rememberAccepted(acceptedFile, DOMAIN, stored.revision, stored.settings, confirmed)
@@ -155,7 +156,7 @@ export class DesktopGuard {
       this.fileIssues.push({ code: 'BASELINE_INVALID', field: 'recovery' })
     this.degraded ||= this.fileIssues.length > 0
     if (this.degraded && this.loaded) effective = stricterDesktopSafety(effective, this.settings)
-    if (this.degraded) effective = { ...effective, normalMode: 'always', trusted: [] }
+    if (this.degraded) effective = { ...effective, enabled: true, normalMode: 'always', trusted: [] }
     this.clearGrants()
     this.apply(effective)
     this.loaded = true
@@ -164,7 +165,7 @@ export class DesktopGuard {
 
   private snapshotFiles(): string {
     return JSON.stringify(
-      [this.deps.userFile(), this.deps.acceptedFile()].map((file) => {
+      [this.deps.userFile(), this.deps.acceptedFile(), this.confirmationFile()].map((file) => {
         try {
           return fs.readFileSync(file, 'utf8')
         } catch {
@@ -222,16 +223,24 @@ export class DesktopGuard {
 
   private apply(settings: DesktopSafetySettings): void {
     this.settings = settings
-    this.index = buildDesktopZoneIndex(this.draft, settings, this.deps.selfPrograms())
+    this.generation++
+    const activeRules = settings.enabled === false ? createDefaultDesktopSafetySettings() : settings
+    this.index = buildDesktopZoneIndex(this.draft, activeRules, this.deps.selfPrograms())
     if (this.degraded) this.index.failClosed = true
   }
 
   /** 写入用户文件与“已接受”副本（都带签名），并立即生效。 */
   private persist(settings: DesktopSafetySettings): void {
+    // 签名使用与读取时相同的字段顺序，兼容首次保存旧版设置。
+    const parsed = validateDesktopSafetySettings(settings, this.draft ?? undefined)
+    if (!parsed.ok) throw guardError('DESKTOP_SAFETY_INVALID', '设置修改的参数无效')
+    settings = parsed.value
     const revision =
       Math.max(this.revision, lastAccepted(this.deps.acceptedFile())?.revision ?? 0) + 1
     const signature = this.deps.signer.sign(versionedPayload(DOMAIN, revision, settings))
     if (!signature) throw new Error('DESKTOP_SAFETY_ENCRYPTION_UNAVAILABLE')
+    const confirmation = this.deps.signer.sign(this.confirmationPayload(revision, settings))
+    if (!confirmation) throw new Error('DESKTOP_SAFETY_ENCRYPTION_UNAVAILABLE')
     const content = `${JSON.stringify({ ...settings, revision, signature }, null, 2)}\n`
     for (const file of [this.deps.userFile(), this.deps.acceptedFile()]) {
       fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -239,7 +248,6 @@ export class DesktopGuard {
       fs.writeFileSync(temporary, content, 'utf8')
       fs.renameSync(temporary, file)
     }
-    const confirmation = this.deps.signer.sign(this.confirmationPayload(revision, settings))
     const confirmationTemporary = `${this.confirmationFile()}.tmp`
     fs.writeFileSync(confirmationTemporary, JSON.stringify({ revision, signature: confirmation }), 'utf8')
     fs.renameSync(confirmationTemporary, this.confirmationFile())
@@ -261,7 +269,7 @@ export class DesktopGuard {
       draftValid: this.draft !== null,
       draftIssues: [...this.draftIssues],
       draft: this.draft ? desktopProgramLists(this.draft) : null,
-      settings: structuredClone(this.settings),
+      settings: { ...structuredClone(this.settings), enabled: this.settings.enabled !== false },
       externalEdit: this.externalEdit,
       fileIssues: [...this.fileIssues],
       filePath: this.deps.userFile(),
@@ -289,7 +297,21 @@ export class DesktopGuard {
 
   classify(target: DesktopTarget): DesktopZoneResult {
     this.ensureLoaded()
-    return classifyDesktopTarget(this.index!, target)
+    return this.currentZone(target)
+  }
+
+  private currentZone(target: DesktopTarget): DesktopZoneResult {
+    const zone = classifyDesktopTarget(this.index!, target)
+    // 内置禁区（如审批窗口、系统提权及凭据）属于直接拒绝的目标，独立于可选的程序审批。
+    if (this.settings.enabled === false && this.draft && zone.zone !== 'forbidden')
+      return { program: zone.program, zone: 'normal', reason: 'program' }
+    return zone
+  }
+
+  private verifyGeneration(generation: number): void {
+    this.ensureLoaded()
+    if (this.generation !== generation)
+      throw guardError('DESKTOP_SAFETY_CHANGED', '桌面权限已更新，请重新发起请求。')
   }
 
   /**
@@ -308,7 +330,8 @@ export class DesktopGuard {
   ): Promise<DesktopZone> {
     this.ensureLoaded()
     const now = this.deps.now()
-    const zone = classifyDesktopTarget(this.index!, target)
+    const zone = this.currentZone(target)
+    if (this.settings.enabled === false && zone.zone === 'normal') return 'normal'
     const onceKey = this.onceKey(caller, target, zone, detail, intent)
     const onceExpiry = this.onceGrants.get(onceKey)
     const plan = this.plans.get(this.taskKey(caller))
@@ -327,12 +350,10 @@ export class DesktopGuard {
       throw guardError('DESKTOP_FORBIDDEN', '目标程序在禁区内，角色不能操作：{0}', [
         zone.program || target.program,
       ])
+    const generation = this.generation
     const answer = await this.deps.prompt({ kind: 'action', ask: decision.kind, zone, detail })
     if (answer === 'deny') throw guardError('DESKTOP_APPROVAL_DENIED', '用户拒绝了这次桌面操作')
-    this.ensureLoaded()
-    const currentZone = classifyDesktopTarget(this.index!, target)
-    if (stableAction(currentZone) !== stableAction(zone))
-      return this.check(caller, target, detail, reobserve, intent, outcome)
+    this.verifyGeneration(generation)
     if (decision.kind === 'every' && answer !== 'once')
       throw guardError('DESKTOP_APPROVAL_DENIED', '用户拒绝了这次桌面操作')
     if (outcome) {
@@ -362,13 +383,15 @@ export class DesktopGuard {
    */
   async confirmEach(target: DesktopTarget, detail: string): Promise<void> {
     this.ensureLoaded()
-    const zone = classifyDesktopTarget(this.index!, target)
+    const zone = this.currentZone(target)
     if (zone.zone === 'forbidden')
       throw guardError('DESKTOP_FORBIDDEN', '目标程序在禁区内，角色不能操作：{0}', [
         zone.program || target.program,
       ])
-    const answer = await this.deps.prompt({ kind: 'action', ask: 'every', zone, detail })
+    const generation = this.generation
+    const answer = await this.deps.prompt({ kind: 'action', ask: 'every', zone, detail, manual: true })
     if (answer !== 'once') throw guardError('DESKTOP_APPROVAL_DENIED', '用户拒绝了这次桌面操作')
+    this.verifyGeneration(generation)
   }
 
   /** 批准后动作已直接执行：用掉“允许这一次”，不能再拿它重放同一动作。 */
@@ -390,14 +413,18 @@ export class DesktopGuard {
       ])
     const covered: string[] = []
     const excluded: string[] = []
+    if (this.settings.enabled === false)
+      return { approved: false, covered, excluded: programs.map(normalizeProgramName), enabled: false }
     for (const program of new Set((programs as string[]).map(normalizeProgramName))) {
       const zone = classifyDesktopTarget(this.index!, { program })
       ;(zone.zone === 'normal' ? covered : excluded).push(program)
     }
     const text = String(purpose ?? '').slice(0, 300)
     if (!covered.length) return { approved: false, covered, excluded }
+    const generation = this.generation
     const answer = await this.deps.prompt({ kind: 'plan', covered, excluded, purpose: text })
     if (answer !== 'approve') throw guardError('DESKTOP_APPROVAL_DENIED', '用户拒绝了任务预批')
+    this.verifyGeneration(generation)
     this.plans.set(this.taskKey(caller), {
       programs: new Set(covered),
       expiresAt: this.deps.now() + DESKTOP_SAFETY_LIMITS.planTtlMs,
@@ -411,14 +438,28 @@ export class DesktopGuard {
   }
 
   /**
-   * 修改设置：收紧的部分立即生效；放宽的部分弹出原生确认框，同意后生效。
+   * 修改设置：收紧的部分立即生效；放宽的部分弹出独立审批窗口，同意后生效。
    * source 为 user 时来自设置页，同样只有确认框能放宽（页面脚本不能代替用户）。
    */
   async change(value: unknown, source: 'agent' | 'user') {
     this.ensureLoaded()
     const change = normalizeDesktopSafetyChange(value)
-    if (!change) throw guardError('DESKTOP_SAFETY_INVALID', '设置修改的参数无效')
-    const next = applyDesktopSafetyChange(this.settings, change)
+    if (!change || !Object.keys(change).length)
+      throw guardError('DESKTOP_SAFETY_INVALID', '设置修改的参数无效')
+    if (this.settings.enabled === false)
+      throw guardError('DESKTOP_GUARD_DISABLED', '桌面操作护栏已关闭')
+    return this.saveChange(applyDesktopSafetyChange(this.settings, change), source)
+  }
+
+  async setEnabled(enabled: unknown): Promise<DesktopSafetyState> {
+    this.ensureLoaded()
+    if (typeof enabled !== 'boolean') throw guardError('DESKTOP_SAFETY_INVALID', '设置修改的参数无效')
+    if ((this.settings.enabled !== false) !== enabled)
+      await this.saveChange({ ...this.settings, enabled }, 'user')
+    return this.state()
+  }
+
+  private async saveChange(next: DesktopSafetySettings, source: 'agent' | 'user') {
     const loosenings = desktopSafetyLoosenings(this.settings, next)
     // 内置名单中的程序永远不能信任；validate 在写入前再兜底一次。
     const checked = validateDesktopSafetySettings(next, this.draft ?? undefined)
@@ -427,6 +468,7 @@ export class DesktopGuard {
       this.persist(next)
       return { applied: 'all' as const, loosenings: [], settings: structuredClone(this.settings) }
     }
+    const generation = this.generation
     const tightened = stricterDesktopSafety(this.settings, next)
     const answer = await this.deps.prompt({
       kind: 'loosen',
@@ -435,6 +477,7 @@ export class DesktopGuard {
       recovery: this.degraded,
       settings: next,
     })
+    this.verifyGeneration(generation)
     if (answer === 'approve') {
       this.persist(next)
       return { applied: 'all' as const, loosenings, settings: structuredClone(this.settings) }
@@ -463,6 +506,7 @@ export class DesktopGuard {
     const accepted = this.readSigned(this.deps.acceptedFile())?.settings ?? this.settings
     const loosenings = desktopSafetyLoosenings(accepted, parsed.value)
     if (loosenings.length || this.degraded) {
+      const generation = this.generation
       const answer = await this.deps.prompt({
         kind: 'loosen',
         changes: loosenings,
@@ -471,6 +515,7 @@ export class DesktopGuard {
         settings: parsed.value,
       })
       if (answer !== 'approve') return this.state()
+      this.verifyGeneration(generation)
     }
     this.persist(parsed.value)
     return this.state()
@@ -479,6 +524,7 @@ export class DesktopGuard {
   /** 放弃应用外的修改：用当前生效的设置重写文件。 */
   async discardExternal(): Promise<DesktopSafetyState> {
     this.ensureLoaded()
+    const generation = this.generation
     if (
       this.degraded &&
       (await this.deps.prompt({
@@ -490,6 +536,7 @@ export class DesktopGuard {
       })) !== 'approve'
     )
       return this.state()
+    this.verifyGeneration(generation)
     this.persist(this.settings)
     return this.state()
   }

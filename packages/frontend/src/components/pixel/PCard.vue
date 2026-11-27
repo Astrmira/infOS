@@ -95,7 +95,7 @@ withDefaults(defineProps<Props>(), {
 /* ── 基础 ── */
 .p-card {
   position: relative;
-  border-radius: 24px;
+  border-radius: var(--ui-radius-md);
   color: var(--ui-text-primary);
   background: var(--dash-panel-bg);
   border: 1px solid var(--dash-panel-border);

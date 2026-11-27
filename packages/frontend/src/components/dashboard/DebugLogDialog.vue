@@ -49,8 +49,8 @@ defineExpose({ open })
           :class="[
             'flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold border-2 cursor-pointer transition-all',
             tab === 'response'
-              ? 'bg-sky-50 border-sky-300 text-sky-600'
-              : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-sky-200 hover:text-sky-500',
+              ? 'bg-[var(--ui-accent-sky-soft)] border-[var(--ui-accent-sky)] text-[var(--ui-accent-sky)]'
+              : 'bg-[var(--dash-panel-soft)] border-[var(--ui-border-default)] text-[var(--ui-text-tertiary)] hover:border-[var(--ui-accent-sky)] hover:text-[var(--ui-accent-sky)]',
           ]"
           @click="tab = 'response'"
         >
@@ -61,8 +61,8 @@ defineExpose({ open })
           :class="[
             'flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold border-2 cursor-pointer transition-all',
             tab === 'prompt'
-              ? 'bg-sky-50 border-sky-300 text-sky-600'
-              : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-sky-200 hover:text-sky-500',
+              ? 'bg-[var(--ui-accent-sky-soft)] border-[var(--ui-accent-sky)] text-[var(--ui-accent-sky)]'
+              : 'bg-[var(--dash-panel-soft)] border-[var(--ui-border-default)] text-[var(--ui-text-tertiary)] hover:border-[var(--ui-accent-sky)] hover:text-[var(--ui-accent-sky)]',
           ]"
           @click="tab = 'prompt'"
         >
@@ -73,7 +73,7 @@ defineExpose({ open })
 
       <!-- 内容 -->
       <pre
-        class="max-h-[400px] overflow-auto p-4 border-2 border-slate-200 bg-slate-50 text-slate-800 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all dbg-scrollbar"
+        class="max-h-[400px] overflow-auto p-4 border-2 border-[var(--ui-border-default)] bg-[var(--dash-panel-soft)] text-[var(--ui-text-primary)] font-mono text-xs leading-relaxed whitespace-pre-wrap break-all dbg-scrollbar"
         >{{ displayContent }}</pre
       >
     </div>

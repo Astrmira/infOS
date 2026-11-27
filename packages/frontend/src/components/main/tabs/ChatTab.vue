@@ -986,7 +986,7 @@ watch(
 }
 
 .chat-partner-brand {
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 12px;
   font-weight: 800;
   color: var(--ui-accent-primary);
@@ -1194,7 +1194,7 @@ watch(
 
 .chat-agent-card--active {
   background: var(--ui-bg-active);
-  border-color: var(--ui-border-active);
+  border-color: var(--ui-border-strong);
   box-shadow: var(--ui-glow-pink);
 }
 
@@ -1730,7 +1730,7 @@ watch(
   color: var(--ui-accent-primary);
   border: 2px solid var(--ui-border-default);
   border-radius: 3px;
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 10px;
   letter-spacing: 0.06em;
   font-weight: 800;

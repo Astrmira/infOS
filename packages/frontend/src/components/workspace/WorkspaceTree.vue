@@ -590,7 +590,7 @@ watch(
   min-width: 18px;
   height: 18px;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--ui-radius-full);
   background: var(--ui-bg-hover);
   color: var(--ui-text-secondary);
   font-style: normal;

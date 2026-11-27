@@ -496,7 +496,7 @@ function formatTime(ts?: number): string {
   border-left: 2px solid color-mix(in srgb, var(--ui-accent-purple) 40%, transparent);
   background: color-mix(in srgb, var(--ui-accent-purple) 5%, transparent);
   color: var(--ui-text-secondary);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--ui-font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
@@ -1114,7 +1114,7 @@ function formatTime(ts?: number): string {
   color: var(--ui-accent-purple);
   background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border-subtle);
-  font: 700 9px var(--font-pixel);
+  font: 700 9px var(--ui-font-pixel);
   cursor: pointer;
 }
 .msg-thinking-signal {
@@ -1159,7 +1159,7 @@ function formatTime(ts?: number): string {
   color: var(--ui-accent-purple);
   background: var(--ui-bg-surface);
   border: 1px solid color-mix(in srgb, var(--ui-accent-purple) 28%, transparent);
-  font: 700 9px var(--font-mono);
+  font: 700 9px var(--ui-font-mono);
 }
 
 .msg-internal-only {
@@ -1201,7 +1201,7 @@ function formatTime(ts?: number): string {
 }
 .msg-internal-only strong {
   color: var(--ui-text-primary);
-  font: 800 11px var(--font-pixel);
+  font: 800 11px var(--ui-font-pixel);
 }
 .msg-internal-only small {
   margin-top: 2px;
@@ -1213,7 +1213,7 @@ function formatTime(ts?: number): string {
   color: var(--ui-accent-purple);
   background: var(--ui-bg-surface);
   border: 1px solid color-mix(in srgb, var(--ui-accent-purple) 28%, transparent);
-  font: 700 9px var(--font-pixel);
+  font: 700 9px var(--ui-font-pixel);
   cursor: pointer;
 }
 
@@ -1265,7 +1265,7 @@ function formatTime(ts?: number): string {
   font-size: 12px;
   font-weight: 800;
   color: var(--ui-accent-primary);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   letter-spacing: 0.08em;
 }
 
@@ -1469,7 +1469,7 @@ function formatTime(ts?: number): string {
   left: 0;
   background: var(--ui-bg-surface);
   padding: 0 6px;
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 9px;
   color: var(--ui-text-tertiary);
   letter-spacing: 0.12em;

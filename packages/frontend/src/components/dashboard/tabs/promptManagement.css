@@ -216,7 +216,7 @@ h4 {
 }
 .preset-package-choice strong {
   color: var(--ui-text-primary);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
 }
 .preset-package-choice p {
   color: var(--ui-text-secondary);

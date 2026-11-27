@@ -693,7 +693,7 @@ onBeforeUnmount(() => {
 }
 .tarot-day small {
   display: block;
-  font: 10px/1.8 var(--ui-font-body, sans-serif);
+  font: 10px/1.8 var(--ui-font-sans);
   color: var(--ui-text-tertiary);
 }
 .tarot-question {
@@ -779,7 +779,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font: 11px var(--ui-font-body, sans-serif);
+  font: 11px var(--ui-font-sans);
   color: var(--ui-text-tertiary);
 }
 .tarot-saved-question {

@@ -256,8 +256,12 @@ async function loadManifestPath(newPath: string): Promise<boolean> {
     )
       return false
     const message = e instanceof Error ? e.message : String(e)
-    logger.error('BedrockAvatar', __t('logs.frontend.avatar', '切换模型失败: {0}', [newPath]), e)
-    model.errorMsg.value = `切换模型失败: ${message}`
+    logger.error(
+      'BedrockAvatar',
+      __t('logs.frontend.avatar', '切换模型失败: {0}', [`${newPath} — ${message}`]),
+      e,
+    )
+    model.errorMsg.value = __t('ui.avatar', '切换模型失败：{0}', [message])
     emit('model-load-error', message)
     return false
   } finally {
@@ -392,6 +396,7 @@ defineExpose({
   },
   /** 外观菜单使用的显式模型切换入口，返回是否加载成功。 */
   loadManifestPath,
+  loadError: model.errorMsg,
   playAnimation: (name: string) => {
     const anim = model.animationLibrary.get(name)
     if (anim) model.animationEngine.play(anim, 0.2, true)

@@ -194,7 +194,7 @@ const defaultTitleMap: Record<string, string> = {
 
 .toast-title {
   flex: 1;
-  font-family: var(--font-pixel, monospace);
+  font-family: var(--ui-font-pixel);
   font-weight: 700;
   font-size: 16px;
   color: var(--toast-title);

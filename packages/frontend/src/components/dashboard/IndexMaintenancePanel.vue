@@ -408,7 +408,7 @@ onUnmounted(() => {
 .index-header p,
 .index-hint {
   margin: 6px 0;
-  color: var(--text-muted);
+  color: var(--ui-text-tertiary);
   font-size: 11px;
 }
 .index-header :deep(.p-select) {
@@ -441,7 +441,7 @@ onUnmounted(() => {
   flex: 0 0 38px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: var(--ui-radius-md);
   color: var(--index-accent);
   border: 1px solid color-mix(in srgb, var(--index-accent) 24%, transparent);
   background: color-mix(in srgb, var(--index-accent) 9%, transparent);
@@ -484,7 +484,7 @@ onUnmounted(() => {
 .index-row small {
   display: block;
   margin-top: 4px;
-  color: var(--text-muted);
+  color: var(--ui-text-tertiary);
   font-size: 11px;
 }
 .index-footer {
@@ -492,7 +492,7 @@ onUnmounted(() => {
   padding-top: 12px;
 }
 .index-footer small {
-  color: var(--text-muted);
+  color: var(--ui-text-tertiary);
   font-size: 11px;
 }
 .index-warning {

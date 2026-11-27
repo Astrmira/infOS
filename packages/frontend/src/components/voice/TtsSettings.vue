@@ -801,7 +801,7 @@ input:focus {
   font-size: 12px;
 }
 .tts-error {
-  color: var(--ui-color-danger, #fb7185);
+  color: var(--ui-danger);
   padding: 12px;
   border-left: 2px solid currentColor;
   overflow-wrap: anywhere;

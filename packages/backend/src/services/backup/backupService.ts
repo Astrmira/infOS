@@ -63,7 +63,7 @@ interface BackupAccess {
 }
 
 const MAX_UPLOAD = 20 * 1024 ** 3
-const APP_VERSION = '0.9.14'
+const APP_VERSION = '0.9.15'
 const UUID = /^[a-f0-9-]{36}$/i
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/
 const emptySelection = (): BackupSelection => ({

@@ -61,6 +61,7 @@ export default defineConfig({
           prefab: resolve(__dirname, 'electron/preload/prefab.ts'),
           earsCapture: resolve(__dirname, 'electron/preload/earsCapture.ts'),
           homeNotice: resolve(__dirname, 'electron/preload/homeNotice.ts'),
+          desktopApproval: resolve(__dirname, 'electron/preload/desktopApproval.ts'),
         },
       },
     },

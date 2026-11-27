@@ -891,8 +891,12 @@ onBeforeUnmount(() => {
           </span>
           <span class="index-card-foot">
             <i :class="{ online: selectedId === agent.id }" />
-            {{ selectedId === agent.id ? 'OPEN FILE' : 'STANDBY' }}
-            <b>VIEW →</b>
+            {{
+              selectedId === agent.id
+                ? __t('ui.settings', '查看中')
+                : __t('ui.settings', '待命')
+            }}
+            <b>{{ __t('ui.settings', '查看') }} →</b>
           </span>
         </button>
       </div>
@@ -1760,7 +1764,7 @@ onBeforeUnmount(() => {
 }
 .index-agent.active {
   border-color: var(--ui-accent-primary);
-  border-left-color: var(--ui-accent-pink, var(--ui-accent-primary));
+  border-left-color: var(--ui-accent-primary);
   background: var(--ui-accent-primary-soft);
   box-shadow: 4px 4px 0 color-mix(in srgb, var(--ui-accent-primary) 20%, transparent);
 }
@@ -2690,11 +2694,7 @@ onBeforeUnmount(() => {
 .rail-completion > div i {
   display: block;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--ui-accent-primary),
-    var(--ui-accent-pink, var(--ui-accent-primary))
-  );
+  background: var(--ui-accent-primary);
 }
 .rail-completion p {
   margin: 0;

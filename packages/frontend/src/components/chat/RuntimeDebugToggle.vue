@@ -135,7 +135,7 @@ async function toggle() {
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary) 5%, transparent),
     2px 2px 0 var(--ui-border-subtle);
-  font-family: var(--font-pixel, var(--ui-font-pixel));
+  font-family: var(--ui-font-pixel);
   font-size: 11px;
   font-weight: 400;
   line-height: 1;

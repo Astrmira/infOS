@@ -1285,8 +1285,8 @@ function errorMessage(node: SurfaceNode): string {
   cursor: zoom-in;
   transform: rotate(-0.35deg);
   transition:
-    transform 180ms var(--ui-ease-out),
-    box-shadow 180ms var(--ui-ease-out);
+    transform 180ms var(--ui-ease-standard),
+    box-shadow 180ms var(--ui-ease-standard);
 }
 .surface-image::after {
   content: '';
@@ -1339,7 +1339,7 @@ function errorMessage(node: SurfaceNode): string {
   position: absolute;
   z-index: 2;
   color: var(--ui-accent-primary);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   text-shadow: 0 2px 8px color-mix(in srgb, var(--ui-accent-primary) 45%, transparent);
   pointer-events: none;
   animation: surface-image-spark 2.4s ease-in-out infinite;

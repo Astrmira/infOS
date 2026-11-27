@@ -284,6 +284,7 @@ export function stricterDesktopSafety(
   const rightTrusted = new Set(right.trusted.map(normalizeProgramName))
   return {
     version: 1,
+    enabled: left.enabled !== false || right.enabled !== false,
     normalMode:
       modeRank(left.normalMode) >= modeRank(right.normalMode) ? left.normalMode : right.normalMode,
     forbidden,
@@ -296,6 +297,7 @@ export function stricterDesktopSafety(
 }
 
 export type DesktopSafetyLoosening =
+  | { kind: 'disable-guard' }
   | { kind: 'normal-mode'; from: DesktopNormalMode; to: DesktopNormalMode }
   | { kind: 'trust'; program: string }
   | { kind: 'unforbid'; program: string }
@@ -307,6 +309,7 @@ export function desktopSafetyLoosenings(
   next: DesktopSafetySettings,
 ): DesktopSafetyLoosening[] {
   const result: DesktopSafetyLoosening[] = []
+  if (current.enabled !== false && next.enabled === false) result.push({ kind: 'disable-guard' })
   if (modeRank(next.normalMode) < modeRank(current.normalMode))
     result.push({ kind: 'normal-mode', from: current.normalMode, to: next.normalMode })
   const keys = (items: string[]) => new Set(items.map(normalizeProgramName))
@@ -357,6 +360,7 @@ export function applyDesktopSafetyChange(
   const strict = new Set([...forbidden, ...mustConfirm].map(normalizeProgramName))
   return {
     version: 1,
+    enabled: settings.enabled !== false,
     normalMode: change.normalMode ?? settings.normalMode,
     forbidden,
     mustConfirm,

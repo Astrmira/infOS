@@ -159,7 +159,7 @@ const displayDescription = computed(() => props.description ?? __t('ui.pixel', '
 }
 .p-empty-hint-text {
   font-size: 10px;
-  font-family: var(--font-pixel), monospace;
+  font-family: var(--ui-font-pixel);
   color: var(--color-sky-light);
   font-style: italic;
   letter-spacing: 1px;

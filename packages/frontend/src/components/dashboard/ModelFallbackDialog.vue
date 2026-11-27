@@ -287,7 +287,7 @@ async function save(): Promise<void> {
 .fallback-level {
   color: var(--ui-text-tertiary);
   text-align: center;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--ui-font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -323,7 +323,7 @@ async function save(): Promise<void> {
 }
 .fallback-model small {
   color: var(--ui-text-tertiary);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--ui-font-mono);
   font-size: 10px;
   line-height: 1.5;
 }

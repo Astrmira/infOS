@@ -252,7 +252,7 @@ watch(
   overflow: hidden;
   border: 1px solid var(--ui-border-default);
   border-left: 2px solid var(--ui-accent-purple);
-  border-radius: 10px;
+  border-radius: var(--ui-radius-md);
   background: var(--ui-bg-elevated);
   color: var(--ui-text-primary);
   font-size: 12px;
@@ -298,7 +298,7 @@ button {
   color: inherit;
   cursor: pointer;
   font: inherit;
-  border-radius: 5px;
+  border-radius: var(--ui-radius-xs);
   transition:
     background 150ms,
     color 150ms;
@@ -317,7 +317,7 @@ button:disabled {
 }
 .queue-count {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-xs);
   color: var(--ui-accent-purple);
   background: var(--ui-accent-purple-soft);
   font-variant-numeric: tabular-nums;

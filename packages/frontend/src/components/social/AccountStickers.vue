@@ -293,13 +293,13 @@ onMounted(() => {
   gap: 16px;
   padding: 20px;
   border: 1px solid var(--ui-border-default);
-  border-top: 2px solid var(--ui-accent-pink);
+  border-top: 2px solid var(--ui-accent-primary);
   background: var(--app-panel-fill, var(--ui-bg-surface));
 }
 .stickers-kicker {
   font: 10px var(--ui-font-pixel);
   letter-spacing: 2px;
-  color: var(--ui-accent-pink);
+  color: var(--ui-accent-primary);
 }
 h3 {
   display: flex;
@@ -344,7 +344,7 @@ input {
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 1px solid var(--ui-accent-pink);
+  outline: 1px solid var(--ui-accent-primary);
   outline-offset: 2px;
 }
 .stickers-count,
@@ -369,7 +369,7 @@ select:focus-visible {
     transform 0.16s;
 }
 .sticker-tile:hover {
-  border-color: var(--ui-accent-pink);
+  border-color: var(--ui-accent-primary);
   transform: translateY(-2px);
 }
 .sticker-picture {

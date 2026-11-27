@@ -28,6 +28,7 @@ export const FENCE_PROTECTED_NAMES = [
   'infos-settings.key',
   'desktop-safety.json',
   'desktop-safety.accepted.json',
+  'desktop-safety.accepted.json.confirmed',
   'desktop-control.json',
   'electron-node-id.txt',
 ] as const

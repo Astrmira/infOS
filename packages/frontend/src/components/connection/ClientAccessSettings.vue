@@ -306,7 +306,7 @@ const date = (value: number) => new Date(value).toLocaleString()
   gap: 8px;
   margin: 0;
   color: var(--ui-text-primary);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 14px;
   font-weight: 700;
 }
@@ -370,7 +370,7 @@ const date = (value: number) => new Date(value).toLocaleString()
   gap: 8px;
   margin: 0 0 12px;
   color: var(--ui-text-primary);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 12px;
   font-weight: 600;
 }
@@ -453,7 +453,7 @@ const date = (value: number) => new Date(value).toLocaleString()
 
 .client-access-error {
   margin: 10px 0 0;
-  color: var(--ui-text-error, var(--ui-danger));
+  color: var(--ui-danger);
   font-size: 11px;
   line-height: 1.6;
   overflow-wrap: anywhere;

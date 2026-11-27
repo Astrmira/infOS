@@ -410,11 +410,11 @@ watch(
   padding: 13px 14px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--ui-accent-purple) 28%, transparent);
-  border-radius: 14px;
+  border-radius: var(--ui-radius-lg);
   background: color-mix(in srgb, var(--ui-bg-surface) 88%, transparent);
   box-shadow: 0 10px 28px rgba(35, 24, 59, 0.1);
   backdrop-filter: blur(12px);
-  animation: round-state-in 280ms var(--ui-ease-out);
+  animation: round-state-in 280ms var(--ui-ease-standard);
 }
 
 .stronghold-round-state > header {
@@ -499,9 +499,9 @@ watch(
   min-width: 0;
   padding: 7px 9px;
   border: 1px solid var(--ui-border-subtle);
-  border-radius: 10px;
+  border-radius: var(--ui-radius-md);
   background: var(--ui-bg-surface-soft);
-  transition: all 220ms var(--ui-ease-out);
+  transition: all 220ms var(--ui-ease-standard);
 }
 
 .stronghold-round-agents article.round-agent--streaming,
@@ -523,7 +523,7 @@ watch(
 .round-agent-fallback {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-sm);
   object-fit: cover;
 }
 

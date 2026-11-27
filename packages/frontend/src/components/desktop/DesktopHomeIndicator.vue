@@ -38,7 +38,7 @@ const detail = computed(() => {
   gap: 10px;
   padding: 8px 12px;
   border: 1px solid var(--ui-border-strong);
-  border-left: 3px solid var(--ui-accent-red, #d14343);
+  border-left: 3px solid var(--ui-danger);
   background: var(--ui-bg-surface-soft);
   color: var(--ui-text-primary);
 }
@@ -56,7 +56,7 @@ const detail = computed(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--ui-accent-red, #d14343);
+  background: var(--ui-danger);
   animation: desktop-home-blink 1.4s ease-in-out infinite;
 }
 @keyframes desktop-home-blink {

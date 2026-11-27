@@ -53,7 +53,7 @@ onMounted(() => {
 
 <template>
   <div v-if="enabled && state" class="desktop-startup flex flex-col gap-1.5">
-    <label class="text-xs font-bold text-slate-500">
+    <label class="text-xs font-bold text-[var(--ui-text-secondary)]">
       {{ __t('ui.desktop-shell', '启动') }}
     </label>
     <div class="desktop-startup__row">
@@ -66,7 +66,7 @@ onMounted(() => {
         @update:model-value="call('desktop-startup:set-open-at-login', $event)"
       />
     </div>
-    <p v-if="!state.loginItemSupported" class="text-[10px] text-slate-400">
+    <p v-if="!state.loginItemSupported" class="text-[10px] text-[var(--ui-text-tertiary)]">
       {{ __t('ui.desktop-shell', '只有打包后的客户端可以设置开机启动。') }}
     </p>
 
@@ -110,7 +110,7 @@ onMounted(() => {
         </PButton>
       </div>
     </div>
-    <p class="text-[10px] text-slate-400">
+    <p class="text-[10px] text-[var(--ui-text-tertiary)]">
       {{
         state.remote
           ? __t('ui.desktop-shell', '当前连接的是远程服务器，不会启动本机后端。')

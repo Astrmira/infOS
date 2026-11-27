@@ -96,7 +96,7 @@ const emit = defineEmits<{ close: [] }>()
   overflow: hidden;
   flex-direction: column;
   border: 1px solid var(--ui-border-strong);
-  border-radius: 10px;
+  border-radius: var(--ui-radius-md);
   background: var(--ui-bg-elevated);
   box-shadow:
     -12px 14px 36px color-mix(in srgb, #000 35%, transparent),
@@ -132,9 +132,7 @@ const emit = defineEmits<{ close: [] }>()
 .ttd-title strong {
   overflow: hidden;
   color: var(--ui-text-primary);
-  font:
-    14px var(--font-mono),
-    monospace;
+  font: 14px var(--ui-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -145,7 +143,7 @@ const emit = defineEmits<{ close: [] }>()
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid var(--ui-border-default);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-sm);
   background: var(--ui-bg-surface);
   color: var(--ui-text-secondary);
   font-size: 20px;
@@ -180,11 +178,11 @@ const emit = defineEmits<{ close: [] }>()
   gap: 7px;
   padding: 12px 14px;
   border: 1px solid var(--ui-border-subtle);
-  border-radius: 7px;
+  border-radius: var(--ui-radius-sm);
   background: var(--ui-bg-surface-soft);
 }
 .ttd dt {
-  color: var(--ui-text-muted);
+  color: var(--ui-text-tertiary);
   font-size: 10px;
   font-weight: 700;
 }
@@ -194,9 +192,7 @@ const emit = defineEmits<{ close: [] }>()
   gap: 7px;
   margin: 0;
   color: var(--ui-success);
-  font:
-    11px var(--font-mono),
-    monospace;
+  font: 11px var(--ui-font-mono);
 }
 .ttd dd i {
   width: 7px;
@@ -224,10 +220,8 @@ const emit = defineEmits<{ close: [] }>()
   font-weight: 800;
 }
 .ttd-section-title span {
-  color: var(--ui-text-muted);
-  font:
-    8px var(--font-mono),
-    monospace;
+  color: var(--ui-text-tertiary);
+  font: 8px var(--ui-font-mono);
   letter-spacing: 0.12em;
 }
 .ttd pre {
@@ -236,12 +230,10 @@ const emit = defineEmits<{ close: [] }>()
   overflow: auto;
   padding: 14px 16px;
   border: 1px solid var(--ui-border-subtle);
-  border-radius: 7px;
+  border-radius: var(--ui-radius-sm);
   background: color-mix(in srgb, var(--ui-bg-surface) 88%, #050712);
   color: var(--ui-text-secondary);
-  font:
-    11px/1.65 var(--font-mono),
-    monospace;
+  font: 11px/1.65 var(--ui-font-mono);
   tab-size: 2;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

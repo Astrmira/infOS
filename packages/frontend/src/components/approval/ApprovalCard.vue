@@ -363,20 +363,18 @@ function formatAuditTime(value: string): string {
   margin: 6px 0;
   padding: 7px 9px;
   overflow: auto;
-  border: 1px solid var(--ui-border-subtle, #e2e8f0);
-  border-radius: 2px;
-  background: var(--ui-bg-primary, #f8fafc);
-  color: var(--ui-text-primary, #1e293b);
-  font:
-    10px/1.45 'Cascadia Code',
-    monospace;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: var(--ui-radius-xxs);
+  background: var(--ui-bg-surface-soft);
+  color: var(--ui-text-primary);
+  font: 10px/1.45 var(--ui-font-mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .approval-card__command {
   border-left: 3px solid var(--approval-tone);
-  background: color-mix(in srgb, var(--approval-tone) 4%, var(--ui-bg-primary, #f8fafc));
+  background: color-mix(in srgb, var(--approval-tone) 4%, var(--ui-bg-surface-soft));
 }
 
 .approval-card__details-toggle {
@@ -386,7 +384,7 @@ function formatAuditTime(value: string): string {
   padding: 2px 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-tertiary, #64748b);
+  color: var(--ui-text-tertiary);
   font-size: 10px;
   cursor: pointer;
 }
@@ -399,11 +397,11 @@ function formatAuditTime(value: string): string {
   margin-top: 8px;
   padding: 7px 9px;
   resize: vertical;
-  border: 1px solid var(--ui-border-subtle, #cbd5e1);
-  border-radius: 5px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: var(--ui-radius-xs);
   outline: none;
-  background: var(--ui-bg-primary, #fff);
-  color: var(--ui-text-primary, #1e293b);
+  background: var(--ui-bg-surface);
+  color: var(--ui-text-primary);
   font-size: 11px;
 }
 
@@ -473,11 +471,11 @@ function formatAuditTime(value: string): string {
 [data-theme='dark'] .approval-card__command,
 [data-theme='dark'] .approval-card__details,
 [data-theme='dark'] .approval-card__message {
-  background: color-mix(in srgb, var(--ui-bg-primary, #11121c) 88%, #000 12%);
+  background: color-mix(in srgb, var(--ui-bg-surface-soft) 88%, #000 12%);
 }
 
 [data-theme='dark'] .approval-card__command {
-  background: color-mix(in srgb, var(--approval-tone) 7%, var(--ui-bg-primary, #11121c));
+  background: color-mix(in srgb, var(--approval-tone) 7%, var(--ui-bg-surface-soft));
 }
 
 @keyframes approval-blink {

@@ -166,25 +166,35 @@ export class StandardBedrockProvider implements IModelProvider {
       return this.textureCache.get(url)!
     }
 
-    return new Promise((resolve, reject) => {
-      new THREE.TextureLoader().load(
-        url,
-        (t) => {
-          if (this.disposed) {
-            t.dispose()
-            reject(new DOMException('模型已释放', 'AbortError'))
-            return
-          }
-          t.magFilter = THREE.NearestFilter
-          t.minFilter = THREE.NearestFilter
-          t.colorSpace = THREE.SRGBColorSpace
-          this.textureCache.set(url, t)
-          resolve(t)
-        },
-        undefined,
-        reject,
+    let objectUrl: string | undefined
+    try {
+      // 和清单、几何复用桌面资产协议；图片解码器只接收本地 Blob。
+      if (url.startsWith('asset://')) {
+        const response = await fetch(url)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        objectUrl = URL.createObjectURL(await response.blob())
+      }
+      const texture = await new THREE.TextureLoader().loadAsync(objectUrl ?? url)
+      if (this.disposed) {
+        texture.dispose()
+        throw new DOMException('模型已释放', 'AbortError')
+      }
+      texture.magFilter = THREE.NearestFilter
+      texture.minFilter = THREE.NearestFilter
+      texture.colorSpace = THREE.SRGBColorSpace
+      this.textureCache.set(url, texture)
+      return texture
+    } catch (cause) {
+      if (this.disposed) throw new DOMException('模型已释放', 'AbortError')
+      const source = url.startsWith('data:') ? 'data:' : url
+      const detail = cause instanceof Error ? cause.message : __t('ui.avatar', '图片解码失败')
+      throw new Error(
+        __t('ui.avatar', '无法加载「{0}」的贴图 {1}（{2}）', [this.config.name, source, detail]),
+        { cause },
       )
-    })
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
   }
 
   dispose(): void {

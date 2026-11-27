@@ -746,11 +746,11 @@ onBeforeUnmount(() => {
   margin: auto;
   padding: 0;
   border: 2px solid var(--ui-border-default);
-  border-radius: var(--ui-radius-md, 4px);
+  border-radius: var(--ui-radius-md);
   color: var(--ui-text-primary);
   background: var(--ui-bg-surface);
   box-shadow: var(--ui-shadow-lg);
-  font: 13px/1.6 var(--ui-font-body, sans-serif);
+  font: 13px/1.6 var(--ui-font-sans);
 }
 .tool-settings-dialog[open] {
   display: flex;

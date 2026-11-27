@@ -85,18 +85,18 @@ useEventListener(window, 'keydown', (e: Event) => {
       @click.self="close"
     >
       <div
-        class="w-[580px] max-h-[80vh] flex flex-col border-2 border-slate-200 bg-white shadow-[8px_8px_0_rgba(0,0,0,0.1)]"
+        class="w-[580px] max-h-[80vh] flex flex-col border-2 border-[var(--ui-border-default)] bg-[var(--ui-bg-surface)] shadow-[8px_8px_0_rgba(0,0,0,0.1)]"
       >
         <!-- 头部 -->
         <div
-          class="px-4 py-3 flex items-center justify-between border-b-2 border-slate-200 bg-sky-50"
+          class="px-4 py-3 flex items-center justify-between border-b-2 border-[var(--ui-border-default)] bg-[var(--dash-panel-soft)]"
         >
-          <div class="flex items-center gap-2 text-sm font-bold text-slate-800">
+          <div class="flex items-center gap-2 text-sm font-bold text-[var(--ui-text-primary)]">
             <PixelIcon name="search" size="sm" />
             <span>{{ __t('ui.overlays', '找到的文件 (') }}{{ files.length }})</span>
           </div>
           <button
-            class="p-1 bg-none border-none text-slate-400 cursor-pointer transition-colors hover:text-rose-500"
+            class="p-1 bg-none border-none text-[var(--ui-text-tertiary)] cursor-pointer transition-colors hover:text-[var(--ui-danger)]"
             @click="close"
           >
             <PixelIcon name="close" size="xs" />
@@ -109,21 +109,27 @@ useEventListener(window, 'keydown', (e: Event) => {
             <div
               v-for="(file, idx) in files"
               :key="idx"
-              class="flex items-center gap-3 px-3 py-2.5 cursor-pointer border-2 border-transparent transition-all hover:bg-sky-50 hover:border-sky-200 hover:translate-x-0.5"
+              class="flex items-center gap-3 px-3 py-2.5 cursor-pointer border-2 border-transparent transition-all hover:bg-[var(--ui-accent-sky-soft)] hover:border-[var(--ui-accent-sky)] hover:translate-x-0.5"
               @click="openFile(file)"
             >
-              <PixelIcon :name="getFileIcon(file)" size="sm" class="text-sky-300 flex-shrink-0" />
+              <PixelIcon
+                :name="getFileIcon(file)"
+                size="sm"
+                class="text-[var(--ui-accent-sky)] flex-shrink-0"
+              />
               <div class="flex-1 min-w-0">
-                <span class="block text-[13px] font-bold text-slate-800 truncate">
+                <span class="block text-[13px] font-bold text-[var(--ui-text-primary)] truncate">
                   {{ getFileName(file) }}
                 </span>
-                <span class="block text-[11px] font-mono text-slate-400 truncate">{{ file }}</span>
+                <span class="block text-[11px] font-mono text-[var(--ui-text-tertiary)] truncate">{{
+                  file
+                }}</span>
               </div>
             </div>
           </div>
           <div
             v-else
-            class="flex flex-col items-center justify-center h-[200px] text-slate-400 font-bold gap-2"
+            class="flex flex-col items-center justify-center h-[200px] text-[var(--ui-text-tertiary)] font-bold gap-2"
           >
             <PixelIcon name="folder" size="xl" />
             <p>{{ __t('ui.overlays', '没有找到相关文件') }}</p>
@@ -132,9 +138,9 @@ useEventListener(window, 'keydown', (e: Event) => {
 
         <!-- 底部 -->
         <div
-          class="px-4 py-3 flex items-center justify-between border-t-2 border-slate-200 bg-sky-50"
+          class="px-4 py-3 flex items-center justify-between border-t-2 border-[var(--ui-border-default)] bg-[var(--dash-panel-soft)]"
         >
-          <span class="text-[11px] text-slate-400">
+          <span class="text-[11px] text-[var(--ui-text-tertiary)]">
             {{ __t('ui.overlays', '点击文件可在资源管理器中定位') }}
           </span>
           <PButton variant="primary" @click="close">{{ __t('ui.overlays', '确定') }}</PButton>

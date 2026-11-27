@@ -537,7 +537,7 @@ onBeforeUnmount(() => {
 }
 .provider-hint,
 .provider-detail small {
-  color: var(--ui-text-muted);
+  color: var(--ui-text-tertiary);
   font-size: 11px;
   line-height: 1.8;
 }
@@ -677,10 +677,10 @@ onBeforeUnmount(() => {
   padding-bottom: 2px;
 }
 .provider-delete {
-  border-color: var(--ui-accent-rose);
+  border-color: var(--ui-danger);
 }
 .provider-error {
-  color: var(--ui-accent-rose);
+  color: var(--ui-danger);
 }
 @media (max-width: 680px) {
   .provider-manager {

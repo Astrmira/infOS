@@ -214,7 +214,9 @@
   --ui-font-pixel: 'Zpix', 'DotGothic16', monospace;
   --ui-font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 
-  /* ── 圆角 ── */
+  /* ── 圆角（双轨：像素控件/浮层用 none/xxs，现代工作台容器用 xs~xl） ── */
+  --ui-radius-none: 0px;
+  --ui-radius-xxs: 2px;
   --ui-radius-xs: 4px;
   --ui-radius-sm: 7px;
   --ui-radius-md: 10px;

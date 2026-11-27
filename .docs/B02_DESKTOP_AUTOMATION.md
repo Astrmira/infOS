@@ -28,6 +28,14 @@ Windows 桌面输入由 Electron `desktopControl` 统一串行化，复用 Capab
 - **画面稳定等待与回读**：动作发出后立即释放输入控制并等待画面稳定：每 `150ms` 按观察区域采样一张灰度指纹（`desktopFrame.ts`，32 列网格平均亮度），连续两次平均差异 `≤ 0.4%` 即判定稳定（默认上限 `1500ms`，可通过 `settleTimeoutMs` 在 `200–5000ms` 调节），结果返回 `settle{stable, waitedMs, samples}`。回读截图沿用动作前视角（窗口仍截同窗口、局部仍截同块 DIP 区域；若动作关闭或最小化了目标窗口，改截整屏并附 `targetClosed: true`）。等待与回读期间用户移动鼠标仅在新观察标注为可能变化，不触发接管暂停。`wait` 可纯等待 `100–3000ms` 后重观察，带 `until` 时改为条件轮询。动作已发出后由 `verify` 提供核验结论，模型需结合画面、控件或实际产物确认业务目标完成。
 - **审批后复核**：执行动作经本机分区护栏（`desktopGuard`）审批返回 `prompted` 且用户批准后，`desktopControl` 核对目标窗口进程与位置未变、将目标切回前台（审批框会短暂抢走焦点），并重新采样比对观察区域画面指纹（差异 `≤ 3%` 判定画面未变）。复核全部通过即直接执行并消费该次“允许这一次”；否则返回 `DESKTOP_APPROVED_REOBSERVE`。单次批准保留 `2` 分钟，且仅对完全相同的动作意图有效一次（用户点击审批按钮导致的控制权版本变化在这条路径上由画面比对替代）。
 
+#### 本机程序审批
+
+「桌面权限与安全 → 权限与保护规则」提供两个独立开关。「允许桌面操作」控制桌面能力的使用，「桌面操作护栏」控制按程序询问、附加名单、信任与任务预批。护栏首次使用默认关闭。启用后普通程序默认每个问一次，关闭已启用的护栏需要本人确认。内置禁区（含 infOS 自身窗口）、手动模式的逐次确认和 Home 的服务端许可各自生效。
+
+`desktopGuardCore.ts` 从本机用户目录读取 `desktop-safety.json`、已接受副本和签名确认凭据。首次使用按护栏自己的文件判断。已签名的旧设置沿用原规则。配置损坏、签名不符或已初始化的副本残缺时，客户端保留可验证的禁令，逐次询问，并在设置页提供恢复入口。
+
+`desktopGuardPrompt.ts` 串行打开独立沙箱窗口，操作详情取自主进程核实的窗口、控件和输入意图。专用 preload 只呈现文本并回传当前选项。主进程核对审批窗口、主帧和可选答案，关闭窗口按拒绝处理。配置在等待期间变化时需重新申请。
+
 ### 1.3 引导 Skill 与工具常驻策略
 
 - **Skill 与流程约定**：`packages/backend/src/tools/screenVision/manifest.json` 的引导提示提及了 Skill `desktop-operation`（`get_active_windows` 找 `windowId` → `take_screenshot` 切前台并观察 → 元素编号或控件优先、坐标兜底 → `automation_execute` 操作 → 依据 `verify`、回读画面与 `settle` 核对，配合条件等待与直通通道 `desktop_direct`）。注意当前 `packages/backend/src/skills/desktop-operation/` 为空目录，尚未内置对应 `SKILL.md`。

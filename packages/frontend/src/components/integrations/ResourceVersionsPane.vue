@@ -304,10 +304,10 @@ select {
   font-family: var(--ui-font-pixel);
 }
 .resource-error {
-  color: var(--ui-accent-pink);
+  color: var(--ui-accent-primary);
 }
 .resource-pending {
-  border-left: 3px solid var(--ui-accent-cyan);
+  border-left: 3px solid var(--ui-accent-sky);
   padding-left: 14px;
 }
 .resource-changes {
@@ -328,7 +328,7 @@ select {
   border: 0;
   padding: 0;
   background: transparent;
-  color: var(--ui-accent-cyan);
+  color: var(--ui-accent-sky);
   font: 11px var(--ui-font-mono);
   text-align: left;
   overflow-wrap: anywhere;
@@ -356,6 +356,6 @@ select {
   }
 }
 .resource-recovery {
-  border-left: 3px solid var(--ui-accent-pink);
+  border-left: 3px solid var(--ui-accent-primary);
 }
 </style>

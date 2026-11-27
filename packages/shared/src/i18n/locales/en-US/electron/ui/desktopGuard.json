@@ -1,4 +1,10 @@
 {
+  "关闭桌面操作护栏": "Turn off desktop safeguards",
+  "桌面操作护栏已关闭": "Desktop safeguards are off",
+  "保护规则待恢复": "Rules need recovery",
+  "手动确认": "Manual approval",
+  "请在「桌面权限与安全」中检查保护规则。": "Review your rules in Desktop Permissions & Security.",
+  "桌面权限已更新，请重新发起请求。": "Desktop permissions changed. Request approval again.",
   "{0}（{1}）": "{0} ({1})",
   "不在预批范围（每次单独确认或禁止）：{0}": "Not covered (confirmed each time or blocked): {0}",
   "以后都信任这个程序": "Always trust this program",

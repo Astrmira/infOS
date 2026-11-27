@@ -1,3 +1,8 @@
 {
+  "图片解码失败": "Image decoding failed",
+  "无法加载「{0}」的贴图 {1}（{2}）": "Could not load the texture for {0}: {1} ({2})",
+  "切换模型失败：{0}": "Could not switch models: {0}",
+  "模型尚未就绪": "The model is not ready yet",
+  "模型加载失败": "Could not load the model",
   "正在召唤中...": "is summoning..."
 }

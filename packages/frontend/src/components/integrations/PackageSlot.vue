@@ -80,7 +80,7 @@ p {
   color: var(--ui-text-secondary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font: 12px/1.8 var(--ui-font-body);
+  font: 12px/1.8 var(--ui-font-sans);
 }
 dl {
   display: grid;

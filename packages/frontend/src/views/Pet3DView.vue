@@ -391,9 +391,12 @@ async function onModelChange(path: string, complete: (success: boolean, message?
     if (success) {
       currentManifestPath.value = path
     }
-    complete(success, success ? undefined : '模型尚未就绪或加载失败')
+    complete(
+      success,
+      success ? undefined : avatarRef.value?.loadError || __t('ui.avatar', '模型尚未就绪'),
+    )
   } catch (error) {
-    complete(false, error instanceof Error ? error.message : '模型加载失败')
+    complete(false, error instanceof Error ? error.message : __t('ui.avatar', '模型加载失败'))
   }
 }
 function keydown(event: KeyboardEvent) {

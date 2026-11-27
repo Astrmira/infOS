@@ -171,7 +171,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin: 0 0 18px;
   color: var(--ui-text-primary);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 14px;
 }
 .completion-settings__row {
@@ -206,7 +206,7 @@ onBeforeUnmount(() => {
 }
 .completion-settings__error {
   margin-top: 10px;
-  color: var(--ui-text-error, #e56d83);
+  color: var(--ui-danger);
   font-size: 11px;
 }
 </style>

@@ -1,6 +1,6 @@
 # Steam 集成与资产联邦化规范
 
-> **版本**：0.9.14 · **更新时间**：2026-10-27
+> **版本**：0.9.15 · **更新时间**：2026-10-27
 > **适用范围**：`electron/main/services/steam*`、`packages/backend/src/core/`
 > **依赖规范**：[A04_DEPLOYMENT](./A04_DEPLOYMENT.md)、[A02_BACKEND_ARCHITECTURE](./A02_BACKEND_ARCHITECTURE.md)
 
@@ -147,6 +147,7 @@ Daemon 的 v3 快照按原始文件字节分块压缩，避免大数据库整体
 ### 5.3 完整快照与覆写流程
 
 1. Daemon 通过完整快照协调器固定 SQLite 读视图并复制受管 TDB 文件组，随后以分步在线备份和异步文件复制完成导出，再以 Steam 账户对应的传输密钥加密。SQLite 视图、普通文件版本核对和失败清理的实现见 [完整快照说明](A04_DEPLOYMENT.md#95-单对象单-authority-一致性)。Electron 先将密文原子写入 `data/cloud-cache/steam-<SteamID>/`，写入落盘完成后更新检查点回执；保留最近三份本机密文。
+   本机密文与回执均先写入同目录的临时文件。目标短暂被占用时，Electron 最多重试五次原子替换。失败会向调用方返回错误，磁盘继续保留上一次提交的文件。
 2. 云文件使用 `infos/auto-v1/<代次>/<分块>.chunk`，每块四 MiB 原始密文，以 base64 文本交给 SDK，避免单文件超过 Steam FileWrite 上限。所有分块成功后才切换 `infos/auto-v1/head.json`；清单保存当前与上一代的大小、摘要及分块信息，旧代在成功切换之前保持可读。
 3. 启动时在本机后端打开之前读取云清单与本机回执。空数据目录或本机指纹未变而云端更新时自动恢复；两边有不同数据时询问方向，不按墙上时钟直接覆盖。指纹基于文件名、大小与修改时间，属于保守修改检测，后台写入及 SQLite 检查点也可能触发冲突确认。
 4. 下载必须验证完整密文大小与 SHA256，再调用 `/api/distributed/snapshot/import`；后端负责解密、兼容校验及暂存。只重启本模块拥有的 Daemon，打开数据库前建立本机恢复点、安装暂存数据。核对 `/api/distributed/pending` 的 `lastSync.snapshotId` 后才更新云端基线、允许自动保存与显示主窗口。外部 Daemon 不强制终止；无法完成暂存恢复时暂停云端写入，已经暂存但尚未应用的恢复会阻止进入主界面。

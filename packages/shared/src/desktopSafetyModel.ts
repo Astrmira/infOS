@@ -96,6 +96,8 @@ export function desktopProgramLists(draft: DesktopSafetyDraft): DesktopProgramLi
 /** 用户设置（可在文件中手动编辑）。 */
 export interface DesktopSafetySettings {
   version: 1
+  /** 旧版签名没有此字段，沿用当时已保存的保护规则。 */
+  enabled?: boolean
   normalMode: DesktopNormalMode
   /** 追加到禁区的程序。 */
   forbidden: string[]
@@ -106,7 +108,7 @@ export interface DesktopSafetySettings {
 }
 
 export function createDefaultDesktopSafetySettings(): DesktopSafetySettings {
-  return { version: 1, normalMode: 'once', forbidden: [], mustConfirm: [], trusted: [] }
+  return { version: 1, enabled: false, normalMode: 'once', forbidden: [], mustConfirm: [], trusted: [] }
 }
 
 /** 名单校验错误：稳定错误码 + 出错的值，在界面本地化。 */

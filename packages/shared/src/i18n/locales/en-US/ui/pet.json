@@ -1,4 +1,12 @@
 {
+  "模型目录": "Model folder",
+  "打开模型目录失败。": "Could not open the model folder.",
+  "模型列表扫描失败，请刷新重试。": "Could not scan the models. Refresh to try again.",
+  "请先解压 {0}，把含入口文件的模型文件夹放进 models。": "Extract {0}, then place the folder containing the model manifest in models.",
+  "{0} 是单文件 YSM，请使用含 ysm.json 的目录版。": "{0} is a single-file YSM model. Use the folder version containing ysm.json.",
+  "{0} 缺少入口文件，请检查 manifest.json 或 ysm.json 的层级。": "No manifest found in {0}. Place manifest.json or ysm.json directly inside the model folder.",
+  "无法读取 {0} 的模型，请检查清单、几何与贴图路径。": "Could not read {0}. Check its manifest and the geometry and texture paths.",
+  "无法扫描模型目录 {0}。": "Could not scan model folder {0}.",
   "节能": "Energy saving",
   "均衡": "balanced",
   "精细": "Fine",

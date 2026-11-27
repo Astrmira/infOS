@@ -45,7 +45,7 @@ async function reset(): Promise<void> {
 
 <template>
   <div v-if="shell.enabled" class="desktop-layout flex flex-col gap-1.5">
-    <label class="text-xs font-bold text-slate-500">
+    <label class="text-xs font-bold text-[var(--ui-text-secondary)]">
       {{ __t('ui.desktop-shell', '桌面面板') }}
     </label>
     <div class="desktop-layout__row">
@@ -57,7 +57,7 @@ async function reset(): Promise<void> {
         {{ __t('ui.desktop-shell', '恢复默认布局') }}
       </PButton>
     </div>
-    <p class="text-[10px] text-slate-400">
+    <p class="text-[10px] text-[var(--ui-text-tertiary)]">
       {{
         __t(
           'ui.desktop-shell',

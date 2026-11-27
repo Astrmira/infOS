@@ -103,7 +103,7 @@ onMounted(load)
 
 <style scoped>
 .recall-controls {
-  --recall-accent: var(--ui-accent-emerald, var(--ui-success));
+  --recall-accent: var(--ui-success);
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) auto;
   align-items: center;

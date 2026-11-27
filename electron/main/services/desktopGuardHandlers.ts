@@ -18,7 +18,7 @@ import {
   type GuardCaller,
   type GuardPrompt,
 } from './desktopGuardModel'
-import { nativeGuardPrompt } from './desktopGuardPrompt'
+import { showDesktopGuardPrompt } from './desktopGuardPrompt'
 import { homeApi } from '../home/homeApi'
 import {
   HomeDesktopPermits,
@@ -39,7 +39,7 @@ export const desktopGuard = new DesktopGuard({
   signer: settingsSigner,
   draft: SAFETY_LISTS,
   selfPrograms: () => [process.execPath],
-  prompt: nativeGuardPrompt,
+  prompt: showDesktopGuardPrompt,
   now: Date.now,
 })
 
@@ -349,14 +349,14 @@ export async function guardApplicationPlan(
 }
 
 /**
- * 「桌面操作」总开关的修改（设置页 `desktop-control:update`）：从关闭改为打开时必须经主进程原生确认框，
+ * 「桌面操作」总开关的修改（设置页 `desktop-control:update`）：从关闭改为打开时必须经主进程独立审批窗口，
  * 页面脚本不能代替用户确认；用户拒绝时去掉 `enabled`（其他字段照常保存）。关闭立即生效。
  * 返回要应用的修改；为 null 表示没有需要保存的内容。
  */
 export async function confirmDesktopControlPatch<T extends { enabled?: unknown }>(
   patch: T,
   currentlyEnabled: boolean,
-  prompt: (request: GuardPrompt) => Promise<GuardAnswer> = nativeGuardPrompt,
+  prompt: (request: GuardPrompt) => Promise<GuardAnswer> = showDesktopGuardPrompt,
 ): Promise<T | null> {
   if (patch.enabled !== true || currentlyEnabled) return patch
   if ((await prompt({ kind: 'enable-control' })) === 'approve') return patch
@@ -407,7 +407,7 @@ export async function handleGuardControl(
   throw new Error('DESKTOP_CONTROL_DENIED: 不支持的桌面控制操作')
 }
 
-/** 设置页通道：只接受主窗口与桌面面板。查看、撤销信任与收紧立即生效；放宽一律经原生确认框。 */
+/** 设置页通道：只接受主窗口与桌面面板。查看、撤销信任与收紧立即生效；放宽一律经独立审批窗口。 */
 export function registerDesktopSafetyHandlers(
   isTrusted: (sender: WebContents) => boolean,
   guard: DesktopGuard = desktopGuard,
@@ -423,6 +423,11 @@ export function registerDesktopSafetyHandlers(
     assert(event.sender)
     await guard.change({ normalMode: mode }, 'user')
     return guard.state()
+  })
+  ipcMain.handle(DESKTOP_SAFETY_CHANNELS.setEnabled, (event, enabled: unknown) => {
+    assert(event.sender)
+    if (event.senderFrame !== event.sender.mainFrame) throw new Error('DESKTOP_SAFETY_FORBIDDEN')
+    return guard.setEnabled(enabled)
   })
   ipcMain.handle(DESKTOP_SAFETY_CHANNELS.untrust, (event, program: unknown) => {
     assert(event.sender)

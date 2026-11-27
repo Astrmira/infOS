@@ -3,20 +3,14 @@
     class="custom-title-bar h-8 w-full flex items-center justify-between select-none z-[9999] fixed top-0 left-0 right-0 transition-all duration-300"
     :class="[
       transparent ? 'ctb-transparent bg-transparent' : 'ctb-solid',
-      !transparent &&
-        (isWorkMode
-          ? 'bg-[#0f172a] border-b-2 border-slate-700'
-          : 'bg-sky-50 border-b-2 border-sky-100'),
+      isWorkMode ? 'ctb-work' : '',
       isMaximized ? 'px-4' : '',
     ]"
     :style="isMaximized ? { paddingTop: '4px' } : {}"
     style="-webkit-app-region: drag"
   >
     <!-- 左侧：应用标题 / 图标 -->
-    <div
-      class="ctb-title flex items-center gap-3 px-4 pointer-events-none"
-      :class="isWorkMode ? 'text-slate-400' : 'text-sky-700'"
-    >
+    <div class="ctb-title flex items-center gap-3 px-4 pointer-events-none">
       <InfosLogo class="ctb-brand" variant="mark" aria-hidden="true" />
       <span class="text-xs font-bold tracking-wide font-mono opacity-90">{{ displayTitle }}</span>
     </div>
@@ -26,12 +20,7 @@
       <!-- 模式切换 -->
       <button
         v-if="showModeToggle"
-        class="ctb-btn h-full px-3 flex items-center justify-center transition-all duration-200 gap-2 mr-1 group"
-        :class="
-          isWorkMode
-            ? 'hover:bg-white/5 text-slate-400 hover:text-amber-500'
-            : 'hover:bg-sky-100 text-sky-600/70 hover:text-sky-600'
-        "
+        class="ctb-btn ctb-mode-btn h-full px-3 flex items-center justify-center transition-all duration-200 gap-2 mr-1 group"
         :title="isWorkMode ? __t('ui.layout', '切换至对话') : __t('ui.layout', '切换至工作')"
         @click="emit('toggle-mode')"
       >
@@ -44,11 +33,6 @@
       <!-- 最小化 -->
       <button
         class="ctb-btn h-full w-12 flex items-center justify-center transition-all duration-200 group"
-        :class="
-          isWorkMode
-            ? 'hover:bg-white/5 text-slate-400 hover:text-sky-400'
-            : 'hover:bg-sky-100 text-sky-600/70 hover:text-sky-600'
-        "
         @click="minimize"
       >
         <PixelIcon name="minus" size="sm" />
@@ -57,11 +41,6 @@
       <!-- 最大化 / 还原 -->
       <button
         class="ctb-btn h-full w-12 flex items-center justify-center transition-all duration-200 group"
-        :class="
-          isWorkMode
-            ? 'hover:bg-white/5 text-slate-400 hover:text-sky-400'
-            : 'hover:bg-sky-100 text-sky-600/70 hover:text-sky-600'
-        "
         @click="toggleMaximize"
       >
         <PixelIcon :name="isMaximized ? 'copy' : 'square'" size="sm" />
@@ -70,11 +49,6 @@
       <!-- 关闭 -->
       <button
         class="ctb-btn ctb-close h-full w-12 flex items-center justify-center transition-all duration-200 group"
-        :class="
-          isWorkMode
-            ? 'hover:bg-red-500/80 text-slate-400 hover:text-white'
-            : 'hover:bg-red-500 text-sky-600/70 hover:text-white'
-        "
         @click="close"
       >
         <PixelIcon name="close" size="sm" />
@@ -169,29 +143,60 @@ onUnmounted(() => {
   height: 20px;
 }
 
-/* ── 深浅色主题适配 ──
- * 跟随 document 根元素的 data-theme 属性（由 app 的深浅色切换逻辑维护）。
- * 非透明标题栏整体切换底色；透明标题栏（悬浮于页面内容上）仅调整文字与按钮色。
+/* ── 主题与工作模式样式 ──
+ * 跟随 --ui-* 语义令牌自动适配浅色/深色主题；工作模式（ctb-work）保持固定暗色顶栏。
  */
-[data-theme='dark'] .custom-title-bar.ctb-solid {
+.custom-title-bar.ctb-solid {
+  background: color-mix(in srgb, var(--ui-accent-sky-soft) 55%, var(--ui-bg-surface));
+  border-bottom: 2px solid color-mix(in srgb, var(--ui-accent-sky) 16%, var(--ui-border-subtle));
+}
+
+.custom-title-bar .ctb-title {
+  color: var(--ui-accent-sky);
+}
+
+.custom-title-bar .ctb-btn {
+  color: color-mix(in srgb, var(--ui-accent-sky) 72%, transparent);
+}
+
+.custom-title-bar .ctb-btn:hover {
+  background: var(--ui-accent-sky-soft);
+  color: var(--ui-accent-sky);
+}
+
+.custom-title-bar .ctb-close:hover {
+  background: var(--ui-danger);
+  color: var(--ui-text-inverse);
+}
+
+[data-theme='dark'] .custom-title-bar.ctb-solid,
+.custom-title-bar.ctb-work.ctb-solid {
   background: #0f172a;
   border-bottom-color: #334155;
 }
 
-[data-theme='dark'] .custom-title-bar .ctb-title {
+[data-theme='dark'] .custom-title-bar .ctb-title,
+.custom-title-bar.ctb-work .ctb-title {
   color: #94a3b8;
 }
 
-[data-theme='dark'] .custom-title-bar .ctb-btn {
+[data-theme='dark'] .custom-title-bar .ctb-btn,
+.custom-title-bar.ctb-work .ctb-btn {
   color: rgba(148, 163, 184, 0.82);
 }
 
-[data-theme='dark'] .custom-title-bar .ctb-btn:hover {
+[data-theme='dark'] .custom-title-bar .ctb-btn:hover,
+.custom-title-bar.ctb-work .ctb-btn:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #38bdf8;
 }
 
-[data-theme='dark'] .custom-title-bar .ctb-close:hover {
+.custom-title-bar.ctb-work .ctb-mode-btn:hover {
+  color: #f59e0b;
+}
+
+[data-theme='dark'] .custom-title-bar .ctb-close:hover,
+.custom-title-bar.ctb-work .ctb-close:hover {
   background: rgba(239, 68, 68, 0.85);
   color: #ffffff;
 }

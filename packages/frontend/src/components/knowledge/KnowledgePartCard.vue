@@ -100,7 +100,7 @@ async function expand(more = false): Promise<void> {
   border: 1px solid var(--ui-border-subtle);
   border-left: 2px solid var(--ui-success);
   background: var(--ui-bg-elevated);
-  box-shadow: 2px 2px 0 var(--ui-shadow-color, rgba(0, 0, 0, 0.08));
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--ui-border-default) 55%, transparent);
 }
 header {
   display: flex;

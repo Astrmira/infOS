@@ -973,7 +973,11 @@ function registerSystemHandlers(): void {
   })
 
   ipcMain.handle('open-client-path', async (_event, key: unknown) => {
-    const target = key === 'logs' ? paths.logs : key === 'app' ? paths.app : paths.data
+    let target = key === 'logs' ? paths.logs : key === 'app' ? paths.app : paths.data
+    if (key === 'models') {
+      target = paths.models
+      await fs.promises.mkdir(target, { recursive: true })
+    }
     const errorMessage = await shell.openPath(target)
     if (errorMessage) throw new Error(errorMessage)
     return true
@@ -1051,9 +1055,10 @@ function registerSystemHandlers(): void {
 // 3D模型资源
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function registerAssetHandlers(): void {
-  ipcMain.handle('scan-3d-models', async () => {
+  ipcMain.handle('scan-3d-models', async (_event, options?: { includeIssues?: boolean }) => {
     const { scan3DModels } = await getAssetService()
-    return scan3DModels()
+    const report = await scan3DModels()
+    return options?.includeIssues === true ? report : report.models
   })
 }
 

@@ -3,7 +3,7 @@
  *
  * - 桌面面板、桌面卡片、护栏设置页、开机启动等处理器的统一注册；
  * - 「桌面与家」的处理器注册；
- * - 桌面操作的恢复与设置更新（重新打开总开关须经原生确认框）；
+ * - 桌面操作的恢复与设置更新（重新打开总开关须经独立审批窗口）；
  * - 角色卡另存为。
  *
  * @platform ELECTRON
@@ -34,7 +34,7 @@ export function registerDesktopExtensionHandlers(): void {
   registerDesktopCardAdminHandlers(
     (sender) => desktopTabs.isHost(sender) || detachedPanels.isPanel(sender),
   )
-  // 阶段 2：桌面操作护栏设置页，只接受主窗口与桌面面板；放宽一律经主进程原生确认框。
+  // 阶段 2：桌面操作护栏设置页，只接受主窗口与桌面面板；放宽一律经主进程独立审批窗口。
   registerDesktopSafetyHandlers(
     (sender) => desktopTabs.isHost(sender) || detachedPanels.isPanel(sender),
   )
@@ -59,7 +59,7 @@ export function resumeDesktopControl(): ReturnType<typeof desktopControl.resume>
   return desktopControl.resume()
 }
 
-/** 更新桌面设置：重新打开总开关须经主进程原生确认框；关闭立即生效。 */
+/** 更新桌面设置：重新打开总开关须经主进程独立审批窗口；关闭立即生效。 */
 export async function updateDesktopControlConfirmed(patch: object): Promise<DesktopControlSettings> {
   const confirmed = await confirmDesktopControlPatch(
     patch as Partial<DesktopControlSettings>,

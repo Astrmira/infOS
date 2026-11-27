@@ -1271,7 +1271,7 @@ onBeforeUnmount(() => {
 }
 .backup-progress-title span {
   margin-left: auto;
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-variant-numeric: tabular-nums;
 }
 .backup-progress progress {
@@ -1339,7 +1339,7 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 .backup-heading h1 {
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 25px;
   line-height: 1.4;
   margin: 0 0 6px;
@@ -1412,7 +1412,7 @@ onBeforeUnmount(() => {
 .backup-overview dd {
   margin: 0;
   color: var(--ui-accent-purple);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 27px;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
@@ -1535,7 +1535,7 @@ onBeforeUnmount(() => {
 }
 .backup-section-index {
   margin-left: auto;
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 12px;
   color: var(--ui-text-tertiary);
   letter-spacing: 0.08em;
@@ -1861,7 +1861,7 @@ onBeforeUnmount(() => {
   height: 26px;
 }
 .backup-upload h3 {
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 18px;
   margin: 0;
   color: var(--ui-text-primary);
@@ -1907,7 +1907,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--ui-border-default);
   background: var(--backup-inset);
   color: var(--backup-accent);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 10px;
 }
 .backup-import-steps li:not(:last-child)::after {
@@ -1968,7 +1968,7 @@ onBeforeUnmount(() => {
 .backup-counts dd {
   margin: 8px 0 0;
   color: var(--backup-accent);
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 19px;
   overflow-wrap: anywhere;
 }
@@ -2102,7 +2102,7 @@ onBeforeUnmount(() => {
   padding: 0 5px;
   color: var(--backup-accent) !important;
   background: color-mix(in srgb, var(--backup-accent) 10%, var(--ui-bg-surface));
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 10px !important;
 }
 .backup-history-location {

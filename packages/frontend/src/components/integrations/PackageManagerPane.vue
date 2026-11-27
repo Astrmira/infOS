@@ -318,7 +318,7 @@ p {
   font-size: 12px;
 }
 .package-heading .ready {
-  color: var(--ui-accent-green);
+  color: var(--ui-success);
 }
 code {
   display: block;
@@ -355,7 +355,7 @@ code {
   gap: 8px;
 }
 .package-error {
-  color: var(--ui-accent-pink);
+  color: var(--ui-accent-primary);
   overflow-wrap: anywhere;
 }
 .package-diagnostics {

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 
 const PREFIX = 'infos/auto-v1/'
 const HEAD = `${PREFIX}head.json`
@@ -348,7 +349,18 @@ export class CloudSnapshotStore {
     const temporary = path.join(this.directory, `${name}.${randomUUID()}.tmp`)
     try {
       await writeFile(temporary, contents, { mode: 0o600, flush: true })
-      await rename(temporary, path.join(this.directory, name))
+      const target = path.join(this.directory, name)
+      // 同步盘或扫描器短暂占用目标时，保留旧检查点，重试同一份已落盘的临时文件。
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await rename(temporary, target)
+          break
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          if (attempt >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes(code ?? '')) throw error
+          await delay(20 * 2 ** attempt)
+        }
+      }
     } finally {
       await rm(temporary, { force: true })
     }

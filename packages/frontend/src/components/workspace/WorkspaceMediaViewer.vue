@@ -299,9 +299,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ui-text-primary);
-  font:
-    14px var(--font-pixel),
-    monospace;
+  font: 14px var(--ui-font-pixel);
 }
 .workspace-media__bars {
   display: flex;

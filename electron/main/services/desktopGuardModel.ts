@@ -16,6 +16,7 @@ export const DESKTOP_SAFETY_ACCEPTED_FILE = 'desktop-safety.accepted.json'
 
 export const DESKTOP_SAFETY_CHANNELS = {
   get: 'desktop-safety:get',
+  setEnabled: 'desktop-safety:set-enabled',
   setNormalMode: 'desktop-safety:set-normal-mode',
   untrust: 'desktop-safety:untrust',
   showFile: 'desktop-safety:show-file',
@@ -23,9 +24,9 @@ export const DESKTOP_SAFETY_CHANNELS = {
   discardExternal: 'desktop-safety:discard-external',
 } as const
 
-/** 审批对话框的请求与回答（生产环境为原生对话框，测试中替换）。 */
+/** 审批对话框的请求与回答（生产环境为独立审批窗口，测试中替换）。 */
 export type GuardPrompt =
-  | { kind: 'action'; ask: 'every' | 'once'; zone: DesktopZoneResult; detail: string }
+  | { kind: 'action'; ask: 'every' | 'once'; zone: DesktopZoneResult; detail: string; manual?: boolean }
   | { kind: 'plan'; covered: string[]; excluded: string[]; purpose: string }
   | {
       kind: 'loosen'
@@ -38,6 +39,15 @@ export type GuardPrompt =
 
 /** once：允许这一次；thread：本次对话都允许；trust：以后都信任；approve：同意（预批、放宽）；deny：拒绝。 */
 export type GuardAnswer = 'once' | 'thread' | 'trust' | 'approve' | 'deny'
+
+export interface DesktopApprovalView {
+  title: string
+  heading: string
+  badge?: string
+  warning?: boolean
+  detail: string
+  choices: { answer: GuardAnswer; label: string }[]
+}
 
 export interface GuardCaller {
   agentId?: string

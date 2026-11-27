@@ -766,7 +766,7 @@ summary:focus-visible {
   min-height: 22px;
   padding: 0 7px;
   border: 1px solid var(--work-terminal-border-strong);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-xs);
   background: transparent;
   color: var(--work-terminal-muted);
   font: 9px var(--ui-font-mono);

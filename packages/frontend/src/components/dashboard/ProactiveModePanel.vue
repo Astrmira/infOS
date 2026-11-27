@@ -585,7 +585,7 @@ onUnmounted(() => {
   color: var(--ui-text-secondary);
   background: transparent;
   font:
-    12px/1.5 var(--font-pixel),
+    12px/1.5 var(--ui-font-pixel),
     sans-serif;
   cursor: pointer;
   white-space: nowrap;

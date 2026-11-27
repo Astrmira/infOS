@@ -2,6 +2,11 @@
 import { t as __t } from '../../i18n/index'
 
 import { computed, ref, onMounted, watch } from 'vue'
+import type {
+  DesktopModelEntry,
+  DesktopModelScan,
+  DesktopModelScanIssue,
+} from '@infos/avatar-assets'
 import type BedrockAvatar from '../avatar/BedrockAvatar.vue'
 import PetModelOption from './PetModelOption.vue'
 import PetHudIcon from './PetHudIcon.vue'
@@ -108,56 +113,73 @@ function toggleClothingPart(id: string, checked: boolean): void {
 }
 
 // ── 角色选择网格 (v1: scan-3d-models IPC) ──
-interface ModelInfo {
-  name: string
-  path: string
-  thumbnail?: string
+const availableModels = ref<DesktopModelEntry[]>([])
+const scanIssues = ref<DesktopModelScanIssue[]>([])
+function describeScanIssue({ entry, reason }: DesktopModelScanIssue): string {
+  switch (reason) {
+    case 'zip':
+      return __t('ui.pet', '请先解压 {0}，把含入口文件的模型文件夹放进 models。', [entry])
+    case 'ysm-file':
+      return __t('ui.pet', '{0} 是单文件 YSM，请使用含 ysm.json 的目录版。', [entry])
+    case 'missing-entry':
+      return __t('ui.pet', '{0} 缺少入口文件，请检查 manifest.json 或 ysm.json 的层级。', [entry])
+    case 'invalid-entry':
+      return __t('ui.pet', '无法读取 {0} 的模型，请检查清单、几何与贴图路径。', [entry])
+    case 'unreadable':
+      return __t('ui.pet', '无法扫描模型目录 {0}。', [entry])
+  }
 }
-
-const availableModels = ref<ModelInfo[]>([])
 const currentModelName = ref(DEFAULT_AVATAR_NAME)
 const switchingModelName = ref('')
 const isLoadingModels = ref(false)
 const modelSwitchError = ref('')
+
+async function openModelFolder() {
+  try {
+    await invoke('open-client-path', 'models')
+  } catch {
+    modelSwitchError.value = __t('ui.pet', '打开模型目录失败。')
+  }
+}
 
 /** 扫描可用 3D 模型 */
 async function scanModels() {
   if (isLoadingModels.value) return
   isLoadingModels.value = true
   try {
-    const models = (await invoke('scan-3d-models')) as ModelInfo[]
-    if (Array.isArray(models)) {
-      availableModels.value = models
-      const selectedPath =
-        localStorage.getItem(AVATAR_MODEL_STORAGE_KEY) || DEFAULT_AVATAR_MANIFEST_PATH
-      const selectedModel = models.find((model) => model.path === selectedPath)
-      currentModelName.value = selectedModel?.name || DEFAULT_AVATAR_NAME
-      modelSwitchError.value = ''
-    }
+    const report = (await invoke('scan-3d-models', { includeIssues: true })) as
+      | DesktopModelScan
+      | DesktopModelEntry[]
+      | null
+    if (!report) return
+    const models = Array.isArray(report) ? report : report.models
+    scanIssues.value = Array.isArray(report) ? [] : report.issues
+    availableModels.value = models
+    const selectedPath =
+      localStorage.getItem(AVATAR_MODEL_STORAGE_KEY) || DEFAULT_AVATAR_MANIFEST_PATH
+    const selectedModel = models.find((model) => model.path === selectedPath)
+    currentModelName.value = selectedModel?.name || DEFAULT_AVATAR_NAME
+    modelSwitchError.value = ''
   } catch {
-    modelSwitchError.value = '模型列表扫描失败，请重新扫描'
+    modelSwitchError.value = __t('ui.pet', '模型列表扫描失败，请刷新重试。')
   } finally {
     isLoadingModels.value = false
   }
 }
 
 /** 选择模型 */
-function selectModel(model: ModelInfo) {
+function selectModel(model: DesktopModelEntry) {
   if (switchingModelName.value) return
 
   // scan-3d-models 已返回可直接 fetch 的最终入口 URL，无需再次绕行 IPC。
-  const loadPath = model.path || DEFAULT_AVATAR_MANIFEST_PATH
-  if (!loadPath) {
-    modelSwitchError.value = '该模型没有可用的加载入口'
-    return
-  }
+  const loadPath = model.path
 
   modelSwitchError.value = ''
   switchingModelName.value = model.name
   emit('model-change', loadPath, (success, message) => {
     switchingModelName.value = ''
     if (!success) {
-      modelSwitchError.value = message || `${model.name} 加载失败`
+      modelSwitchError.value = message || __t('ui.avatar', '模型加载失败')
       return
     }
 
@@ -183,6 +205,9 @@ onMounted(scanModels)
           {{ tab.label }}
         </button>
       </div>
+      <button v-if="view === 'models'" type="button" @click="openModelFolder">
+        {{ __t('ui.pet', '模型目录') }}
+      </button>
       <button
         v-if="view === 'models'"
         type="button"
@@ -210,6 +235,9 @@ onMounted(scanModels)
           {{ __t('ui.pet', '还没有其他造型') }}
         </p>
         <p v-if="modelSwitchError" class="error" role="alert">{{ modelSwitchError }}</p>
+        <p v-for="issue in scanIssues" :key="issue.entry" class="error">
+          {{ describeScanIssue(issue) }}
+        </p>
         <div class="clothing-details">
           <h4>{{ __t('ui.pet', '画质') }}</h4>
           <div class="choices" :aria-label="__t('ui.pet', '桌宠画质')">

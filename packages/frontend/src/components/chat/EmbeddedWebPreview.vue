@@ -69,17 +69,15 @@ watch([() => props.active, () => props.source], ([active]) => {
   align-items: center;
   gap: 5px;
   margin: 0 0 3px 4px;
-  color: var(--ui-text-muted);
-  font:
-    8px var(--font-mono),
-    monospace;
+  color: var(--ui-text-tertiary);
+  font: 8px var(--ui-font-mono);
   letter-spacing: 0.04em;
   opacity: 0.66;
 }
 .embedded-web-preview__signal {
   width: 4px;
   height: 4px;
-  background: var(--ui-text-muted);
+  background: var(--ui-text-tertiary);
 }
 .embedded-web-preview.is-loaded .embedded-web-preview__signal {
   background: var(--ui-accent-sky);

@@ -95,7 +95,7 @@ async function refresh(): Promise<void> {
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--ui-border);
+  border-bottom: 1px solid var(--ui-border-subtle);
 }
 .achievement-header h3 {
   display: flex;
@@ -118,7 +118,7 @@ async function refresh(): Promise<void> {
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--ui-border-default);
   background: transparent;
   color: var(--ui-text-secondary);
   cursor: pointer;

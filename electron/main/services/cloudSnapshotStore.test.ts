@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { CloudSnapshotStore, type SteamCloudFiles } from './cloudSnapshotStore'
+
+vi.mock(import('node:fs/promises'), async (load) => {
+  const fs = await load()
+  return { ...fs, rename: vi.fn(fs.rename) }
+})
 
 const HEAD = 'infos/auto-v1/head.json'
 const ACCOUNT = '76561198000000001'
@@ -37,6 +42,21 @@ afterEach(async () => {
 })
 
 describe('Steam 云存档持久化', () => {
+  it('本机状态替换短暂被占用后仍能提交，永久错误保留上一次状态', async () => {
+    const store = new CloudSnapshotStore(root, ACCOUNT, () => api)
+    const state = await store.readState()
+    await store.saveState(state)
+    state.fingerprint = 'latest'
+    vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error(), { code: 'EPERM' }))
+    await store.saveState(state)
+    expect((await store.readState()).fingerprint).toBe('latest')
+
+    state.fingerprint = 'uncommitted'
+    vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error(), { code: 'ENOSPC' }))
+    await expect(store.saveState(state)).rejects.toMatchObject({ code: 'ENOSPC' })
+    expect((await store.readState()).fingerprint).toBe('latest')
+  })
+
   it('分块重组保留完整正文，提交清单后仍可读取上一代存档', async () => {
     // 八字节分块使短正文也跨块，检查末尾不足一块的数据。
     const store = new CloudSnapshotStore(root, ACCOUNT, () => api, 8)

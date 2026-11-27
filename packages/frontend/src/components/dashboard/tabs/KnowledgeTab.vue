@@ -500,7 +500,7 @@ export default { name: 'KnowledgeTab' }
   font-size: 22px;
 }
 .knowledge-head h2 :deep(.pixel-icon) {
-  color: var(--ui-accent-emerald, #10b981);
+  color: var(--ui-success);
 }
 .knowledge-head p {
   margin: 4px 0 0;
@@ -527,7 +527,7 @@ export default { name: 'KnowledgeTab' }
 }
 .knowledge-stats b {
   font-size: 15px;
-  color: var(--ui-accent-emerald, #10b981);
+  color: var(--ui-success);
 }
 .section-tabs {
   display: flex;
@@ -548,8 +548,8 @@ export default { name: 'KnowledgeTab' }
   cursor: pointer;
 }
 .section-tabs button.active {
-  border-bottom-color: var(--ui-accent-emerald, #10b981);
-  color: var(--ui-accent-emerald, #10b981);
+  border-bottom-color: var(--ui-success);
+  color: var(--ui-success);
 }
 .section-tabs small {
   padding: 2px 6px;
@@ -611,9 +611,9 @@ export default { name: 'KnowledgeTab' }
 }
 .object-list button:hover,
 .object-list button.active {
-  border-color: color-mix(in srgb, var(--ui-accent-emerald, #10b981) 52%, var(--ui-border-default));
-  border-left-color: var(--ui-accent-emerald, #10b981);
-  background: color-mix(in srgb, var(--ui-accent-emerald, #10b981) 8%, var(--ui-bg-elevated));
+  border-color: color-mix(in srgb, var(--ui-success) 52%, var(--ui-border-default));
+  border-left-color: var(--ui-success);
+  background: color-mix(in srgb, var(--ui-success) 8%, var(--ui-bg-elevated));
 }
 .object-list span {
   display: flex;
@@ -658,8 +658,8 @@ export default { name: 'KnowledgeTab' }
   width: 38px;
   height: 38px;
   place-items: center;
-  background: color-mix(in srgb, var(--ui-accent-emerald, #10b981) 14%, var(--ui-bg-elevated));
-  color: var(--ui-accent-emerald, #10b981);
+  background: color-mix(in srgb, var(--ui-success) 14%, var(--ui-bg-elevated));
+  color: var(--ui-success);
   font-size: 22px;
   transform: rotate(45deg);
 }
@@ -700,7 +700,7 @@ export default { name: 'KnowledgeTab' }
   margin-top: 8px;
   padding: 12px;
   border: 1px solid var(--ui-border-subtle);
-  border-left: 3px solid var(--ui-accent-emerald, #10b981);
+  border-left: 3px solid var(--ui-success);
   background: var(--ui-bg-elevated);
 }
 .fact-card > p {
@@ -800,13 +800,13 @@ export default { name: 'KnowledgeTab' }
   gap: 7px;
   padding: 11px;
   border: 1px solid var(--ui-border-subtle);
-  background: color-mix(in srgb, var(--ui-text-muted) 5%, var(--ui-bg-elevated));
+  background: color-mix(in srgb, var(--ui-text-tertiary) 5%, var(--ui-bg-elevated));
   color: var(--ui-text-secondary);
 }
 .history-card > span {
   width: max-content;
   padding: 2px 6px;
-  background: var(--ui-bg-muted);
+  background: var(--ui-bg-surface-soft);
   color: var(--ui-text-tertiary);
   font-size: 8px;
 }
@@ -829,7 +829,7 @@ export default { name: 'KnowledgeTab' }
 }
 .history-card strong {
   font-size: 11px;
-  color: var(--ui-accent-emerald, #10b981);
+  color: var(--ui-success);
 }
 @media (max-width: 800px) {
   .knowledge-page {

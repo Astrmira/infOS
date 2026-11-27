@@ -92,9 +92,9 @@ function segIcon(type: string): string {
 /** 段类型色彩 */
 function segClasses(type: string): string {
   const map: Record<string, string> = {
-    thinking: 'border-l-[3px] border-l-sky-500 bg-sky-50',
-    error: 'border-l-[3px] border-l-rose-500 bg-rose-50/30',
-    reflection: 'border-l-[3px] border-l-amber-500 bg-amber-50/30',
+    thinking: 'border-l-[3px] border-l-[var(--ui-accent-sky)] bg-[var(--ui-accent-sky-soft)]',
+    error: 'border-l-[3px] border-l-[var(--ui-danger)] bg-[var(--ui-danger-soft)]',
+    reflection: 'border-l-[3px] border-l-[var(--ui-warning)] bg-[var(--ui-warning-soft)]',
     action: '',
     text: '',
   }
@@ -103,13 +103,13 @@ function segClasses(type: string): string {
 
 function labelColor(type: string): string {
   const map: Record<string, string> = {
-    thinking: 'text-sky-500',
-    error: 'text-rose-500',
-    reflection: 'text-amber-500',
-    action: 'text-slate-400',
-    text: 'text-slate-400',
+    thinking: 'text-[var(--ui-accent-sky)]',
+    error: 'text-[var(--ui-danger)]',
+    reflection: 'text-[var(--ui-warning)]',
+    action: 'text-[var(--ui-text-tertiary)]',
+    text: 'text-[var(--ui-text-tertiary)]',
   }
-  return map[type] ?? 'text-slate-400'
+  return map[type] ?? 'text-[var(--ui-text-tertiary)]'
 }
 </script>
 
@@ -130,7 +130,10 @@ function labelColor(type: string): string {
 
     <!-- 内容区 -->
     <div ref="scrollRef" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 rv-scrollbar">
-      <div v-if="segments.length === 0" class="text-center text-slate-400 font-bold mt-[60px]">
+      <div
+        v-if="segments.length === 0"
+        class="text-center text-[var(--ui-text-tertiary)] font-bold mt-[60px]"
+      >
         {{ isLive ? __t('ui.overlays', '等待思考数据...') : __t('ui.overlays', '无思考过程记录') }}
       </div>
 
@@ -138,7 +141,7 @@ function labelColor(type: string): string {
         v-for="(seg, i) in segments"
         :key="i"
         :class="[
-          'px-4 py-3 border border-slate-200 bg-white max-w-[800px] w-full mx-auto',
+          'px-4 py-3 border border-[var(--ui-border-default)] bg-[var(--ui-bg-surface)] max-w-[800px] w-full mx-auto',
           segClasses(seg.type),
         ]"
       >
@@ -163,7 +166,7 @@ function labelColor(type: string): string {
         </div>
         <div
           :class="[
-            'text-[13px] leading-relaxed text-slate-800 whitespace-pre-wrap font-mono',
+            'text-[13px] leading-relaxed text-[var(--ui-text-primary)] whitespace-pre-wrap font-mono',
             seg.type === 'action' ? 'italic' : '',
           ]"
         >
@@ -173,10 +176,13 @@ function labelColor(type: string): string {
     </div>
 
     <!-- 指令注入 (Live 模式) -->
-    <div v-if="isLive" class="px-4 py-3 flex gap-2 border-t-2 border-slate-200 flex-shrink-0">
+    <div
+      v-if="isLive"
+      class="px-4 py-3 flex gap-2 border-t-2 border-[var(--ui-border-default)] flex-shrink-0"
+    >
       <input
         v-model="injection"
-        class="flex-1 px-3 py-2 border-2 border-slate-200 bg-white text-slate-800 text-[13px] outline-none transition-colors focus:border-sky-300"
+        class="flex-1 px-3 py-2 border-2 border-[var(--dash-input-border)] bg-[var(--dash-input-bg)] text-[var(--ui-text-primary)] text-[13px] outline-none transition-colors focus:border-[var(--ui-accent-sky)]"
         :placeholder="__t('ui.overlays', '发送指令干预思考...')"
         :disabled="isSending"
         @keyup.enter="sendInjection"

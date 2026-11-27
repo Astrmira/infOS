@@ -13,18 +13,18 @@ import { protocol, net, app } from 'electron'
 import { logger } from '../utils/logger'
 import { isDev, paths } from '../utils/env'
 import { getWorkshopInstallations } from './steam'
-import { YsmManifestGenerator } from '@infos/avatar-assets'
+import {
+  YsmManifestGenerator,
+  type DesktopModelEntry,
+  type DesktopModelScanIssue,
+} from '@infos/avatar-assets'
 import { assetRequestHeaders } from './assetRequestPolicy'
 
 /** 资产信息 */
-export interface AssetInfo {
-  name: string
-  path: string
+export interface AssetInfo extends DesktopModelEntry {
   source: 'official' | 'local' | 'workshop'
   workshopId?: string
   manifest?: Record<string, unknown>
-  /** 缩略图 URL（供外观菜单展示） */
-  thumbnail?: string
 }
 
 interface ModelRoot {
@@ -181,12 +181,12 @@ export function registerAssetProtocol(): void {
       const key = segments.shift()
       if (!key) return new Response('缺少资产键', { status: 400 })
       const rootDir = modelRoots.get(key)
-      if (!rootDir) return new Response('资产未注册或已失效', { status: 404 })
+      if (!rootDir) return new Response(null, { status: 404, headers: cors })
 
       const relativePath = segments.join('/')
       if (relativePath === 'manifest.json') {
         const manifest = virtualManifests.get(key)
-        if (!manifest) return new Response('模型清单未注册', { status: 404 })
+        if (!manifest) return new Response(null, { status: 404, headers: cors })
         return new Response(JSON.stringify(manifest), {
           headers: {
             ...Object.fromEntries(cors),
@@ -197,7 +197,7 @@ export function registerAssetProtocol(): void {
 
       const filePath = resolveInside(rootDir, relativePath)
       if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-        return new Response('资产文件不存在', { status: 404 })
+        return new Response(null, { status: 404, headers: cors })
       }
       const response = await net.fetch(pathToFileURL(filePath).toString(), {
         method: request.method,
@@ -226,7 +226,8 @@ function isModelPackage(dirPath: string): boolean {
 }
 
 /** 从候选容器中发现模型包（支持 item 根、models/、assets/3d/ 三种布局）。 */
-function discoverModelPackages(root: ModelRoot): ModelRoot[] {
+function discoverModelPackages(root: ModelRoot, issues: DesktopModelScanIssue[]): ModelRoot[] {
+  if (isModelPackage(root.dirPath)) return [root]
   const containers = [
     root.dirPath,
     path.join(root.dirPath, 'models'),
@@ -245,12 +246,22 @@ function discoverModelPackages(root: ModelRoot): ModelRoot[] {
     }
 
     for (const entry of fs.readdirSync(container, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
       const candidate = path.join(container, entry.name)
+      const local = root.source === 'local'
+      const relative = path.relative(root.dirPath, candidate)
+      if (!entry.isDirectory()) {
+        if (local && entry.isFile() && /\.(zip|ysm)$/i.test(entry.name)) {
+          issues.push({ entry: relative, reason: /\.zip$/i.test(entry.name) ? 'zip' : 'ysm-file' })
+        }
+        continue
+      }
       const resolved = path.resolve(candidate)
-      if (isModelPackage(candidate) && !seen.has(resolved)) {
+      if (seen.has(resolved)) continue
+      if (isModelPackage(candidate)) {
         results.push({ ...root, dirPath: resolved })
         seen.add(resolved)
+      } else if (local && relative !== 'models' && relative !== 'assets') {
+        issues.push({ entry: relative, reason: 'missing-entry' })
       }
     }
   }
@@ -258,7 +269,10 @@ function discoverModelPackages(root: ModelRoot): ModelRoot[] {
 }
 
 /** 扫描官方、用户和 Workshop 3D 模型。 */
-export async function scan3DModels(): Promise<AssetInfo[]> {
+export async function scan3DModels(): Promise<{
+  models: AssetInfo[]
+  issues: DesktopModelScanIssue[]
+}> {
   // 覆盖优先级与后端资产联邦一致：官方 < Workshop < 用户本地。
   const roots: ModelRoot[] = [
     { dirPath: resolveBuiltinModelDir(), source: 'official' },
@@ -273,17 +287,34 @@ export async function scan3DModels(): Promise<AssetInfo[]> {
   modelRoots.clear()
   virtualManifests.clear()
   const results = new Map<string, AssetInfo>()
+  const issues: DesktopModelScanIssue[] = []
   for (const root of roots) {
     if (!fs.existsSync(root.dirPath)) continue
 
+    let packages: ModelRoot[]
     try {
-      for (const model of discoverModelPackages(root)) {
-        const name = path.basename(model.dirPath)
+      packages = discoverModelPackages(root, issues)
+    } catch (e) {
+      logger.warn(
+        'Assets',
+        __t('electron.logs.assets', '扫描模型源失败: {0} - {1}', [root.dirPath, e]),
+      )
+      if (root.source === 'local') issues.push({ entry: root.dirPath, reason: 'unreadable' })
+      continue
+    }
+    for (const model of packages) {
+      const name = path.basename(model.dirPath)
+      try {
         const key = createModelKey(model.source, name, model.workshopId)
-        modelRoots.set(key, model.dirPath)
         const baseUrl = `asset://model/${key}`
         const manifest = loadModelManifest(model.dirPath, name, baseUrl)
-        virtualManifests.set(key, manifest)
+        const resources = manifest.resources as Record<string, unknown>
+        const pathsPresent = [resources.model, resources.texture].every(
+          (value) => typeof value === 'string' && value.trim().length > 0,
+        )
+        if (!pathsPresent) {
+          throw new Error('MODEL_RESOURCES_MISSING')
+        }
 
         let thumbnail = ''
         const avatarDir = path.join(model.dirPath, 'avatar')
@@ -295,6 +326,8 @@ export async function scan3DModels(): Promise<AssetInfo[]> {
         const assetId = String(
           manifest.asset_id ?? `${model.source}:${model.workshopId ?? ''}:${name}`,
         )
+        modelRoots.set(key, model.dirPath)
+        virtualManifests.set(key, manifest)
         results.set(assetId, {
           name: String(
             manifest.display_name ??
@@ -307,12 +340,13 @@ export async function scan3DModels(): Promise<AssetInfo[]> {
           manifest,
           thumbnail,
         })
+      } catch (e) {
+        logger.warn(
+          'Assets',
+          __t('electron.logs.assets', '扫描模型源失败: {0} - {1}', [model.dirPath, e]),
+        )
+        if (model.source === 'local') issues.push({ entry: name, reason: 'invalid-entry' })
       }
-    } catch (e) {
-      logger.warn(
-        'Assets',
-        __t('electron.logs.assets', '扫描模型源失败: {0} - {1}', [root.dirPath, e]),
-      )
     }
   }
 
@@ -323,5 +357,5 @@ export async function scan3DModels(): Promise<AssetInfo[]> {
       assets.length,
     ]),
   )
-  return assets
+  return { models: assets, issues }
 }

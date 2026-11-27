@@ -22,8 +22,6 @@ import { app, safeStorage } from 'electron'
 export interface SettingsSigner {
   /** 返回签名；系统加密不可用时返回 null（调用方不保存需要签名的设置）。 */
   sign(payload: string): string | null
-  /** 已有本机签名状态时，配置被全部删除也不能当作首次安装。 */
-  hasKey?(): boolean
 }
 
 export const SETTINGS_KEY_FILE = 'infos-settings.key'
@@ -55,7 +53,6 @@ export function createSafeStorageSigner(keyFile: () => string): SettingsSigner {
     return (key = created)
   }
   return {
-    hasKey: () => fs.existsSync(keyFile()),
     sign: (payload) => {
       const current = load()
       return current ? createHmac('sha256', current).update(payload).digest('base64') : null

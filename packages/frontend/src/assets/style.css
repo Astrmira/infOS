@@ -43,7 +43,7 @@
  *    ⚠️ 使用规范 (参见 A03_FRONTEND_ARCHITECTURE.md §6):
  *    - 布局/间距/排版: 允许 Tailwind utility (flex, p-4, text-lg, gap-3)
  *    - 像素风组件: 必须使用自定义 CSS class (pixel-border-*, pixel-btn-*)
- *    - 颜色: 优先使用语义令牌 (bg-sky-face), 其次 Tailwind 色板 (bg-slate-50)
+ *    - 颜色: 优先使用 --ui-* / --dash-* 语义令牌，像素组件可使用 --color-* 品牌色系
  *    - 禁止: 在 Tailwind 中硬编码 arbitrary values [#ff00ff] 代替令牌
  */
 @theme inline {
@@ -107,7 +107,7 @@
 
   /* ── 字体 ── */
   --font-sans: var(--font-sans);
-  --font-pixel: var(--font-pixel);
+  --font-pixel: var(--ui-font-pixel);
 
   /* ── 现代 UI 语义令牌 (ui-*) ── */
   --color-ui-bg-canvas: var(--ui-bg-canvas);

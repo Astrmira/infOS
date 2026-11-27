@@ -42,6 +42,7 @@ export const PROTECTED_FILE_NAMES = [
   'infos-settings.key',
   'desktop-safety.json',
   'desktop-safety.accepted.json',
+  'desktop-safety.accepted.json.confirmed',
   'desktop-control.json',
 ] as const
 

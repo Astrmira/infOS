@@ -58,7 +58,7 @@ function guardDisabledLink(event: MouseEvent) {
   justify-content: center;
   gap: 6px;
   vertical-align: middle;
-  font-family: var(--font-pixel), monospace;
+  font-family: var(--ui-font-pixel);
   font-weight: 600;
   line-height: 1.5;
   text-decoration: none;

@@ -392,7 +392,7 @@ onUnmounted(() => document.removeEventListener('pointerdown', onAgentOutside))
         <!-- 最近对话 -->
         <PCard pixel>
           <h3
-            class="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 font-pixel"
+            class="flex items-center gap-2 text-xs font-bold text-[var(--ui-text-tertiary)] uppercase tracking-wider mb-4 font-pixel"
           >
             <PixelIcon name="chat" size="xs" />
             {{ __t('ui.settings', '最近对话') }}
@@ -401,14 +401,14 @@ onUnmounted(() => document.removeEventListener('pointerdown', onAgentOutside))
             <div
               v-for="chat in recentChats"
               :key="chat.id"
-              class="flex items-start gap-3 py-2.5 border-b border-slate-100 last:border-b-0"
+              class="flex items-start gap-3 py-2.5 border-b border-[var(--ui-border-subtle)] last:border-b-0"
             >
-              <div class="w-1.5 h-1.5 bg-sky-400 mt-1.5 flex-shrink-0" />
+              <div class="w-1.5 h-1.5 bg-[var(--ui-accent-sky)] mt-1.5 flex-shrink-0" />
               <div class="min-w-0">
-                <span class="text-sm font-bold text-slate-700 block truncate">
+                <span class="text-sm font-bold text-[var(--ui-text-primary)] block truncate">
                   {{ threadDisplayName({ threadKind: chat.threadKind, title: chat.summary }) }}
                 </span>
-                <div class="flex gap-2.5 mt-0.5 text-[10px] text-slate-400 font-bold font-pixel">
+                <div class="flex gap-2.5 mt-0.5 text-[10px] text-[var(--ui-text-tertiary)] font-bold font-pixel">
                   <span>{{ chat.agent }}</span>
                   <span>{{ chat.messageCount }} {{ __t('ui.settings', '条消息') }}</span>
                   <span>{{ chat.messageCount }} {{ __t('ui.settings', '条') }}</span>
@@ -422,7 +422,7 @@ onUnmounted(() => document.removeEventListener('pointerdown', onAgentOutside))
         <!-- 系统健康 -->
         <PCard pixel>
           <h3
-            class="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 font-pixel"
+            class="flex items-center gap-2 text-xs font-bold text-[var(--ui-text-tertiary)] uppercase tracking-wider mb-4 font-pixel"
           >
             <PixelIcon name="desktop" size="xs" />
             {{ __t('ui.settings', '系统健康') }}
@@ -430,28 +430,28 @@ onUnmounted(() => document.removeEventListener('pointerdown', onAgentOutside))
           <div class="flex flex-col gap-2.5">
             <!-- CPU -->
             <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold text-slate-400 min-w-8 font-pixel">CPU</span>
-              <div class="flex-1 h-1.5 bg-slate-100">
+              <span class="text-[10px] font-bold text-[var(--ui-text-tertiary)] min-w-8 font-pixel">CPU</span>
+              <div class="flex-1 h-1.5 bg-[var(--ui-bg-hover)]">
                 <div
                   class="h-full transition-all duration-500"
                   :class="
                     systemHealth.cpu > 80
-                      ? 'bg-rose-400'
+                      ? 'bg-[var(--ui-danger)]'
                       : systemHealth.cpu > 50
-                        ? 'bg-amber-400'
-                        : 'bg-emerald-400'
+                        ? 'bg-[var(--ui-warning)]'
+                        : 'bg-[var(--ui-success)]'
                   "
                   :style="{ width: systemHealth.cpu + '%' }"
                 />
               </div>
-              <span class="text-[10px] font-bold text-slate-500 min-w-12 text-right font-pixel">
+              <span class="text-[10px] font-bold text-[var(--ui-text-secondary)] min-w-12 text-right font-pixel">
                 {{ systemHealth.cpu }}%
               </span>
             </div>
             <!-- 内存 -->
             <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold text-slate-400 min-w-8 font-pixel">MEM</span>
-              <div class="flex-1 h-1.5 bg-slate-100">
+              <span class="text-[10px] font-bold text-[var(--ui-text-tertiary)] min-w-8 font-pixel">MEM</span>
+              <div class="flex-1 h-1.5 bg-[var(--ui-bg-hover)]">
                 <div
                   class="h-full bg-pink-face transition-all duration-500"
                   :style="{
@@ -462,28 +462,28 @@ onUnmounted(() => document.removeEventListener('pointerdown', onAgentOutside))
                   }"
                 />
               </div>
-              <span class="text-[10px] font-bold text-slate-500 min-w-12 text-right font-pixel">
+              <span class="text-[10px] font-bold text-[var(--ui-text-secondary)] min-w-12 text-right font-pixel">
                 {{ systemHealth.memoryUsed }}MB
               </span>
             </div>
             <!-- SQLite -->
             <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold text-slate-400 min-w-8 font-pixel">SQL</span>
-              <span class="text-[10px] font-bold text-slate-500 ml-auto font-pixel">
+              <span class="text-[10px] font-bold text-[var(--ui-text-tertiary)] min-w-8 font-pixel">SQL</span>
+              <span class="text-[10px] font-bold text-[var(--ui-text-secondary)] ml-auto font-pixel">
                 {{ systemHealth.sqliteSize }} MB
               </span>
             </div>
             <!-- TriviumDB -->
             <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold text-slate-400 min-w-8 font-pixel">TDB</span>
-              <span class="text-[10px] font-bold text-slate-500 ml-auto font-pixel">
+              <span class="text-[10px] font-bold text-[var(--ui-text-tertiary)] min-w-8 font-pixel">TDB</span>
+              <span class="text-[10px] font-bold text-[var(--ui-text-secondary)] ml-auto font-pixel">
                 {{ systemHealth.triviumSize }} MB
               </span>
             </div>
             <!-- 向量 -->
             <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold text-slate-400 min-w-8 font-pixel">VEC</span>
-              <span class="text-[10px] font-bold text-slate-500 ml-auto font-pixel">
+              <span class="text-[10px] font-bold text-[var(--ui-text-tertiary)] min-w-8 font-pixel">VEC</span>
+              <span class="text-[10px] font-bold text-[var(--ui-text-secondary)] ml-auto font-pixel">
                 {{ systemHealth.vectorCount }} {{ __t('ui.settings', '条') }}
               </span>
             </div>

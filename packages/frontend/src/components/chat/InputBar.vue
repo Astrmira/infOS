@@ -2447,14 +2447,14 @@ defineExpose({
   position: relative;
   background: var(--app-panel-fill, var(--ui-bg-surface));
   border: 1px solid var(--ui-border-default);
-  border-radius: 2px;
+  border-radius: var(--ui-radius-xxs);
   box-shadow: var(--ui-shadow-md);
   transition:
     border-color var(--ui-duration-fast) var(--ui-ease-standard),
     box-shadow var(--ui-duration-fast) var(--ui-ease-standard);
 }
 .deck--file-dragging {
-  outline: 2px solid var(--ui-accent-cyan);
+  outline: 2px solid var(--ui-accent-sky);
   outline-offset: -2px;
 }
 .attachment-info .attachment-reference {
@@ -2481,7 +2481,7 @@ defineExpose({
   flex: 0 0 auto;
   gap: 5px;
   color: var(--ui-success);
-  font: 800 9px var(--font-mono);
+  font: 800 9px var(--ui-font-mono);
 }
 
 /* ── 硬朗分仓晶环 Token 容量指示器 + 悬停详情卡片 ── */
@@ -2726,7 +2726,7 @@ defineExpose({
   border: 1px solid var(--ui-border-subtle);
   border-radius: 2px;
   color: var(--ui-success);
-  font: 800 9px var(--font-mono);
+  font: 800 9px var(--ui-font-mono);
 }
 .deck-flow-chip {
   display: inline-flex;
@@ -2737,7 +2737,7 @@ defineExpose({
   border-radius: 2px;
   background: transparent;
   color: var(--ui-accent-purple);
-  font: 800 9px var(--font-mono);
+  font: 800 9px var(--ui-font-mono);
   cursor: pointer;
 }
 .deck-flow-chip:hover,
@@ -3143,7 +3143,7 @@ button {
 }
 .mention-btn-at {
   color: var(--ui-accent-primary);
-  font-family: var(--font-pixel), monospace;
+  font-family: var(--ui-font-pixel);
   font-size: 12px;
   line-height: 1;
 }

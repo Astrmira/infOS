@@ -313,6 +313,7 @@ export function validateDesktopSafetySettings(
     [
       'version',
       'note',
+      'enabled',
       'normalMode',
       'forbidden',
       'mustConfirm',
@@ -329,10 +330,13 @@ export function validateDesktopSafetySettings(
       value: safetyIssueValue(item.version),
     })
   const mode = item.normalMode ?? 'once'
+  if (item.enabled !== undefined && typeof item.enabled !== 'boolean')
+    issues.push({ code: 'INVALID_ENTRY', field: 'enabled' })
   if (!(DESKTOP_NORMAL_MODES as readonly unknown[]).includes(mode))
     issues.push({ code: 'INVALID_MODE', field: 'normalMode', value: safetyIssueValue(mode) })
   const settings: DesktopSafetySettings = {
     version: 1,
+    ...(typeof item.enabled === 'boolean' ? { enabled: item.enabled } : {}),
     normalMode: mode as DesktopNormalMode,
     forbidden: textList(item.forbidden ?? [], 'forbidden', issues, isProgramEntry),
     mustConfirm: textList(item.mustConfirm ?? [], 'mustConfirm', issues, isProgramEntry),

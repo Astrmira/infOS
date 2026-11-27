@@ -1405,7 +1405,7 @@ async function submitButler(): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 24px;
+  border-radius: var(--ui-radius-xl);
   background: linear-gradient(135deg, var(--ui-accent-purple-soft), var(--ui-accent-primary-soft));
   margin-bottom: 20px;
   color: var(--ui-accent-purple);
@@ -1413,7 +1413,7 @@ async function submitButler(): Promise<void> {
 
 .sh-empty-title {
   margin: 0;
-  font-family: var(--ui-font-pixel), 'Zpix', monospace;
+  font-family: var(--ui-font-pixel);
   font-size: 16px;
   font-weight: 900;
   color: var(--ui-text-secondary);

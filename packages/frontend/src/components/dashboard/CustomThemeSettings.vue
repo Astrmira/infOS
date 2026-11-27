@@ -122,7 +122,7 @@ onMounted(() => void refresh())
 
 <template>
   <div class="custom-theme flex flex-col gap-1.5">
-    <label class="text-xs font-bold text-slate-500">{{ __t('ui.settings', '自定义主题') }}</label>
+    <label class="text-xs font-bold text-[var(--ui-text-secondary)]">{{ __t('ui.settings', '自定义主题') }}</label>
     <div class="custom-theme__row">
       <PSelect
         class="custom-theme__select"
@@ -150,7 +150,7 @@ onMounted(() => void refresh())
         {{ __t('ui.settings', '删除') }}
       </PButton>
     </div>
-    <p v-if="current" class="text-[10px] text-slate-400">
+    <p v-if="current" class="text-[10px] text-[var(--ui-text-tertiary)]">
       {{
         [
           current.author && __t('ui.settings', '作者：{0}', [current.author]),
@@ -165,7 +165,7 @@ onMounted(() => void refresh())
     <p v-if="customTheme.loadError.value" class="custom-theme__error text-[10px]" role="alert">
       {{ __t('ui.settings', '主题载入失败：{0}', [customTheme.loadError.value]) }}
     </p>
-    <p class="text-[10px] text-slate-400">
+    <p class="text-[10px] text-[var(--ui-text-tertiary)]">
       {{
         __t(
           'ui.settings',

@@ -98,7 +98,7 @@ const delayText = computed(() =>
 }
 .model-retry__heading small {
   font-size: 10px;
-  color: var(--ui-text-muted);
+  color: var(--ui-text-tertiary);
 }
 .model-retry__reason {
   margin: 3px 0 0;

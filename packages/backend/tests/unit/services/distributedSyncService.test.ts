@@ -412,7 +412,8 @@ describe('DistributedSyncService 完整快照', () => {
     await expect(readFile(path.join(targetDir, 'skills', 'source.md'), 'utf8')).resolves.toBe(
       '来源数据',
     )
-    await expect(readFile(path.join(targetDir, 'binary.dat'))).resolves.toEqual(binary)
+    const restoredBinary = await readFile(path.join(targetDir, 'binary.dat'))
+    expect(restoredBinary.equals(binary)).toBe(true)
     await expect(readFile(path.join(targetDir, 'empty.dat'))).resolves.toHaveLength(0)
     await expect(readFile(path.join(targetDir, 'client-language.txt'), 'utf8')).resolves.toBe('zh-CN')
     await expect(readFile(path.join(targetDir, 'client-default-agent.txt'), 'utf8')).resolves.toBe('nana')

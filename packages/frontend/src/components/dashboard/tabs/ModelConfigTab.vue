@@ -437,21 +437,21 @@ function connectionName(model: LlmModel) {
             :class="[
               'flex items-center gap-2 text-xl font-black bg-none border-none cursor-pointer p-0 transition-all',
               currentTab === 'llm'
-                ? 'text-slate-800 scale-[1.02]'
-                : 'text-slate-400 hover:text-slate-500',
+                ? 'text-[var(--ui-text-primary)] scale-[1.02]'
+                : 'text-[var(--ui-text-tertiary)] hover:text-[var(--ui-text-secondary)]',
             ]"
             @click="currentTab = 'llm'"
           >
             <PixelIcon name="cpu" size="sm" />
             <span class="font-pixel">{{ __t('ui.settings', '模型配置') }}</span>
           </button>
-          <span class="text-slate-200 text-xl font-light">/</span>
+          <span class="text-[var(--ui-border-default)] text-xl font-light">/</span>
           <button
             :class="[
               'flex items-center gap-2 text-xl font-black bg-none border-none cursor-pointer p-0 transition-all',
               currentTab === 'vector'
-                ? 'text-slate-800 scale-[1.02]'
-                : 'text-slate-400 hover:text-slate-500',
+                ? 'text-[var(--ui-text-primary)] scale-[1.02]'
+                : 'text-[var(--ui-text-tertiary)] hover:text-[var(--ui-text-secondary)]',
             ]"
             @click="currentTab = 'vector'"
           >
@@ -511,7 +511,7 @@ function connectionName(model: LlmModel) {
             <div class="flex flex-col gap-0.5 min-w-0">
               <h3 class="model-card-name" :title="model.name">{{ model.name }}</h3>
               <span
-                class="model-provider-line text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel"
+                class="model-provider-line text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
               >
                 <BrandIcon :brand="providerBrandForModel(model)" size="xs" fallback="provider" />
                 <span>{{ connectionName(model) }}</span>
@@ -522,7 +522,7 @@ function connectionName(model: LlmModel) {
             <!-- 主模型徽章（淡蓝色像素风） -->
             <span
               v-if="mainModelId === model.id"
-              class="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold text-sky-700 bg-sky-100 border-2 border-sky-300 shadow-[1px_1px_0_#7dd3fc] font-pixel"
+              class="main-model-badge flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold font-pixel"
             >
               <PixelIcon name="star" size="xs" />
               <span>{{ __t('ui.settings', '主模型') }}</span>
@@ -532,7 +532,7 @@ function connectionName(model: LlmModel) {
 
         <!-- 模型详情 -->
         <div class="model-connection-picker">
-          <label class="text-[11px] text-slate-400">
+          <label class="text-[11px] text-[var(--ui-text-secondary)]">
             {{ __t('ui.settings', '服务商连接')
             }}{{
               model.providerConnectionId && model.connectionOverride
@@ -622,7 +622,7 @@ function connectionName(model: LlmModel) {
 
         <!-- 操作按钮 -->
         <div
-          class="model-card-actions flex justify-between items-center pt-3 border-t border-slate-100 mt-auto"
+          class="model-card-actions flex justify-between items-center pt-3 border-t border-[var(--ui-border-subtle)] mt-auto"
         >
           <!-- 主模型按钮（像素风立体感：3px偏移阴影，按下位移+阴影缩小） -->
           <button
@@ -656,7 +656,7 @@ function connectionName(model: LlmModel) {
             </PButton>
             <PTooltip :content="__t('ui.settings', '编辑')" placement="top">
               <button
-                class="p-1.5 bg-none border-none cursor-pointer text-slate-400 hover:text-sky-500 transition-all"
+                class="p-1.5 bg-none border-none cursor-pointer text-[var(--ui-text-secondary)] hover:text-[var(--ui-accent-sky)] transition-all"
                 :aria-label="__t('ui.settings', '编辑')"
                 @click="openEditor(model)"
               >
@@ -665,7 +665,7 @@ function connectionName(model: LlmModel) {
             </PTooltip>
             <PTooltip :content="__t('ui.settings', '删除')" placement="top">
               <button
-                class="p-1.5 bg-none border-none cursor-pointer text-slate-400 hover:text-rose-500 transition-all"
+                class="p-1.5 bg-none border-none cursor-pointer text-[var(--ui-text-secondary)] hover:text-[var(--ui-danger)] transition-all"
                 :aria-label="__t('ui.settings', '删除')"
                 @click="deleteModel(model.id)"
               >
@@ -907,7 +907,9 @@ function connectionName(model: LlmModel) {
         </div>
         <fieldset class="model-editor-fields" :disabled="isSavingModel || isReadingConnection">
           <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label
+              class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
+            >
               {{ __t('ui.settings', '模型名称') }}
             </label>
             <PInput
@@ -917,7 +919,9 @@ function connectionName(model: LlmModel) {
             />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label
+              class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
+            >
               {{ __t('ui.settings', '服务商连接') }}
             </label>
             <BrandSelect
@@ -934,7 +938,9 @@ function connectionName(model: LlmModel) {
             </div>
           </div>
           <div v-if="!editorForm.providerConnectionId" class="flex flex-col gap-1.5">
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label
+              class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
+            >
               {{ __t('ui.settings', '品牌模板') }}
             </label>
             <PSelect
@@ -981,17 +987,23 @@ function connectionName(model: LlmModel) {
             v-if="editorForm.connectionOverride || !editorForm.providerConnectionId"
             class="flex flex-col gap-1.5"
           >
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label
+              class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
+            >
               {{ __t('ui.settings', '协议格式') }}
             </label>
             <PSelect v-model="editorForm.connectionProtocol" :options="customProviderTypeOptions" />
-            <p class="text-[10px] text-slate-400">{{ __t('ui.settings', '按服务商文档选择。') }}</p>
+            <p class="text-[10px] text-[var(--ui-text-tertiary)]">
+              {{ __t('ui.settings', '按服务商文档选择。') }}
+            </p>
           </div>
           <div
             v-if="editorForm.connectionOverride || !editorForm.providerConnectionId"
             class="flex flex-col gap-1.5"
           >
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label
+              class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
+            >
               {{ __t('ui.settings', '独立 API 地址') }}
             </label>
             <PInput v-model="editorForm.apiBase" placeholder="https://api.example.com/v1" />
@@ -1000,7 +1012,9 @@ function connectionName(model: LlmModel) {
             v-if="editorForm.connectionOverride || !editorForm.providerConnectionId"
             class="flex flex-col gap-1.5"
           >
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label
+              class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
+            >
               {{ __t('ui.settings', '认证方式') }}
             </label>
             <PSelect
@@ -1018,7 +1032,9 @@ function connectionName(model: LlmModel) {
             "
             class="flex flex-col gap-1.5"
           >
-            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-pixel">
+            <label
+              class="text-[10px] font-bold uppercase tracking-wider text-[var(--ui-text-secondary)] font-pixel"
+            >
               {{ __t('ui.settings', '独立 API Key') }}
             </label>
             <PInput
@@ -1039,28 +1055,28 @@ function connectionName(model: LlmModel) {
           />
           <!-- 请求参数：每项先决定是否传参，再显示匹配的编辑控件。 -->
           <div class="model-params flex flex-col gap-3 rounded border-2 p-3">
-            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+            <div class="flex items-center justify-between border-b border-[var(--ui-border-default)] pb-2">
               <div>
-                <h4 class="text-[11px] font-bold text-slate-700 font-pixel">
+                <h4 class="text-[11px] font-bold text-[var(--ui-text-primary)] font-pixel">
                   {{ __t('ui.settings', '请求参数') }}
                 </h4>
-                <p class="mt-0.5 text-[10px] text-slate-400">
+                <p class="mt-0.5 text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '关闭的参数使用服务商默认值。') }}
                 </p>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">OPTIONAL</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">OPTIONAL</span>
             </div>
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '流式输出') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '逐字显示回复') }}
                 </span>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">STREAM</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">STREAM</span>
               <div class="model-param-control flex justify-end">
                 <PSwitch v-model="editorForm.stream" />
               </div>
@@ -1068,12 +1084,12 @@ function connectionName(model: LlmModel) {
 
             <div v-if="editorProtocol === 'openai'" class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">Wire API</span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">Wire API</span>
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '按服务商支持的接口选择') }}
                 </span>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">ENDPOINT</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">ENDPOINT</span>
               <div class="model-param-control">
                 <PSelect v-model="editorForm.wireApi" :options="wireApiOptions" />
               </div>
@@ -1084,14 +1100,14 @@ function connectionName(model: LlmModel) {
               class="model-param-row"
             >
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '思考兼容模式') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '通常选择自动') }}
                 </span>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">DIALECT</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">DIALECT</span>
               <div class="model-param-control">
                 <PSelect v-model="editorForm.reasoningDialect" :options="reasoningDialectOptions" />
               </div>
@@ -1099,14 +1115,14 @@ function connectionName(model: LlmModel) {
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '显示原生思考') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '显示模型提供的思考摘要') }}
                 </span>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">NATIVE</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">NATIVE</span>
               <div class="model-param-control flex justify-end">
                 <PSwitch v-model="editorForm.returnNativeReasoning" />
               </div>
@@ -1114,15 +1130,17 @@ function connectionName(model: LlmModel) {
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '回答预填充能力') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '走中转或不确定时保持自动；确认支持再手动开启') }}
                 </span>
-                <span class="text-[10px] text-slate-500">{{ assistantPrefillEffect }}</span>
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">{{
+                  assistantPrefillEffect
+                }}</span>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">PREFILL</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">PREFILL</span>
               <div class="model-param-control">
                 <PSelect
                   v-model="editorForm.assistantPrefill"
@@ -1133,10 +1151,10 @@ function connectionName(model: LlmModel) {
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '思考等级') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{
                     legacyGeminiEffort
                       ? __t('ui.settings', '旧档位 {0} 按 {1} 发送', [
@@ -1149,7 +1167,7 @@ function connectionName(model: LlmModel) {
                   }}
                 </span>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">REASONING</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">REASONING</span>
               <div class="model-param-control">
                 <PSelect v-model="reasoningEffortValue" :options="reasoningEffortOptions" />
               </div>
@@ -1157,10 +1175,10 @@ function connectionName(model: LlmModel) {
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '温度 Temperature') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '控制回复随机性，范围 0–2') }}
                 </span>
               </div>
@@ -1173,8 +1191,8 @@ function connectionName(model: LlmModel) {
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">Top P</span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">Top P</span>
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '核采样概率阈值，范围 0–1') }}
                 </span>
               </div>
@@ -1187,14 +1205,14 @@ function connectionName(model: LlmModel) {
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '上下文窗口 Token') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '填写模型支持的上下文长度') }}
                 </span>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">CONTEXT</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">CONTEXT</span>
               <div class="model-param-control">
                 <PInputNumber
                   v-model="editorForm.contextWindowTokens"
@@ -1207,14 +1225,14 @@ function connectionName(model: LlmModel) {
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '最大轮次') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '桌面对话，留空使用默认值') }}
                 </span>
               </div>
-              <span class="text-[9px] text-slate-400 font-mono">ReAct</span>
+              <span class="text-[9px] text-[var(--ui-text-tertiary)] font-mono">ReAct</span>
               <div class="model-param-control">
                 <PInputNumber
                   v-model="editorForm.maxReActTurns"
@@ -1228,10 +1246,10 @@ function connectionName(model: LlmModel) {
 
             <div class="model-param-row">
               <div class="model-param-heading">
-                <span class="text-xs font-bold text-slate-700">
+                <span class="text-xs font-bold text-[var(--ui-text-primary)]">
                   {{ __t('ui.settings', '最大输出 Token') }}
                 </span>
-                <span class="text-[10px] text-slate-400">
+                <span class="text-[10px] text-[var(--ui-text-secondary)]">
                   {{ __t('ui.settings', '单次回复的长度上限') }}
                 </span>
               </div>
@@ -1249,7 +1267,7 @@ function connectionName(model: LlmModel) {
                 v-model="editorForm.enableVision"
                 :label="__t('ui.settings', '图片视觉 (Vision)')"
               />
-              <p class="mt-1 text-[10px] leading-relaxed text-slate-400">
+              <p class="mt-1 text-[10px] leading-relaxed text-[var(--ui-text-secondary)]">
                 {{ __t('ui.settings', '支持识图') }}
               </p>
             </div>
@@ -1258,7 +1276,7 @@ function connectionName(model: LlmModel) {
                 v-model="editorForm.enableAudioInput"
                 :label="__t('ui.settings', '音频输入 (Audio)')"
               />
-              <p class="mt-1 text-[10px] leading-relaxed text-slate-400">
+              <p class="mt-1 text-[10px] leading-relaxed text-[var(--ui-text-secondary)]">
                 {{ __t('ui.audio-input', '手动开启后，Gemini 协议连接可接收原生音频') }}
               </p>
             </div>
@@ -1354,7 +1372,7 @@ function connectionName(model: LlmModel) {
                 :options="visionModelChoices"
                 :placeholder="__t('ui.settings', '选择已启用图片输入的模型')"
               />
-              <p v-if="!visionModels.length" class="text-xs text-amber-600">
+              <p v-if="!visionModels.length" class="text-xs text-[var(--ui-warning)]">
                 {{ __t('ui.settings', '请先为至少一个模型开启“图片输入”。') }}
               </p>
             </div>
@@ -1488,7 +1506,7 @@ function connectionName(model: LlmModel) {
 .model-editor-errors {
   padding: 12px;
   border: 1px solid var(--ui-danger);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-sm);
   color: var(--ui-danger);
   background: var(--ui-danger-soft);
   font-size: 12px;
@@ -1513,16 +1531,16 @@ function connectionName(model: LlmModel) {
 .model-test-result {
   font-size: 11px;
   line-height: 1.8;
-  color: var(--ui-text-muted);
+  color: var(--ui-text-tertiary);
   overflow-wrap: anywhere;
 }
 .model-test-result.is-error {
-  color: var(--ui-accent-rose);
+  color: var(--ui-danger);
 }
 .connection-summary {
   padding: 12px 14px 8px;
   border: 1px solid var(--ui-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-xs);
   background:
     linear-gradient(
       125deg,
@@ -1547,7 +1565,7 @@ function connectionName(model: LlmModel) {
   height: 34px;
   flex-shrink: 0;
   border: 1px solid var(--ui-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-xs);
   background: var(--ui-bg-surface);
 }
 .connection-summary__identity {
@@ -1599,7 +1617,7 @@ function connectionName(model: LlmModel) {
   min-width: 0;
   background: transparent;
   color: inherit;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--ui-font-mono);
   font-size: 11px;
   line-height: 1.65;
   overflow-wrap: anywhere;
@@ -1628,7 +1646,7 @@ function connectionName(model: LlmModel) {
   gap: 0;
   padding: 16px;
   border: 1px solid var(--ui-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-sm);
   background: var(--dash-panel-soft);
 }
 .task-assignment-heading {
@@ -1644,7 +1662,7 @@ function connectionName(model: LlmModel) {
   width: 34px;
   height: 34px;
   border: 1px solid color-mix(in srgb, var(--ui-accent-purple) 20%, var(--ui-border-subtle));
-  border-radius: 7px;
+  border-radius: var(--ui-radius-sm);
   background: var(--ui-accent-purple-soft);
   color: var(--ui-accent-purple);
 }
@@ -1683,7 +1701,7 @@ function connectionName(model: LlmModel) {
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-sm);
   color: var(--ui-text-tertiary);
   background: var(--ui-bg-hover);
 }
@@ -1770,25 +1788,6 @@ function connectionName(model: LlmModel) {
 /* 模型配置业务区使用主题语义色，语义色仅承担状态强调。 */
 .model-config-tab {
   color: var(--ui-text-primary);
-}
-.model-config-tab :is(.text-slate-800, .text-slate-700, .text-slate-600) {
-  color: var(--ui-text-primary);
-}
-/* 弹窗内容（Teleport 到 body，不受 .model-config-tab 祖先兜底影响） */
-.model-dialog-body :is(.text-slate-800, .text-slate-700, .text-slate-600) {
-  color: var(--ui-text-primary);
-}
-.model-dialog-body :is(.text-slate-500, .text-slate-400) {
-  color: var(--ui-text-secondary);
-}
-.model-dialog-body :is(.text-slate-300) {
-  color: var(--ui-text-tertiary);
-}
-.model-dialog-body [class*='border-slate-'] {
-  border-color: var(--ui-border-default);
-}
-.model-config-tab :is(.text-slate-500, .text-slate-400) {
-  color: var(--ui-text-secondary);
 }
 .capability-group,
 .model-params,
@@ -1948,7 +1947,7 @@ function connectionName(model: LlmModel) {
   image-rendering: auto;
 }
 .agent-assignment-avatar > span {
-  font-family: var(--font-pixel, monospace);
+  font-family: var(--ui-font-pixel);
   font-weight: 900;
 }
 .agent-assignment-avatar__status {
@@ -1958,7 +1957,7 @@ function connectionName(model: LlmModel) {
   width: 11px;
   height: 11px;
   border: 2px solid var(--ui-bg-surface);
-  background: var(--ui-accent-mint, #34d399);
+  background: var(--ui-success);
   box-shadow: 1px 1px 0 var(--ui-border-strong);
 }
 .agent-assignment-card__copy {
@@ -1997,7 +1996,7 @@ function connectionName(model: LlmModel) {
 }
 .agent-assignment-card__label {
   letter-spacing: 0.12em;
-  font-family: var(--font-pixel, monospace);
+  font-family: var(--ui-font-pixel);
 }
 .agent-assignment-empty {
   display: grid;
@@ -2262,7 +2261,7 @@ function connectionName(model: LlmModel) {
 .model-param-off {
   justify-self: end;
   color: var(--ui-text-tertiary);
-  font-family: var(--font-pixel), monospace;
+  font-family: var(--ui-font-pixel);
   font-size: 10px;
 }
 

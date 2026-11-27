@@ -38,7 +38,7 @@
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
   font-family: var(--ui-font-pixel), monospace;
   font-size: 11px;
   font-weight: 700;
@@ -116,7 +116,7 @@
 }
 .sp-setting-line small {
   font-size: 10px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 .sp-number-row {
   display: grid;
@@ -133,7 +133,7 @@
   gap: 6px;
   font-size: 10px;
   font-weight: 800;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 .sp-list-grid textarea {
   min-height: 76px;
@@ -225,7 +225,7 @@
   font:
     9px Consolas,
     monospace;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 .sp-contact-detail {
   padding: 20px;
@@ -249,7 +249,7 @@
   font:
     10px Consolas,
     monospace;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 .sp-impression-box {
   margin-top: 18px;
@@ -280,7 +280,7 @@
 }
 .sp-contact-meta dt {
   font-size: 9px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 .sp-contact-meta dd {
   margin: 4px 0 0;
@@ -290,7 +290,7 @@
 .sp-empty {
   padding: 28px;
   text-align: center;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 .sp-empty-detail {
   margin-top: 72px;
@@ -322,7 +322,7 @@
 }
 .sp-danger-head p {
   margin: 0;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
   font-size: 10px;
 }
 .sp-danger-list article {
@@ -347,7 +347,7 @@
 }
 .sp-danger-list span {
   font-size: 10px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 .sp-inline-target {
   display: flex !important;
@@ -511,7 +511,7 @@
 
 .sp-card-desc {
   font-size: 10px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 
 .sp-card-status {
@@ -530,14 +530,14 @@
 }
 
 .sp-dot-off {
-  background: var(--text-muted, #94a3b8);
+  background: var(--ui-text-tertiary);
 }
 
 .sp-card-tag {
   margin-left: auto;
   font-size: 9px;
   font-weight: 700;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
   background: var(--color-sky-50, #f0f9ff);
   padding: 1px 6px;
   border: 1px solid var(--color-sky-100, #e0f2fe);
@@ -646,7 +646,7 @@
 }
 
 .sp-label {
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
   font-weight: 600;
 }
 
@@ -663,7 +663,7 @@
 }
 
 .sp-value.sp-na {
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
 }
 
 .sp-value.sp-mono {
@@ -676,7 +676,7 @@
 
 .sp-hint {
   font-size: 10px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--ui-text-tertiary);
   padding: 4px 0 0;
   border-top: 1px dashed var(--color-sky-100, #e0f2fe);
   margin-top: 2px;

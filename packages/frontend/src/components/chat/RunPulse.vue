@@ -236,12 +236,12 @@ const durationText = computed(() => {
   --pulse-soft: color-mix(in srgb, var(--ui-warning) 12%, transparent);
 }
 .run-pulse--paused {
-  --pulse-accent: var(--ui-text-muted);
+  --pulse-accent: var(--ui-text-tertiary);
   --pulse-soft: var(--ui-bg-hover);
 }
 .run-pulse--cancelled {
   --pulse-accent: color-mix(in srgb, var(--ui-danger) 44%, var(--ui-text-secondary));
-  --pulse-soft: color-mix(in srgb, var(--ui-text-muted) 7%, var(--ui-bg-elevated));
+  --pulse-soft: color-mix(in srgb, var(--ui-text-tertiary) 7%, var(--ui-bg-elevated));
   min-width: 188px;
   border-color: color-mix(in srgb, var(--pulse-accent) 22%, var(--ui-border-subtle));
   border-radius: 9px;
@@ -377,13 +377,13 @@ const durationText = computed(() => {
   grid-template-columns: auto 1fr;
   align-items: baseline;
   gap: 5px;
-  color: var(--ui-text-muted);
-  font-family: var(--font-mono), monospace;
+  color: var(--ui-text-tertiary);
+  font-family: var(--ui-font-mono);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .run-pulse__time small {
-  color: color-mix(in srgb, var(--pulse-accent) 58%, var(--ui-text-muted));
+  color: color-mix(in srgb, var(--pulse-accent) 58%, var(--ui-text-tertiary));
   font-size: 7px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -436,7 +436,7 @@ const durationText = computed(() => {
   font-weight: 700;
 }
 .run-pulse--cancelled .run-pulse__time small {
-  color: var(--ui-text-muted);
+  color: var(--ui-text-tertiary);
 }
 .run-pulse--cancelled .run-pulse__time b {
   color: var(--ui-text-tertiary);

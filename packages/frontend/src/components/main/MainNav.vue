@@ -435,7 +435,7 @@ function itemClasses(item: MainNavItem): string[] {
 }
 
 .main-nav-item-label {
-  font-family: var(--font-pixel);
+  font-family: var(--ui-font-pixel);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;

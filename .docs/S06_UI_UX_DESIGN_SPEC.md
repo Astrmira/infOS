@@ -219,11 +219,11 @@ Arc 式现代空间结构
 }
 ```
 
-### 4.4 与现有令牌的关系
+### 4.4 令牌来源与命名约束
 
-- 保留 `--color-sky-*`、`--color-pink-*`、`--color-moe-*`，用于像素组件和品牌细节。
-- 新增 `--ui-*` 令牌用于现代框架、卡片、文字、边框和主题切换。
-- 迁移期允许新旧令牌共存，但新 MainView 和新组件必须优先使用 `--ui-*`。
+- `packages/frontend/src/assets/ui-tokens.css` 是 `--ui-*` 与 `--dash-*` 语义令牌的单一定义源；`packages/frontend/src/assets/tokens.css` 保留像素与品牌色系（`--color-sky-*`、`--color-pink-*`、`--color-moe-*`）。
+- 业务组件、浮层与设置页统一使用 `--ui-*` / `--dash-*` 语义令牌，禁止新写无语义的 Tailwind 固定色类（如 `bg-white`、`bg-slate-*`、`text-slate-*`、`border-slate-*`）或跨组件 `!important` 暗色覆写兜底。
+- 字体、动效与语义色必须直接引用已定义的 `--ui-*` 令牌（如 `--ui-font-pixel`、`--ui-font-mono`、`--ui-font-sans`、`--ui-text-tertiary`、`--ui-danger`、`--ui-success`、`--ui-ease-standard`），禁止引用未定义的旧别名或臆造令牌名（如 `--font-pixel`、`--font-mono`、`--text-muted`、`--ui-text-muted`、`--ui-accent-rose`、`--ui-bg-primary`、`--ui-ease-out`）。
 - 禁止在业务组件中重复定义同义颜色。
 
 ### 4.5 自定义壁纸四层光学分层
@@ -273,22 +273,27 @@ Arc 式现代空间结构
 
 ## 6. 边框、圆角与像素轮廓
 
-### 6.1 现代边框
+### 6.1 双轨圆角与现代边框
+
+圆角令牌统一定义在 `packages/frontend/src/assets/ui-tokens.css`，采用**双轨体系**：像素控件、像素卡片、命令栏与轻像素浮层使用 `none / xxs`，现代工作台容器、导航、气泡与面板使用 `xs–xl`：
 
 ```css
---ui-border-width: 1px;
+--ui-radius-none: 0px;
+--ui-radius-xxs: 2px;
 --ui-radius-xs: 4px;
 --ui-radius-sm: 7px;
 --ui-radius-md: 10px;
 --ui-radius-lg: 14px;
 --ui-radius-xl: 18px;
+--ui-radius-full: 9999px;
 ```
 
-- 输入框、按钮：`7px–10px`。
-- 普通卡片：`10px–14px`。
-- 大型悬浮面板：左侧 `16px–18px`，贴边侧保持 0。
-- 标签、状态胶囊：可使用全圆角，但不得滥用。
-- 终端、代码区域可使用 `7px–10px` 小圆角。
+- 像素控件与像素卡片（`PButton`、`PCard[pixel]`、`PInput`、`PDialog`、`hub-tabs` 等）：`0px`（`--ui-radius-none`）或 `2px`（`--ui-radius-xxs`）。
+- 现代工作台按钮、微控件、芯片与输入框：`4px`（`--ui-radius-xs`）–`7px`（`--ui-radius-sm`）。
+- 普通卡片、抽屉内块、悬浮菜单：`10px`（`--ui-radius-md`）–`14px`（`--ui-radius-lg`）。
+- 大型强调容器 / 图标底座：`18px`（`--ui-radius-xl`）；大型贴边悬浮面板贴边侧保持 `0`。
+- 标签、计数徽章、状态胶囊：使用 `--ui-radius-full`，避免手写 `9px / 999px` 等散落魔数。
+- 新增样式统一引用 `--ui-radius-*` 令牌，避免散落硬编码像素圆角。
 
 ### 6.2 像素边框使用条件
 
@@ -331,6 +336,8 @@ Arc 式现代空间结构
 ## 7. 字体与排版
 
 ### 7.1 字体分工
+
+`packages/frontend/src/assets/ui-tokens.css` 统一提供三类字体令牌，Tailwind `@theme`（`packages/frontend/src/assets/style.css`）中的 `--font-pixel` 同步映射自 `--ui-font-pixel`：
 
 ```css
 --ui-font-sans: Inter, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
@@ -589,6 +596,15 @@ Texture不是规则网格、几条重复直线或单层noise。需要表达磨�
 - 文案必须说明为什么为空，以及下一步可以做什么。
 - 有明确操作时提供主按钮。
 - 技术页面可使用更克制的无动画空状态。
+
+### 11.7 共享基础原语与组件入口
+
+新增页面或功能块应优先复用以下共享原语，避免重复造轮子：
+
+- **像素原子组件库**（`packages/frontend/src/components/pixel/index.ts`）：统一导出 `PixelIcon`、`PButton`、`PCard`、`PInput`、`PInputNumber`、`PTextarea`、`PSelect`、`PSwitch`、`PCheckbox`、`PSlider`、`PDatePicker`、`PDialog`、`PDrawer`、`PToast`、`PTooltip`、`ContextMenu`、`PEmpty`、`NewContentFab` 等。
+- **多页签工作区壳层**（`packages/frontend/src/components/main/tabs/HubWorkspace.vue` 与 `hub-workspace.css`）：收敛含头部栏、像素分段槽与子页缓存槽的组合工作区（如记忆馆、任务与日程、伙伴与日程等）。
+- **锚点浮层定位**（`packages/frontend/src/composables/ui/useAnchoredPopup.ts`）：统一管理 Teleport 下拉 / 弹出层的视口避让、滚动重算、点击外部与 `Esc` 关闭，避免重复手写 `getBoundingClientRect` 定位逻辑。
+- **远程模型字段**（`packages/frontend/src/components/dashboard/RemoteModelField.vue`）：统一承担模型 ID 列表获取、手动输入与刷新态反馈。
 
 ---
 
